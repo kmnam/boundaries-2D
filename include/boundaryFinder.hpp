@@ -99,8 +99,8 @@ class BoundaryFinder
         }
 
         bool step(std::function<std::pair<double, double>(std::vector<double>)> func,
-                  std::function<std::vector<double>(std::vector<double>)> mutate,
-                  unsigned iter, bool verbose, std::string write_prefix = "")
+                  std::function<std::vector<double>(std::vector<double>, boost::random::mt19937&)> mutate,
+                  unsigned iter, bool simplify, bool verbose, std::string write_prefix = "")
         {
             /*
              * Given a list of points (with their x- and y-coordinates
@@ -125,30 +125,31 @@ class BoundaryFinder
             y.resize(this->N);
             VectorXd::Map(&x[0], this->N) = this->points.col(0);
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
-            for (unsigned i = 0; i < this->N; ++i)
-                std::cout << x[i] << " " << y[i] << "; " << this->points(i,0) << " " << this->points(i,1) << std::endl;
 
             // Get boundary of the points in position/steepness space
             Boundary2D boundary(x, y);
-            AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, true);
+            AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, simplify);
             this->vertices = bound_data.vertices;
 
             // Write boundary information to file if desired
-            std::cout << "Output file prefix: " << write_prefix << std::endl;
             if (write_prefix.compare(""))
             {
                 std::stringstream ss;
-                ss << write_prefix << "_pass" << iter << ".tsv";
+                ss << write_prefix << "_pass" << iter << ".txt";
                 bound_data.write(x, y, ss.str());
             }
 
             // Compute enclosed area and test for convergence
             double area = bound_data.area;
-            double change = std::abs(this->curr_area - area);
+            double change = area - this->curr_area;
             this->curr_area = area;
             if (verbose)
-                std::cout << "Enclosed area: " << area << "; change: " << change << std::endl;
-            if (change < this->area_tol) return true;
+            {
+                std::cout << "Iteration " << iter
+                          << "; enclosed area: " << area
+                          << "; change: " << change << std::endl;
+            }
+            if (change > 0.0 && change < this->area_tol) return true;
             
             // For each of the points in the boundary, mutate the corresponding
             // model parameters once, and evaluate the given function at these
@@ -162,7 +163,10 @@ class BoundaryFinder
                 std::vector<double> p;
                 p.resize(this->D);
                 VectorXd::Map(&p[0], this->D) = this->params.row(this->vertices[i]);
-                std::pair<double, double> z = func(mutate(p));
+                std::vector<double> q = mutate(p, this->rng);
+                std::pair<double, double> z = func(q);
+                for (unsigned j = 0; j < q.size(); ++j)
+                    this->params(this->N + i, j) = q[j];
                 this->points(this->N + i, 0) = z.first;
                 this->points(this->N + i, 1) = z.second;
             }
@@ -171,8 +175,8 @@ class BoundaryFinder
         }
 
         void run(std::function<std::pair<double, double>(std::vector<double>)> func,
-                 std::function<std::vector<double>(std::vector<double>)> mutate,
-                 const Ref<const MatrixXd>& params, bool verbose,
+                 std::function<std::vector<double>(std::vector<double>, boost::random::mt19937&)> mutate,
+                 const Ref<const MatrixXd>& params, bool simplify, bool verbose,
                  std::string write_prefix = "")
         {
             /*
@@ -187,7 +191,7 @@ class BoundaryFinder
             bool terminate = false;
             while (i < this->max_iter && !terminate)
             {
-                terminate = this->step(func, mutate, i, verbose, write_prefix);
+                terminate = this->step(func, mutate, i, simplify, verbose, write_prefix);
                 i++;
             }
 
