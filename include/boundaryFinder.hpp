@@ -12,6 +12,7 @@
 #include <functional>
 #include <boost/random.hpp>
 #include <Eigen/Dense>
+#include "linearConstraints.hpp"
 #include "boundaries.hpp"
 
 /*
@@ -45,6 +46,9 @@ class BoundaryFinder
         // Matrix of points in 2-D space
         MatrixX2d points;
 
+        // Set of linear constraints that parameters must satisfy
+        LinearConstraints constraints;
+
         // Vectors containing indices of the boundary points 
         std::vector<unsigned> vertices;
 
@@ -59,6 +63,7 @@ class BoundaryFinder
              * Straightforward constructor.
              */
             this->D = D;
+            this->N = 0;
             this->area_tol = area_tol;
             this->max_iter = max_iter;
             this->curr_area = 0.0;
@@ -72,6 +77,15 @@ class BoundaryFinder
              */
         }
 
+        void setConstraints(const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
+        {
+            /*
+             * Instantiate and store a new LinearConstraints instance from
+             * the given matrix and vector. 
+             */
+            this->constraints = LinearConstraints(A, b);
+        }
+
         void initialize(std::function<std::pair<double, double>(std::vector<double>)> func,
                         const Ref<const MatrixXd>& params)
         {
@@ -80,26 +94,31 @@ class BoundaryFinder
              * for a specified number of random parameter values in the
              * given logarithmic range.
              */
-            this->N = params.rows();
-            this->params = params;
-            this->points = MatrixX2d::Zero(this->N, 2);
-
-            // Generate the sampled points
-            for (unsigned i = 0; i < this->N; ++i)
+            // Run through the specified parameter values
+            for (unsigned i = 0; i < params.rows(); ++i)
             {
                 // Evaluate the given function at a randomly generated 
-                // parameter point
-                std::vector<double> row;
-                row.resize(this->D);
-                VectorXd::Map(&row[0], this->D) = params.row(i);
-                std::pair<double, double> y = func(row);
-                this->points(i,0) = y.first;
-                this->points(i,1) = y.second;
+                // parameter point (if it satisfies the required constraints)
+                if (this->constraints.check(params.row(i).transpose()))
+                {
+                    std::vector<double> row;
+                    row.resize(this->D);
+                    VectorXd::Map(&row[0], this->D) = params.row(i);
+                    std::pair<double, double> y = func(row);
+                    this->N++;
+                    this->params.conservativeResize(this->N, this->D);
+                    this->points.conservativeResize(this->N, 2);
+                    this->params.row(this->N-1) = params.row(i);
+                    this->points(this->N-1, 0) = y.first;
+                    this->points(this->N-1, 1) = y.second;
+                }
             }
+            if (this->N == 0)
+                throw std::invalid_argument("No valid parameter values given");
         }
 
         bool step(std::function<std::pair<double, double>(std::vector<double>)> func,
-                  std::function<std::vector<double>(std::vector<double>, boost::random::mt19937&)> mutate,
+                  std::function<std::vector<double>(std::vector<double>, boost::random::mt19937&, LinearConstraints&)> mutate,
                   unsigned iter, bool simplify, bool verbose, std::string write_prefix = "")
         {
             /*
@@ -163,7 +182,7 @@ class BoundaryFinder
                 std::vector<double> p;
                 p.resize(this->D);
                 VectorXd::Map(&p[0], this->D) = this->params.row(this->vertices[i]);
-                std::vector<double> q = mutate(p, this->rng);
+                std::vector<double> q = mutate(p, this->rng, this->constraints);
                 std::pair<double, double> z = func(q);
                 for (unsigned j = 0; j < q.size(); ++j)
                     this->params(this->N + i, j) = q[j];
@@ -175,7 +194,7 @@ class BoundaryFinder
         }
 
         void run(std::function<std::pair<double, double>(std::vector<double>)> func,
-                 std::function<std::vector<double>(std::vector<double>, boost::random::mt19937&)> mutate,
+                 std::function<std::vector<double>(std::vector<double>, boost::random::mt19937&, LinearConstraints&)> mutate,
                  const Ref<const MatrixXd>& params, bool simplify, bool verbose,
                  std::string write_prefix = "")
         {
