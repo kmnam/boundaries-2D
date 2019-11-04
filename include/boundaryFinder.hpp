@@ -47,7 +47,7 @@ class BoundaryFinder
         MatrixX2d points;
 
         // Set of linear constraints that parameters must satisfy
-        LinearConstraints constraints;
+        LinearConstraints* constraints;
 
         // Vectors containing indices of the boundary points 
         std::vector<unsigned> vertices;
@@ -57,7 +57,8 @@ class BoundaryFinder
 
     public:
         BoundaryFinder(unsigned D, double area_tol, unsigned max_iter,
-                       unsigned seed)
+                       unsigned seed, const Ref<const MatrixXd>& A,
+                       const Ref<const VectorXd>& b)
         {
             /*
              * Straightforward constructor.
@@ -68,6 +69,7 @@ class BoundaryFinder
             this->max_iter = max_iter;
             this->curr_area = 0.0;
             this->rng.seed(seed);
+            this->constraints = new LinearConstraints(A, b);
         }
 
         ~BoundaryFinder()
@@ -75,6 +77,7 @@ class BoundaryFinder
             /*
              * Empty destructor. 
              */
+            delete this->constraints;
         }
 
         void setConstraints(const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
@@ -83,7 +86,7 @@ class BoundaryFinder
              * Instantiate and store a new LinearConstraints instance from
              * the given matrix and vector. 
              */
-            this->constraints = LinearConstraints(A, b);
+            this->constraints->setAb(A, b);
         }
 
         void initialize(std::function<std::pair<double, double>(std::vector<double>)> func,
@@ -99,7 +102,7 @@ class BoundaryFinder
             {
                 // Evaluate the given function at a randomly generated 
                 // parameter point (if it satisfies the required constraints)
-                if (this->constraints.check(params.row(i).transpose()))
+                if (this->constraints->check(params.row(i).transpose()))
                 {
                     std::vector<double> row;
                     row.resize(this->D);
@@ -118,7 +121,7 @@ class BoundaryFinder
         }
 
         bool step(std::function<std::pair<double, double>(std::vector<double>)> func,
-                  std::function<std::vector<double>(std::vector<double>, boost::random::mt19937&, LinearConstraints&)> mutate,
+                  std::function<std::vector<double>(std::vector<double>, boost::random::mt19937&, LinearConstraints*)> mutate,
                   unsigned iter, bool simplify, bool verbose, std::string write_prefix = "")
         {
             /*
@@ -194,7 +197,7 @@ class BoundaryFinder
         }
 
         void run(std::function<std::pair<double, double>(std::vector<double>)> func,
-                 std::function<std::vector<double>(std::vector<double>, boost::random::mt19937&, LinearConstraints&)> mutate,
+                 std::function<std::vector<double>(std::vector<double>, boost::random::mt19937&, LinearConstraints*)> mutate,
                  const Ref<const MatrixXd>& params, bool simplify, bool verbose,
                  std::string write_prefix = "")
         {
