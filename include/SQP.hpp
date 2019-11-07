@@ -85,7 +85,8 @@ class SQPOptimizer
         }
 
         VectorXvar step(std::function<var(const Ref<const VectorXvar>&)> func,
-                        const Ref<const VectorXvar>& xl, bool check_hessian_posdef)
+                        const Ref<const VectorXvar>& xl, bool check_hessian_posdef,
+                        unsigned iter, bool verbose)
         {
             /*
              * Run one step of the SQP algorithm: 
@@ -155,9 +156,6 @@ class SQPOptimizer
             // Evaluate the constraints and their gradients
             MatrixXd A = this->constraints->getA();
             VectorXd c = -(A * x.cast<double>() - this->constraints->getb());
-            //VectorXd c = this->constraints->getb();
-            //std::cout << "A:\n" << A << "\n\n";
-            //std::cout << "c:\n" << c << "\n\n";
 
             // Set up the quadratic program and solve
             for (unsigned i = 0; i < this->D; ++i)
@@ -177,10 +175,6 @@ class SQPOptimizer
                 this->program->set_b(i, c(i));
             }
             this->program->set_c0(0.0); // TODO Does this matter?
-            std::cout << "A:\n" << A << "\n\n";
-            std::cout << "b:\n" << c << "\n\n";
-            std::cout << "c:\n" << dy << "\n\n";
-            std::cout << "D:\n" << d2L << "\n\n";
 
             Solution solution = CGAL::solve_quadratic_program(*this->program, ET());
             // TODO What to do if the solution is infeasible?
@@ -199,20 +193,11 @@ class SQPOptimizer
                 sol(i) = CGAL::to_double(*it);
                 i++;
             }
-            std::cout << "Solution:\n" << sol << "\n\n";
 
             // Check that the solution is in the feasible set
             // TODO Is this necessary? Would this be indicated by a 
             // flag in the Solution instance?
             bool feasible = this->constraints->check(xl.head(this->D).cast<double>() + sol);
-            if (feasible)
-            {
-                std::cout << "Solution is feasible\n\n";
-            }
-            else
-            {
-                std::cout << "Solution is infeasible\n\n";
-            }
 
             // Collect the values of the new Lagrange multipliers (i.e., the
             // "optimality certificate")
@@ -223,19 +208,26 @@ class SQPOptimizer
                 mult(i) = CGAL::to_double(*it);
                 i++;
             }
-            std::cout << "Mulipliers:\n" << mult << "\n\n";
 
             // Increment the input vector and update the Lagrange multipliers
             VectorXvar xl_new(this->D + this->N);
             xl_new.head(this->D) = xl.head(this->D) + sol.cast<var>();
             xl_new.tail(this->N) = mult.cast<var>();
 
+            // Print the new vector and value of the objective function
+            if (verbose)
+            {
+                std::cout << "Iteration " << iter << ": " << xl_new.head(this->D).transpose()
+                          << "; " << "f(x) = " << func(xl_new.head(this->D)) << std::endl; 
+            }
+
             // Return the new value
             return xl_new;
         }
 
         VectorXd run(std::function<var(const Ref<const VectorXvar>&)> func,
-                     const Ref<const VectorXvar>& xl_init, double tol, bool check_hessian_posdef)
+                     const Ref<const VectorXvar>& xl_init, double tol,
+                     bool check_hessian_posdef, bool verbose)
         {
             /*
              *
@@ -245,7 +237,7 @@ class SQPOptimizer
             double delta = 2 * tol;
             while (i < this->max_iter && delta > tol)
             {
-                VectorXvar xl_new = this->step(func, xl, check_hessian_posdef);
+                VectorXvar xl_new = this->step(func, xl, check_hessian_posdef, i, verbose);
                 delta = (xl - xl_new).cast<double>().norm();
                 i++;
                 xl = xl_new;
