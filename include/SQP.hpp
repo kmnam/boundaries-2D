@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 #include <stdexcept>
 #include <Eigen/Dense>
 #include <CGAL/QP_models.h>
@@ -95,11 +96,14 @@ class SQPOptimizer
              * 2) Compute the Lagrangian, L(x,l) = f(x) - l.T * A * x, where
              *    A is the constraint matrix, and its Hessian matrix of 
              *    second derivatives w.r.t. x.
+             *    - If the Hessian is not positive definite, perturb by 
+             *      a small multiple of the identity until it is positive
+             *      definite. 
              * 3) Define the quadratic subproblem according to the above
              *    quantities and the constraints (see below). 
              * 4) Solve the quadratic subproblem, check that the new vector
              *    satisfies the constraints of the original problem, and 
-             *    output the new vector. 
+             *    output the new vector.
              */
             // Check input vector dimensions
             if (xl.size() != this->D + this->N)
@@ -117,39 +121,28 @@ class SQPOptimizer
             // the input space) 
             MatrixXd d2L = hessian(L, xl).block(0, 0, this->D, this->D);
 
-            // If desired, check that the Hessian is positive semi-definite
+            // If desired, check that the Hessian is positive definite
             // with the Cholesky decomposition
-            bool hessian_posdef = true;
             if (check_hessian_posdef)
             {
-                LDLT<MatrixXd> decomp(d2L);
-                hessian_posdef = (decomp.info() != NumericalIssue);
+                LLT<MatrixXd> decomp(d2L);
+                bool hessian_posdef = (decomp.info() == Success);
 
-                // If the Hessian is not positive semi-definite, follow the 
+                // If the Hessian is not positive definite, follow the 
                 // prescription by Nocedal & Wright (Alg.3.3, p.51) by
                 // adding successive multiples of the identity
                 double beta = 1e-3;
                 double tau = 0.0;
                 unsigned num_updates = 0;
-                while (!hessian_posdef && num_updates < 10) // TODO Make this customizable
+                while (!hessian_posdef) // TODO Make this customizable
                 {
-                    std::cout << "Hessian is not positive semi-definite\n\n";
                     if (tau == 0.0)
                         tau = std::abs(d2L.diagonal().minCoeff()) + beta;
                     else
                         tau *= 2.0;
                     d2L += tau * MatrixXd::Identity(this->D, this->D);
-                    LDLT<MatrixXd> new_decomp(d2L);
-                    hessian_posdef = (new_decomp.info() != NumericalIssue);
-                }
-                if (!hessian_posdef)
-                {
-                    // TODO What to do now?
-                    std::cout << "Hessian is still not positive semi-definite\n\n";
-                }
-                else
-                {
-                    std::cout << "Hessian is positive semi-definite\n\n";
+                    decomp.compute(d2L);
+                    hessian_posdef = (decomp.info() == Success);
                 }
             }
 
@@ -157,7 +150,7 @@ class SQPOptimizer
             MatrixXd A = this->constraints->getA();
             VectorXd c = -(A * x.cast<double>() - this->constraints->getb());
 
-            // Set up the quadratic program and solve
+            // Set up the quadratic program 
             for (unsigned i = 0; i < this->D; ++i)
             {
                 for (unsigned j = 0; j <= i; ++j)
@@ -176,14 +169,25 @@ class SQPOptimizer
             }
             this->program->set_c0(0.0); // TODO Does this matter?
 
+            // Solve the quadratic program 
             Solution solution = CGAL::solve_quadratic_program(*this->program, ET());
-            // TODO What to do if the solution is infeasible?
+
+            // The program should never be infeasible, since we assume that 
+            // the constraint matrix has full rank
+            std::stringstream ss; 
             if (solution.is_infeasible())
-                throw std::runtime_error("Quadratic program is infeasible");
+            {
+                ss << "Quadratic program is infeasible; check constraint matrix:\n" << A;
+                throw std::runtime_error(ss.str());
+            }
+            // The program should also never yield an unbounded solution, 
+            // since we assume that the constraint matrix specifies a 
+            // bounded polytope 
             else if (solution.is_unbounded())
-                throw std::runtime_error("Quadratic program is unbounded");
-            else if (!solution.is_optimal())
-                throw std::runtime_error("Failed to compute optimal solution");
+            {
+                ss << "Quadratic program yielded unbounded solution; check constraint matrix:\n" << A;
+                throw std::runtime_error(ss.str());
+            }
 
             // Collect the values of the solution into a VectorXd
             VectorXd sol(this->D);
@@ -194,10 +198,12 @@ class SQPOptimizer
                 i++;
             }
 
-            // Check that the solution is in the feasible set
-            // TODO Is this necessary? Would this be indicated by a 
-            // flag in the Solution instance?
+            // Check that the solution satisfies the original constraints
             bool feasible = this->constraints->check(xl.head(this->D).cast<double>() + sol);
+            if (!feasible)
+            {
+                // TODO Figure out what to do here 
+            }
 
             // Collect the values of the new Lagrange multipliers (i.e., the
             // "optimality certificate")
@@ -217,7 +223,7 @@ class SQPOptimizer
             // Print the new vector and value of the objective function
             if (verbose)
             {
-                std::cout << "Iteration " << iter << ": " << xl_new.head(this->D).transpose()
+                std::cout << "Iteration " << iter << ": x = " << xl_new.head(this->D).transpose()
                           << "; " << "f(x) = " << func(xl_new.head(this->D)) << std::endl; 
             }
 
@@ -232,6 +238,13 @@ class SQPOptimizer
             /*
              *
              */
+            // Print the input vector and value of the objective function
+            if (verbose)
+            {
+                std::cout << "Initial vector: x = " << xl_init.head(this->D).transpose()
+                          << "; " << "f(x) = " << func(xl_init.head(this->D)) << std::endl; 
+            }
+
             VectorXvar xl(xl_init);
             unsigned i = 0;
             double delta = 2 * tol;
