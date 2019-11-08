@@ -13,7 +13,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/4/2019
+ *     11/8/2019
  */
 using namespace Eigen;
 typedef CGAL::Gmpzf ET;
@@ -105,6 +105,22 @@ class LinearConstraints
                    << ") vs. " << this->b.size() << std::endl;
                 throw std::invalid_argument(ss.str());
             }
+        }
+
+        MatrixXd getA()
+        {
+            /*
+             * Return this->A.
+             */
+            return this->A;
+        }
+
+        VectorXd getb()
+        {
+            /*
+             * Return this->b.
+             */
+            return this->b;
         }
 
         bool check(const std::vector<double>& x)
