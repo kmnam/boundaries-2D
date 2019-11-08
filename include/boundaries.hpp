@@ -21,7 +21,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     4/10/2019
+ *     11/8/2019
  */
 
 // CGAL convenience typedefs, adapted from the CGAL docs:
@@ -30,6 +30,7 @@ typedef CGAL::Exact_predicates_inexact_constructions_kernel        K;
 typedef K::FT                                                      FT;
 typedef K::Point_2                                                 Point;
 typedef K::Segment_2                                               Segment;
+typedef CGAL::Orientation                                          Orientation;
 typedef CGAL::Polygon_2<K>                                         Polygon;
 typedef CGAL::Alpha_shape_vertex_base_2<K>                         Vb;
 typedef CGAL::Alpha_shape_face_base_2<K>                           Fb;
@@ -101,24 +102,97 @@ struct AlphaShape2DProperties
      * region. 
      */
     public:
-        unsigned npoints;
+        std::vector<double> x;
+        std::vector<double> y;
         std::vector<unsigned> vertices;
         std::vector<std::pair<unsigned, unsigned> > edges;
+        unsigned npoints;
         double alpha;
         double area;
+        bool connected;
+        bool simply_connected;
+        bool simplified;
+        unsigned min;               // Index of point with minimum y-coordinate
+        Orientation orientation;    // Orientation of edges
 
-        AlphaShape2DProperties(unsigned npoints, std::vector<unsigned> vertices,
+        AlphaShape2DProperties(std::vector<double> x, std::vector<double> y,
+                               std::vector<unsigned> vertices,
                                std::vector<std::pair<unsigned, unsigned> > edges,
-                               double alpha, double area)
+                               double alpha, double area, bool connected, 
+                               bool simply_connected, bool simplified,
+                               bool check_order = false)
         {
             /*
              * Trivial constructor.
+             *
+             * check_order == true enforces an explicit check that the vertices
+             * and edges are specified "in order," as in edges[0] lies between
+             * vertices[0] and vertices[1], edges[1] between vertices[1] and 
+             * vertices[2], and so on. If check_order == false, then this 
+             * ordering is assumed. 
              */
-            this->npoints = npoints;
+            if (!(x.size() == y.size() && y.size() == vertices.size() && vertices.size() == edges.size()))
+                throw std::invalid_argument("Invalid dimensions for input arguments");
+
+            this->x = x;
+            this->y = y;
             this->vertices = vertices;
             this->edges = edges;
+            this->npoints = x.size();
             this->alpha = alpha;
             this->area = area;
+            this->connected = connected;
+            this->simply_connected = simply_connected;
+            this->simplified = simplified;
+
+            // Find the vertex with minimum y-coordinate, breaking any 
+            // ties with whichever point has the smallest x-coordinate
+            this->min = 0;
+            double xmin = this->x[this->vertices[0]];
+            double ymin = this->y[this->vertices[0]];
+            for (unsigned i = 1; i < this->npoints; ++i)
+            {
+                if (this->y[this->vertices[i]] < ymin)
+                {
+                    this->min = i;
+                    xmin = this->x[this->vertices[i]];
+                    ymin = this->y[this->vertices[i]];
+                }
+                else if (this->y[this->vertices[i]] == ymin && this->x[this->vertices[i]] < xmin)
+                {
+                    this->min = i;
+                    xmin = this->x[this->vertices[i]];
+                    ymin = this->y[this->vertices[i]];
+                }
+            }
+
+            // Check that the edges and vertices were specified in order
+            if (check_order)
+            {
+                unsigned i = 0;
+                // Check the first vertex first 
+                bool ordered = (vertices[0] == edges[0].first && vertices[0] == edges[this->npoints-1].second);
+                while (ordered && i < this->npoints)
+                {
+                    i++;
+                    ordered = (vertices[i] == edges[i-1].second && vertices[i] == edges[i].first); 
+                }
+                if (!ordered)
+                    throw std::invalid_argument("Vertices and edges were not specified in order");
+            }
+
+            // Find the orientation of the edges
+            Point p, q, r;
+            if (this->min == 0)
+                p = Point(this->x[this->vertices[this->npoints-1]], this->y[this->vertices[this->npoints-1]]);
+            else
+                p = Point(this->x[this->vertices[this->min-1]], this->y[this->vertices[this->min-1]]);
+            q = Point(this->x[this->vertices[this->min]], this->y[this->vertices[this->min]]);
+            if (this->min == this->npoints - 1)
+                r = Point(this->x[this->vertices[0]], this->y[this->vertices[0]]);
+            else
+                r = Point(this->x[this->vertices[this->min+1]], this->y[this->vertices[this->min+1]]);
+            this->orientation = CGAL::orientation(p, q, r);
         }
 
         ~AlphaShape2DProperties()
@@ -128,7 +202,34 @@ struct AlphaShape2DProperties
              */
         }
 
-        void write(std::vector<double> x, std::vector<double> y, std::string outfile)
+        void orient(Orientation orientation)
+        {
+            /*
+             * Re-direct the edges so that they exhibit the given orientation. 
+             */
+            if (orientation != CGAL::LEFT_TURN && orientation != CGAL::RIGHT_TURN)
+                throw std::invalid_argument("Invalid orientation specified");
+
+            // If the given orientation is the opposite of the current orientation ...
+            if (orientation != this->orientation)
+            {
+                std::vector<unsigned> vertices;
+                std::vector<std::pair<unsigned, unsigned> > edges;
+
+                vertices.push_back(this->vertices[0]);
+                edges.push_back(std::make_pair(this->vertices[0], this->vertices[this->npoints-1]));
+                for (unsigned i = this->npoints - 1; i > 0; --i)
+                {
+                    vertices.push_back(this->vertices[i]);
+                    edges.push_back(std::make_pair(this->vertices[i], this->vertices[i-1]));
+                }
+                this->vertices = vertices;
+                this->edges = edges;
+                this->orientation = orientation;
+            }
+        }
+
+        void write(std::string outfile)
         {
             /*
              * Write the boundary information in tab-delimited format, as follows:
@@ -147,8 +248,8 @@ struct AlphaShape2DProperties
             of << std::setprecision(std::numeric_limits<double>::max_digits10);
             of << "ALPHA\t" << this->alpha << std::endl;
             of << "AREA\t" << this->area << std::endl;
-            for (unsigned i = 0; i < x.size(); i++)
-                of << "POINT\t" << x[i] << "\t" << y[i] << std::endl;
+            for (unsigned i = 0; i < this->npoints; ++i)
+                of << "POINT\t" << this->x[i] << "\t" << this->y[i] << std::endl;
             for (auto&& v : this->vertices)
                 of << "VERTEX\t" << v << std::endl;
             for (auto&& e : this->edges)
@@ -369,7 +470,7 @@ class Boundary2D
         }
 
         AlphaShape2DProperties getBoundary(bool connected = true, bool simply_connected = false,
-                                           double simplify = true)
+                                           bool simplify = true)
         {
             /*
              * Return an AlphaShape2DProperties object containing the indices 
@@ -653,10 +754,16 @@ class Boundary2D
                 // Compute the area of the simplified Polygon
                 total_area = abs(static_cast<double>(polygon.area()));
 
-                return AlphaShape2DProperties(npoints, vertices_simplified, edges_simplified, opt_alpha, total_area);
+                return AlphaShape2DProperties(
+                    x, y, vertices_simplified, edges_simplified, opt_alpha, total_area,
+                    connected, simply_connected, simplify
+                );
             }
      
-            return AlphaShape2DProperties(npoints, vertices, edges, opt_alpha, total_area);
+            return AlphaShape2DProperties(
+                x, y, vertices, edges, opt_alpha, total_area, connected,
+                simply_connected, simplify
+            );
         }
 };
 
