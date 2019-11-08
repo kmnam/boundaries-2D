@@ -1,3 +1,6 @@
+#ifndef SQP_OPTIMIZER_HPP
+#define SQP_OPTIMIZER_HPP
+
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -258,3 +261,5 @@ class SQPOptimizer
             return xl.cast<double>();
         }
 };
+
+#endif 
