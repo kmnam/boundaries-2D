@@ -188,7 +188,8 @@ struct AlphaShape2DProperties
         std::vector<double> y;
         std::vector<unsigned> vertices;
         std::vector<std::pair<unsigned, unsigned> > edges;
-        unsigned npoints;
+        unsigned np;
+        unsigned nv;
         double alpha;
         double area;
         bool connected;
@@ -220,7 +221,8 @@ struct AlphaShape2DProperties
             this->y = y;
             this->vertices = vertices;
             this->edges = edges;
-            this->npoints = x.size();
+            this->np = x.size();
+            this->nv = vertices.size();
             this->alpha = alpha;
             this->area = area;
             this->connected = connected;
@@ -232,7 +234,7 @@ struct AlphaShape2DProperties
             this->min = 0;
             double xmin = this->x[this->vertices[0]];
             double ymin = this->y[this->vertices[0]];
-            for (unsigned i = 1; i < this->npoints; ++i)
+            for (unsigned i = 1; i < this->nv; ++i)
             {
                 if (this->y[this->vertices[i]] < ymin)
                 {
@@ -253,8 +255,8 @@ struct AlphaShape2DProperties
             {
                 unsigned i = 0;
                 // Check the first vertex first 
-                bool ordered = (vertices[0] == edges[0].first && vertices[0] == edges[this->npoints-1].second);
-                while (ordered && i < this->npoints)
+                bool ordered = (vertices[0] == edges[0].first && vertices[0] == edges[this->nv-1].second);
+                while (ordered && i < this->nv)
                 {
                     i++;
                     ordered = (vertices[i] == edges[i-1].second && vertices[i] == edges[i].first); 
@@ -265,15 +267,25 @@ struct AlphaShape2DProperties
 
             // Find the orientation of the edges
             Point p, q, r;
+            unsigned nv = this->vertices.size();
             if (this->min == 0)
-                p = Point(this->x[this->vertices[this->npoints-1]], this->y[this->vertices[this->npoints-1]]);
-            else
-                p = Point(this->x[this->vertices[this->min-1]], this->y[this->vertices[this->min-1]]);
-            q = Point(this->x[this->vertices[this->min]], this->y[this->vertices[this->min]]);
-            if (this->min == this->npoints - 1)
+            {
+                p = Point(this->x[this->vertices[nv-1]], this->y[this->vertices[this->nv-1]]);
+                q = Point(this->x[this->vertices[0]], this->y[this->vertices[0]]);
+                r = Point(this->x[this->vertices[1]], this->y[this->vertices[1]]);
+            }
+            else if (this->min == this->nv - 1)
+            {
+                p = Point(this->x[this->vertices[this->nv-2]], this->y[this->vertices[this->nv-2]]);
+                q = Point(this->x[this->vertices[this->nv-1]], this->y[this->vertices[this->nv-1]]);
                 r = Point(this->x[this->vertices[0]], this->y[this->vertices[0]]);
+            }
             else
+            {
+                p = Point(this->x[this->vertices[this->min-1]], this->y[this->vertices[this->min-1]]);
+                q = Point(this->x[this->vertices[this->min]], this->y[this->vertices[this->min]]);
                 r = Point(this->x[this->vertices[this->min+1]], this->y[this->vertices[this->min+1]]);
+            }
             this->orientation = CGAL::orientation(p, q, r);
         }
 
@@ -299,8 +311,8 @@ struct AlphaShape2DProperties
                 std::vector<std::pair<unsigned, unsigned> > edges;
 
                 vertices.push_back(this->vertices[0]);
-                edges.push_back(std::make_pair(this->vertices[0], this->vertices[this->npoints-1]));
-                for (unsigned i = this->npoints - 1; i > 0; --i)
+                edges.push_back(std::make_pair(this->vertices[0], this->vertices[this->nv-1]));
+                for (unsigned i = this->nv - 1; i > 0; --i)
                 {
                     vertices.push_back(this->vertices[i]);
                     edges.push_back(std::make_pair(this->vertices[i], this->vertices[i-1]));
@@ -320,13 +332,13 @@ struct AlphaShape2DProperties
             // Start with the zeroth vertex ...
             unsigned p, q, r;
             std::vector<Vector> normals;
-            p = this->vertices[this->npoints-1];
+            p = this->vertices[this->nv-1];
             q = this->vertices[0];
             r = this->vertices[1];
             normals.push_back(this->outward_vertex_normal(p, q, r));
 
             // Now, follow the same procedure with the remaining vertices ...
-            for (unsigned i = 1; i < this->npoints - 1; ++i)
+            for (unsigned i = 1; i < this->nv - 1; ++i)
             {
                 p = this->vertices[i-1];
                 q = this->vertices[i];
@@ -335,8 +347,8 @@ struct AlphaShape2DProperties
             }
 
             // And once more, with the last vertex
-            p = this->vertices[this->npoints-2];
-            q = this->vertices[this->npoints-1];
+            p = this->vertices[this->nv-2];
+            q = this->vertices[this->nv-1];
             r = this->vertices[0];
             normals.push_back(this->outward_vertex_normal(p, q, r));
 
@@ -362,7 +374,7 @@ struct AlphaShape2DProperties
             of << std::setprecision(std::numeric_limits<double>::max_digits10);
             of << "ALPHA\t" << this->alpha << std::endl;
             of << "AREA\t" << this->area << std::endl;
-            for (unsigned i = 0; i < this->npoints; ++i)
+            for (unsigned i = 0; i < this->np; ++i)
                 of << "POINT\t" << this->x[i] << "\t" << this->y[i] << std::endl;
             for (auto&& v : this->vertices)
                 of << "VERTEX\t" << v << std::endl;
