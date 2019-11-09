@@ -7,6 +7,7 @@
 #include <vector>
 #include <unordered_set>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#include <CGAL/Aff_transformation_2.h>
 #include <CGAL/Alpha_shape_2.h>
 #include <CGAL/Alpha_shape_vertex_base_2.h>
 #include <CGAL/Alpha_shape_face_base_2.h>
@@ -24,12 +25,13 @@
  *     11/8/2019
  */
 
-// CGAL convenience typedefs, adapted from the CGAL docs:
-// https://doc.cgal.org/latest/Alpha_shapes_2/index.html#Chapter_2D_Alpha_Shapes 
+// CGAL convenience typedefs, adapted from the CGAL docs
 typedef CGAL::Exact_predicates_inexact_constructions_kernel        K;
 typedef K::FT                                                      FT;
 typedef K::Point_2                                                 Point;
 typedef K::Segment_2                                               Segment;
+typedef K::Vector_2                                                Vector;
+typedef CGAL::Aff_transformation<K>                                Transformation;
 typedef CGAL::Orientation                                          Orientation;
 typedef CGAL::Polygon_2<K>                                         Polygon;
 typedef CGAL::Alpha_shape_vertex_base_2<K>                         Vb;
@@ -41,6 +43,8 @@ typedef Delaunay_triangulation::Face_handle                        Face_handle;
 typedef Delaunay_triangulation::Vertex_handle                      Vertex_handle;
 typedef CGAL::Polyline_simplification_2::Squared_distance_cost     Cost;
 typedef CGAL::Polyline_simplification_2::Stop_above_cost_threshold Stop;
+
+constexpr double PI = std::acos(-1);
 
 struct Grid2DProperties
 {
@@ -101,6 +105,78 @@ struct AlphaShape2DProperties
      * shape, along with the value of alpha and the area of the enclosed
      * region. 
      */
+    private:
+        Vector outward_vertex_normal(unsigned p, unsigned q, unsigned r)
+        {
+            /*
+             * Given the indices of three vertices in the boundary, 
+             * return the outward normal vector at the middle vertex, q.
+             * It is assumed that the boundary contains edges between
+             * (p,q) and (q,r). 
+             */
+            using std::sin;
+            using std::cos;
+
+            Vector v, w, normal;
+            double angle;
+            Orientation v_to_w;
+            v = Vector(this->x[p] - this->x[q], this->y[p] - this->y[q]);
+            w = Vector(this->x[r] - this->x[q], this->y[r] - this->y[q]);
+            angle = CGAL::to_double(CGAL::approximate_angle(v, w));
+            v_to_w = CGAL::orientation(-v, w);
+
+            // Case 1: The boundary is oriented by right turns and -v and w
+            // form a right turn
+            if (this->orientation == CGAL::RIGHT_TURN && v_to_w == CGAL::RIGHT_TURN)
+            {
+                // Rotate w by (2*pi - angle) / 2 counterclockwise
+                Transformation rotate(CGAL::ROTATION, sin((two_pi - angle) / 2.0), cos((two_pi - angle) / 2.0)); 
+                normal = rotate(w);
+            }
+            // Case 2: The boundary is oriented by right turns and -v and w
+            // form a left turn
+            else if (this->orientation == CGAL::RIGHT_TURN && v_to_w == CGAL::LEFT_TURN)
+            {
+                // Rotate w by angle / 2 counterclockwise
+                Transformation rotate(CGAL::ROTATION, sin(angle / 2.0), cos(angle / 2.0));
+                normal = rotate(w);
+            }
+            // Case 3: The boundary is oriented by left turns and -v and w
+            // form a right turn
+            else if (this->orientation == CGAL::LEFT_TURN && v_to_w == CGAL::RIGHT_TURN)
+            {
+                // Rotate v by angle / 2 counterclockwise
+                Transformation rotate(CGAL::ROTATION, sin(angle / 2.0), cos(angle / 2.0));
+                normal = rotate(v);
+            }
+            // Case 4: The boundary is oriented by left turns and -v and w 
+            // form a left turn
+            else if (this->orientation == CGAL::LEFT_TURN && v_to_w == CGAL::LEFT_TURN)
+            {
+                // Rotate v by (2*pi - angle) / 2 counterclockwise
+                Transformation rotate(CGAL::ROTATION, sin((two_pi - angle) / 2.0), cos((two_pi - angle) / 2.0));
+                normal = rotate(v);
+            }
+            // Case 5: -v and w are collinear
+            else
+            {
+                // If the interior of the boundary is to the right, rotate
+                // w by 90 degrees counterclockwise
+                if (this->orientation == CGAL::RIGHT_TURN)
+                {
+                    Transformation rotate(CGAL::ROTATION, 1.0, 0.0);
+                    normal = rotate(w);
+                }
+                // Otherwise, rotate v by 90 degrees counterclockwise
+                else
+                {
+                    Transformation rotate(CGAL::ROTATION, 1.0, 0.0);
+                    normal = rotate(v);
+                }
+            }
+            return normal;
+        }
+
     public:
         std::vector<double> x;
         std::vector<double> y;
@@ -227,6 +303,38 @@ struct AlphaShape2DProperties
                 this->edges = edges;
                 this->orientation = orientation;
             }
+        }
+
+        std::vector<Vector> outward_vertex_normals()
+        {
+            /*
+             * Return the outward normal vectors from the vertices in the
+             * alpha shape. 
+             */
+            // Start with the zeroth vertex ...
+            unsigned p, q, r;
+            std::vector<Vector> normals;
+            p = this->vertices[this->npoints-1];
+            q = this->vertices[0];
+            r = this->vertices[1];
+            normals.push_back(this->outward_vertex_normal(p, q, r));
+
+            // Now, follow the same procedure with the remaining vertices ...
+            for (unsigned i = 1; i < this->npoints - 1; ++i)
+            {
+                p = this->vertices[i-1];
+                q = this->vertices[i];
+                r = this->vertices[i+1];
+                normals.push_back(this->outward_vertex_normal(p, q, r));
+            }
+
+            // And once more, with the last vertex
+            p = this->vertices[this->npoints-2];
+            q = this->vertices[this->npoints-1];
+            r = this->vertices[0];
+            normals.push_back(this->outward_vertex_normal(p, q, r));
+
+            return normals;
         }
 
         void write(std::string outfile)
