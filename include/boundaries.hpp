@@ -256,10 +256,10 @@ struct AlphaShape2DProperties
                 unsigned i = 0;
                 // Check the first vertex first 
                 bool ordered = (vertices[0] == edges[0].first && vertices[0] == edges[this->nv-1].second);
-                while (ordered && i < this->nv)
+                while (ordered && i < this->nv - 1)
                 {
                     i++;
-                    ordered = (vertices[i] == edges[i-1].second && vertices[i] == edges[i].first); 
+                    ordered = (vertices[i] == edges[i-1].second && vertices[i] == edges[i].first);
                 }
                 if (!ordered)
                     throw std::invalid_argument("Vertices and edges were not specified in order");
@@ -270,7 +270,7 @@ struct AlphaShape2DProperties
             unsigned nv = this->vertices.size();
             if (this->min == 0)
             {
-                p = Point(this->x[this->vertices[nv-1]], this->y[this->vertices[this->nv-1]]);
+                p = Point(this->x[this->vertices[this->nv-1]], this->y[this->vertices[this->nv-1]]);
                 q = Point(this->x[this->vertices[0]], this->y[this->vertices[0]]);
                 r = Point(this->x[this->vertices[1]], this->y[this->vertices[1]]);
             }
