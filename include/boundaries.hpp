@@ -4,6 +4,7 @@
 #include <fstream>
 #include <assert.h>
 #include <stdexcept>
+#include <cmath>
 #include <vector>
 #include <unordered_set>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
@@ -31,7 +32,7 @@ typedef K::FT                                                      FT;
 typedef K::Point_2                                                 Point;
 typedef K::Segment_2                                               Segment;
 typedef K::Vector_2                                                Vector;
-typedef CGAL::Aff_transformation<K>                                Transformation;
+typedef CGAL::Aff_transformation_2<K>                              Transformation;
 typedef CGAL::Orientation                                          Orientation;
 typedef CGAL::Polygon_2<K>                                         Polygon;
 typedef CGAL::Alpha_shape_vertex_base_2<K>                         Vb;
@@ -44,7 +45,7 @@ typedef Delaunay_triangulation::Vertex_handle                      Vertex_handle
 typedef CGAL::Polyline_simplification_2::Squared_distance_cost     Cost;
 typedef CGAL::Polyline_simplification_2::Stop_above_cost_threshold Stop;
 
-constexpr double PI = std::acos(-1);
+const double two_pi = 2 * std::acos(-1);
 
 struct Grid2DProperties
 {
@@ -116,13 +117,15 @@ struct AlphaShape2DProperties
              */
             using std::sin;
             using std::cos;
+            using std::acos;
+            using std::sqrt;
 
             Vector v, w, normal;
             double angle;
             Orientation v_to_w;
             v = Vector(this->x[p] - this->x[q], this->y[p] - this->y[q]);
             w = Vector(this->x[r] - this->x[q], this->y[r] - this->y[q]);
-            angle = CGAL::to_double(CGAL::approximate_angle(v, w));
+            angle = acos(CGAL::to_double(CGAL::scalar_product(v, w)) / sqrt(CGAL::to_double(v.squared_length() * w.squared_length())));
             v_to_w = CGAL::orientation(-v, w);
 
             // Case 1: The boundary is oriented by right turns and -v and w
