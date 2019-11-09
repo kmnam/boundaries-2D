@@ -125,7 +125,7 @@ struct AlphaShape2DProperties
             Orientation v_to_w;
             v = Vector(this->x[p] - this->x[q], this->y[p] - this->y[q]);
             w = Vector(this->x[r] - this->x[q], this->y[r] - this->y[q]);
-            angle = acos(CGAL::to_double(CGAL::scalar_product(v, w)) / sqrt(CGAL::to_double(v.squared_length() * w.squared_length())));
+            angle = acos(CGAL::scalar_product(v, w) / sqrt(v.squared_length() * w.squared_length()));
             v_to_w = CGAL::orientation(-v, w);
 
             // Case 1: The boundary is oriented by right turns and -v and w
@@ -177,6 +177,9 @@ struct AlphaShape2DProperties
                     normal = rotate(v);
                 }
             }
+
+            // Normalize the vector by its length and return
+            normal /= sqrt(normal.squared_length());
             return normal;
         }
 
