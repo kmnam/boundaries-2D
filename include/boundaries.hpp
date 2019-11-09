@@ -213,7 +213,7 @@ struct AlphaShape2DProperties
              * vertices[2], and so on. If check_order == false, then this 
              * ordering is assumed. 
              */
-            if (!(x.size() == y.size() && y.size() == vertices.size() && vertices.size() == edges.size()))
+            if (!(x.size() == y.size() && y.size() >= vertices.size() && vertices.size() == edges.size()))
                 throw std::invalid_argument("Invalid dimensions for input arguments");
 
             this->x = x;
