@@ -12,16 +12,22 @@
 #include <functional>
 #include <boost/random.hpp>
 #include <Eigen/Dense>
-#include "linearConstraints.hpp"
+#include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#include <CGAL/Vector_2.h>
 #include "boundaries.hpp"
+#include "linearConstraints.hpp"
+#include "SQP.hpp"
 
 /*
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/2/2019
+ *     11/8/2019
  */
 using namespace Eigen;
+
+typedef CGAL::Exact_predicates_inexact_constructions_kernel    K;
+typedef K::Vector_2                                            Vector_2;
 
 class BoundaryFinder 
 {
@@ -49,8 +55,9 @@ class BoundaryFinder
         // Set of linear constraints that parameters must satisfy
         LinearConstraints* constraints;
 
-        // Vectors containing indices of the boundary points 
+        // Vectors containing indices of the boundary points and edges 
         std::vector<unsigned> vertices;
+        std::vector<std::pair<unsigned, unsigned> > edges;
 
         // boost::random::mt19937 random number generator
         boost::random::mt19937 rng;
@@ -158,7 +165,7 @@ class BoundaryFinder
             {
                 std::stringstream ss;
                 ss << write_prefix << "_pass" << iter << ".txt";
-                bound_data.write(x, y, ss.str());
+                bound_data.write(ss.str());
             }
 
             // Compute enclosed area and test for convergence
@@ -193,6 +200,87 @@ class BoundaryFinder
                 this->points(this->N + i, 1) = z.second;
             }
             this->N += this->vertices.size();
+            return false;
+        }
+
+        bool pull(std::function<std::pair<double, double>(std::vector<double>)> func,
+                  double delta, unsigned iter, bool simplify, bool verbose,
+                  std::string write_prefix = "")
+        {
+            /*
+             *
+             */
+            // Store point coordinates in two vectors
+            std::vector<double> x, y;
+            x.resize(this->N);
+            y.resize(this->N);
+            VectorXd::Map(&x[0], this->N) = this->points.col(0);
+            VectorXd::Map(&y[0], this->N) = this->points.col(1);
+
+            // Get boundary of the points
+            Boundary2D boundary(x, y);
+            AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, simplify);
+
+            // Re-orient the points so that the boundary is traversed clockwise
+            bound_data.orient(CGAL::RIGHT_TURN);
+            this->vertices = bound_data.vertices;
+            this->edges = bound_data.edges;
+
+            // Write boundary information to file if desired
+            if (write_prefix.compare(""))
+            {
+                std::stringstream ss;
+                ss << write_prefix << "_pass" << iter << ".txt";
+                bound_data.write(ss.str());
+            }
+
+            // Compute enclosed area and test for convergence
+            double area = bound_data.area;
+            double change = area - this->curr_area;
+            this->curr_area = area;
+            if (verbose)
+            {
+                std::cout << "Iteration " << iter
+                          << "; enclosed area: " << area
+                          << "; change: " << change << std::endl;
+            }
+            if (change > 0.0 && change < this->area_tol) return true;
+
+            // Obtain the outward vertex normals along the boundary and,
+            // for each vertex in the boundary, "pull" along its outward
+            // normal by distance delta
+            std::vector<double> x_pulled, y_pulled;
+            std::vector<Vector_2> normals = bound_data.outward_vertex_normals();
+            for (unsigned i = 0; i < this->vertices.size(); ++i)
+            {
+                Vector_2 v(x[this->vertices[i]], y[this->vertices[i]]);
+                Vector_2 pulled = v + delta * normals[i];
+                x_pulled.push_back(pulled.x());
+                y_pulled.push_back(pulled.y());
+            }
+
+            // For each vertex in the boundary, minimize the distance to the
+            // pulled vertex with a feasible parameter point 
+            // TODO Fill this part in 
+            /*
+            this->params.conservativeResize(this->N + this->vertices.size(), this->D);
+            this->points.conservativeResize(this->N + this->vertices.size(), 2);
+            for (unsigned i = 0; i < this->vertices.size(); ++i)
+            {
+                // Evaluate the given function at a randomly generated 
+                // parameter point
+                std::vector<double> p;
+                p.resize(this->D);
+                VectorXd::Map(&p[0], this->D) = this->params.row(this->vertices[i]);
+                std::vector<double> q = mutate(p, this->rng, this->constraints);
+                std::pair<double, double> z = func(q);
+                for (unsigned j = 0; j < q.size(); ++j)
+                    this->params(this->N + i, j) = q[j];
+                this->points(this->N + i, 0) = z.first;
+                this->points(this->N + i, 1) = z.second;
+            }
+            this->N += this->vertices.size();
+            */
             return false;
         }
 
