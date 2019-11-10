@@ -23,7 +23,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/8/2019
+ *     11/9/2019
  */
 
 // CGAL convenience typedefs, adapted from the CGAL docs
@@ -107,7 +107,7 @@ struct AlphaShape2DProperties
      * region. 
      */
     private:
-        Vector outward_vertex_normal(unsigned p, unsigned q, unsigned r)
+        Vector outwardVertexNormal(unsigned p, unsigned q, unsigned r)
         {
             /*
              * Given the indices of three vertices in the boundary, 
@@ -274,17 +274,11 @@ struct AlphaShape2DProperties
                 q = Point(this->x[this->vertices[0]], this->y[this->vertices[0]]);
                 r = Point(this->x[this->vertices[1]], this->y[this->vertices[1]]);
             }
-            else if (this->min == this->nv - 1)
-            {
-                p = Point(this->x[this->vertices[this->nv-2]], this->y[this->vertices[this->nv-2]]);
-                q = Point(this->x[this->vertices[this->nv-1]], this->y[this->vertices[this->nv-1]]);
-                r = Point(this->x[this->vertices[0]], this->y[this->vertices[0]]);
-            }
             else
             {
-                p = Point(this->x[this->vertices[this->min-1]], this->y[this->vertices[this->min-1]]);
+                p = Point(this->x[this->vertices[(this->min-1) % this->nv]], this->y[this->vertices[(this->min-1) % this->nv]]);
                 q = Point(this->x[this->vertices[this->min]], this->y[this->vertices[this->min]]);
-                r = Point(this->x[this->vertices[this->min+1]], this->y[this->vertices[this->min+1]]);
+                r = Point(this->x[this->vertices[(this->min+1) % this->nv]], this->y[this->vertices[(this->min+1) % this->nv]]);
             }
             this->orientation = CGAL::orientation(p, q, r);
         }
@@ -323,34 +317,27 @@ struct AlphaShape2DProperties
             }
         }
 
-        std::vector<Vector> outward_vertex_normals()
+        std::vector<Vector> outwardVertexNormals()
         {
             /*
              * Return the outward normal vectors from the vertices in the
              * alpha shape. 
              */
-            // Start with the zeroth vertex ...
             unsigned p, q, r;
             std::vector<Vector> normals;
+
+            // Obtain the outward normal vector at each vertex 
             p = this->vertices[this->nv-1];
             q = this->vertices[0];
             r = this->vertices[1];
-            normals.push_back(this->outward_vertex_normal(p, q, r));
-
-            // Now, follow the same procedure with the remaining vertices ...
-            for (unsigned i = 1; i < this->nv - 1; ++i)
+            normals.push_back(this->outwardVertexNormal(p, q, r));
+            for (unsigned i = 1; i < this->nv; ++i)
             {
-                p = this->vertices[i-1];
+                p = this->vertices[(i-1) % this->nv];
                 q = this->vertices[i];
-                r = this->vertices[i+1];
-                normals.push_back(this->outward_vertex_normal(p, q, r));
+                r = this->vertices[(i+1) % this->nv];
+                normals.push_back(this->outwardVertexNormal(p, q, r));
             }
-
-            // And once more, with the last vertex
-            p = this->vertices[this->nv-2];
-            q = this->vertices[this->nv-1];
-            r = this->vertices[0];
-            normals.push_back(this->outward_vertex_normal(p, q, r));
 
             return normals;
         }
