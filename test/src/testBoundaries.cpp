@@ -4,6 +4,7 @@
 #include <utility>
 #include <Eigen/Dense>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
+#include <CGAL/Vector_2.h>
 #include <boost/test/included/unit_test.hpp>
 #include "../../include/boundaries.hpp"
 
@@ -16,6 +17,8 @@
  *     11/9/2019
  */
 using namespace Eigen;
+typedef CGAL::Exact_predicates_inexact_constructions_kernel    K;
+typedef K::Vector_2                                            Vector_2;
 
 AlphaShape2DProperties getTwentyPoints()
 {
@@ -72,6 +75,13 @@ BOOST_AUTO_TEST_CASE(testAlphaShape2DPropertiesOrient)
      */
     AlphaShape2DProperties shape = getTwentyPoints();
     BOOST_TEST(shape.orientation == CGAL::LEFT_TURN);
+    BOOST_TEST((shape.vertices[0] == 7  && shape.edges[0].first == 7  && shape.edges[0].second == 14));
+    BOOST_TEST((shape.vertices[1] == 14 && shape.edges[1].first == 14 && shape.edges[1].second == 1));
+    BOOST_TEST((shape.vertices[2] == 1  && shape.edges[2].first == 1  && shape.edges[2].second == 16));
+    BOOST_TEST((shape.vertices[3] == 16 && shape.edges[3].first == 16 && shape.edges[3].second == 3));
+    BOOST_TEST((shape.vertices[4] == 3  && shape.edges[4].first == 3  && shape.edges[4].second == 11));
+    BOOST_TEST((shape.vertices[5] == 11 && shape.edges[5].first == 11 && shape.edges[5].second == 17));
+    BOOST_TEST((shape.vertices[6] == 17 && shape.edges[6].first == 17 && shape.edges[6].second == 7));
 
     // Reverse the orientation and check that the edges are specified 
     // in the correct order
@@ -84,4 +94,31 @@ BOOST_AUTO_TEST_CASE(testAlphaShape2DPropertiesOrient)
     BOOST_TEST((shape.vertices[4] == 16 && shape.edges[4].first == 16 && shape.edges[4].second == 1));
     BOOST_TEST((shape.vertices[5] == 1  && shape.edges[5].first == 1  && shape.edges[5].second == 14));
     BOOST_TEST((shape.vertices[6] == 14 && shape.edges[6].first == 14 && shape.edges[6].second == 7));
+}
+
+BOOST_AUTO_TEST_CASE(testAlphaShape2DPropertiesVertexNormals)
+{
+    /*
+     * Test that the outward vertex normals of 20-point-set convex hull are
+     * correctly calculated. 
+     */
+    using std::abs;
+    double tol = 1e-7;
+
+    AlphaShape2DProperties shape = getTwentyPoints();
+    std::vector<Vector_2> normals = shape.outwardVertexNormals();
+    BOOST_TEST(abs(normals[0].x() - (-0.62725470)) < tol);
+    BOOST_TEST(abs(normals[0].y() - (-0.77881419)) < tol);
+    BOOST_TEST(abs(normals[1].x() -   0.58076773)  < tol);
+    BOOST_TEST(abs(normals[1].y() - (-0.81406931)) < tol);
+    BOOST_TEST(abs(normals[2].x() -   0.99680250)  < tol);
+    BOOST_TEST(abs(normals[2].y() - (-0.07990479)) < tol);
+    BOOST_TEST(abs(normals[3].x() -   0.49554538)  < tol);
+    BOOST_TEST(abs(normals[3].y() -   0.86858205)  < tol);
+    BOOST_TEST(abs(normals[4].x() - (-0.41022918)) < tol);
+    BOOST_TEST(abs(normals[4].y() -   0.91198247)  < tol);
+    BOOST_TEST(abs(normals[5].x() - (-0.89585400)) < tol);
+    BOOST_TEST(abs(normals[5].y() -   0.44434853)  < tol);
+    BOOST_TEST(abs(normals[6].x() - (-0.98262386)) < tol);
+    BOOST_TEST(abs(normals[6].y() -   0.18560808)  < tol);
 }
