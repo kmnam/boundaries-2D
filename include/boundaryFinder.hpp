@@ -22,7 +22,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/8/2019
+ *     11/10/2019
  */
 using namespace Eigen;
 
@@ -96,7 +96,7 @@ class BoundaryFinder
             this->constraints->setAb(A, b);
         }
 
-        void initialize(std::function<std::pair<double, double>(std::vector<double>)> func,
+        void initialize(std::function<VectorXvar(const Ref<const VectorXvar>&)> func,
                         const Ref<const MatrixXd>& params)
         {
             /*
@@ -111,24 +111,20 @@ class BoundaryFinder
                 // parameter point (if it satisfies the required constraints)
                 if (this->constraints->check(params.row(i).transpose()))
                 {
-                    std::vector<double> row;
-                    row.resize(this->D);
-                    VectorXd::Map(&row[0], this->D) = params.row(i);
-                    std::pair<double, double> y = func(row);
+                    VectorXvar y = func(params.row(i).cast<var>());
                     this->N++;
                     this->params.conservativeResize(this->N, this->D);
                     this->points.conservativeResize(this->N, 2);
                     this->params.row(this->N-1) = params.row(i);
-                    this->points(this->N-1, 0) = y.first;
-                    this->points(this->N-1, 1) = y.second;
+                    this->points.row(this->N-1) = y.cast<double>();
                 }
             }
             if (this->N == 0)
                 throw std::invalid_argument("No valid parameter values given");
         }
 
-        bool step(std::function<std::pair<double, double>(std::vector<double>)> func,
-                  std::function<std::vector<double>(std::vector<double>, boost::random::mt19937&, LinearConstraints*)> mutate,
+        bool step(std::function<VectorXvar(const Ref<const VectorXvar>&)> func, 
+                  std::function<VectorXvar(const Ref<const VectorXvar>&, boost::random::mt19937&, LinearConstraints*)> mutate,
                   unsigned iter, bool simplify, bool verbose, std::string write_prefix = "")
         {
             /*
@@ -189,15 +185,10 @@ class BoundaryFinder
             {
                 // Evaluate the given function at a randomly generated 
                 // parameter point
-                std::vector<double> p;
-                p.resize(this->D);
-                VectorXd::Map(&p[0], this->D) = this->params.row(this->vertices[i]);
-                std::vector<double> q = mutate(p, this->rng, this->constraints);
-                std::pair<double, double> z = func(q);
-                for (unsigned j = 0; j < q.size(); ++j)
-                    this->params(this->N + i, j) = q[j];
-                this->points(this->N + i, 0) = z.first;
-                this->points(this->N + i, 1) = z.second;
+                VectorXvar q = mutate(this->params.row(this->vertices[i]).cast<var>(), this->rng, this->constraints);
+                VectorXvar z = func(q);
+                this->params.row(this->N + i) = q.cast<double>();
+                this->points.row(this->N + i) = z.cast<double>();
             }
             this->N += this->vertices.size();
             return false;
@@ -250,7 +241,7 @@ class BoundaryFinder
             // for each vertex in the boundary, "pull" along its outward
             // normal by distance delta
             std::vector<double> x_pulled, y_pulled;
-            std::vector<Vector_2> normals = bound_data.outward_vertex_normals();
+            std::vector<Vector_2> normals = bound_data.outwardVertexNormals();
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
                 Vector_2 v(x[this->vertices[i]], y[this->vertices[i]]);
@@ -259,33 +250,46 @@ class BoundaryFinder
                 y_pulled.push_back(pulled.y());
             }
 
+            // Pull out the constraint matrix and vector 
+            MatrixXd A = this->constraints->getA();
+            VectorXd b = this->constraints->getb();
+            unsigned nc = A.rows();
+
+            // Define an SQPOptimizer instance to be utilized 
+            SQPOptimizer* optimizer = new SQPOptimizer(this->D, nc, max_iter, A, b);
+
             // For each vertex in the boundary, minimize the distance to the
-            // pulled vertex with a feasible parameter point 
-            // TODO Fill this part in 
+            // pulled vertex with a feasible parameter point
             /*
             this->params.conservativeResize(this->N + this->vertices.size(), this->D);
             this->points.conservativeResize(this->N + this->vertices.size(), 2);
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
-                // Evaluate the given function at a randomly generated 
-                // parameter point
+                // Extract the i-th parameter point
                 std::vector<double> p;
                 p.resize(this->D);
                 VectorXd::Map(&p[0], this->D) = this->params.row(this->vertices[i]);
-                std::vector<double> q = mutate(p, this->rng, this->constraints);
-                std::pair<double, double> z = func(q);
-                for (unsigned j = 0; j < q.size(); ++j)
-                    this->params(this->N + i, j) = q[j];
-                this->points(this->N + i, 0) = z.first;
-                this->points(this->N + i, 1) = z.second;
+
+                // Minimize the appropriate objective function
+                //VectorXd q = optimizer->run(
+                //    [](){
+                //    },
+                //    this->params.row(this->vertices[i]).cast<var>(),
+                //    tol, check_hessian_posdef, verbose
+                //);
+                //std::pair<double, double> z = func(q);
+                //for (unsigned j = 0; j < q.size(); ++j)
+                //    this->params(this->N + i, j) = q[j];
+                //this->points(this->N + i, 0) = z.first;
+                //this->points(this->N + i, 1) = z.second;
             }
             this->N += this->vertices.size();
             */
             return false;
         }
 
-        void run(std::function<std::pair<double, double>(std::vector<double>)> func,
-                 std::function<std::vector<double>(std::vector<double>, boost::random::mt19937&, LinearConstraints*)> mutate,
+        void run(std::function<VectorXvar(const Ref<const VectorXvar>&)> func,
+                 std::function<VectorXvar(const Ref<const VectorXvar>&, boost::random::mt19937&, LinearConstraints*)> mutate,
                  const Ref<const MatrixXd>& params, bool simplify, bool verbose,
                  std::string write_prefix = "")
         {
