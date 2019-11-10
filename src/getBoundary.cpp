@@ -11,7 +11,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     4/11/2019
+ *     11/10/2019
  */
 
 int main(int argc, char** argv)
@@ -98,7 +98,7 @@ int main(int argc, char** argv)
     // Compute boundary with assumption that region is simply connected
     Boundary2D boundary(x, y);
     AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, simplify);
-    bound_data.write(x, y, outfile);
+    bound_data.write(outfile);
 
     return 0;
 }
