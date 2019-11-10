@@ -4,7 +4,7 @@
 #include <utility>
 #include <Eigen/Dense>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
-#include <boost/test/unit_test.hpp>
+#include <boost/test/included/unit_test.hpp>
 #include "../../include/boundaries.hpp"
 
 /*
@@ -72,4 +72,16 @@ BOOST_AUTO_TEST_CASE(testAlphaShape2DPropertiesOrient)
      */
     AlphaShape2DProperties shape = getTwentyPoints();
     BOOST_TEST(shape.orientation == CGAL::LEFT_TURN);
+
+    // Reverse the orientation and check that the edges are specified 
+    // in the correct order
+    shape.orient(CGAL::RIGHT_TURN);
+    BOOST_TEST(shape.orientation == CGAL::RIGHT_TURN);
+    BOOST_TEST((shape.vertices[0] == 7  && shape.edges[0].first == 7  && shape.edges[0].second == 17));
+    BOOST_TEST((shape.vertices[1] == 17 && shape.edges[1].first == 17 && shape.edges[1].second == 11));
+    BOOST_TEST((shape.vertices[2] == 11 && shape.edges[2].first == 11 && shape.edges[2].second == 3));
+    BOOST_TEST((shape.vertices[3] == 3  && shape.edges[3].first == 3  && shape.edges[3].second == 16));
+    BOOST_TEST((shape.vertices[4] == 16 && shape.edges[4].first == 16 && shape.edges[4].second == 1));
+    BOOST_TEST((shape.vertices[5] == 1  && shape.edges[5].first == 1  && shape.edges[5].second == 14));
+    BOOST_TEST((shape.vertices[6] == 14 && shape.edges[6].first == 14 && shape.edges[6].second == 7));
 }
