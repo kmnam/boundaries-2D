@@ -23,7 +23,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/9/2019
+ *     11/10/2019
  */
 
 // CGAL convenience typedefs, adapted from the CGAL docs
@@ -31,7 +31,7 @@ typedef CGAL::Exact_predicates_inexact_constructions_kernel        K;
 typedef K::FT                                                      FT;
 typedef K::Point_2                                                 Point;
 typedef K::Segment_2                                               Segment;
-typedef K::Vector_2                                                Vector;
+typedef K::Vector_2                                                Vector_2;
 typedef CGAL::Aff_transformation_2<K>                              Transformation;
 typedef CGAL::Orientation                                          Orientation;
 typedef CGAL::Polygon_2<K>                                         Polygon;
@@ -107,7 +107,7 @@ struct AlphaShape2DProperties
      * region. 
      */
     private:
-        Vector outwardVertexNormal(unsigned p, unsigned q, unsigned r)
+        Vector_2 outwardVertexNormal(unsigned p, unsigned q, unsigned r)
         {
             /*
              * Given the indices of three vertices in the boundary, 
@@ -120,11 +120,11 @@ struct AlphaShape2DProperties
             using std::acos;
             using std::sqrt;
 
-            Vector v, w, normal;
+            Vector_2 v, w, normal;
             double angle;
             Orientation v_to_w;
-            v = Vector(this->x[p] - this->x[q], this->y[p] - this->y[q]);
-            w = Vector(this->x[r] - this->x[q], this->y[r] - this->y[q]);
+            v = Vector_2(this->x[p] - this->x[q], this->y[p] - this->y[q]);
+            w = Vector_2(this->x[r] - this->x[q], this->y[r] - this->y[q]);
             angle = acos(CGAL::scalar_product(v, w) / sqrt(v.squared_length() * w.squared_length()));
             v_to_w = CGAL::orientation(-v, w);
 
@@ -317,14 +317,14 @@ struct AlphaShape2DProperties
             }
         }
 
-        std::vector<Vector> outwardVertexNormals()
+        std::vector<Vector_2> outwardVertexNormals()
         {
             /*
              * Return the outward normal vectors from the vertices in the
              * alpha shape. 
              */
             unsigned p, q, r;
-            std::vector<Vector> normals;
+            std::vector<Vector_2> normals;
 
             // Obtain the outward normal vector at each vertex 
             p = this->vertices[this->nv-1];
