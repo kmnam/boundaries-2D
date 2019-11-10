@@ -13,7 +13,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/8/2019
+ *     11/10/2019
  */
 using namespace Eigen;
 typedef CGAL::Gmpzf ET;
@@ -143,8 +143,7 @@ class LinearConstraints
             return ((this->A * v).array() >= (this->b).array()).all();
         }
 
-        template <typename Derived>
-        bool check(const MatrixBase<Derived>& x)
+        bool check(const Ref<const VectorXd>& x)
         {
             /* 
              * Return true if no constraints were satisfied or, otherwise,
@@ -197,8 +196,7 @@ class LinearConstraints
             return y;
         }
 
-        template <typename Derived>
-        VectorXd nearestL2(const MatrixBase<Derived>& x)
+        VectorXd nearestL2(const Ref<const VectorXd>& x)
         {
             /*
              * Return the nearest point to x, with respect to L2 distance,
