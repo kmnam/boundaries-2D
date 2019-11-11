@@ -155,6 +155,7 @@ class BoundaryFinder
             Boundary2D boundary(x, y);
             AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, simplify);
             this->vertices = bound_data.vertices;
+            std::cout << this->N << " " << this->vertices.size() << std::endl;
 
             // Write boundary information to file if desired
             if (write_prefix.compare(""))
@@ -179,18 +180,26 @@ class BoundaryFinder
             // For each of the points in the boundary, mutate the corresponding
             // model parameters once, and evaluate the given function at these
             // mutated parameter values
-            this->params.conservativeResize(this->N + this->vertices.size(), this->D);
-            this->points.conservativeResize(this->N + this->vertices.size(), 2);
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
                 // Evaluate the given function at a randomly generated 
                 // parameter point
-                VectorXvar q = mutate(this->params.row(this->vertices[i]).cast<var>(), this->rng, this->constraints);
+                VectorXvar p = this->params.row(this->vertices[i]).cast<var>();
+                VectorXvar q = mutate(p, this->rng, this->constraints);
                 VectorXvar z = func(q);
-                this->params.row(this->N + i) = q.cast<double>();
-                this->points.row(this->N + i) = z.cast<double>();
+                
+                // Check that the mutation did not give rise to an already 
+                // computed point 
+                double mindist = (this->points.rowwise() - z.cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
+                if (mindist > 0)
+                {
+                    this->N++;
+                    this->params.conservativeResize(this->N, this->D);
+                    this->points.conservativeResize(this->N, 2);
+                    this->params.row(this->N-1) = q.cast<double>();
+                    this->points.row(this->N-1) = z.cast<double>();
+                }
             }
-            this->N += this->vertices.size();
             return false;
         }
 
