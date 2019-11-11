@@ -5,8 +5,10 @@
 #include <assert.h>
 #include <stdexcept>
 #include <cmath>
+#include <limits>
 #include <vector>
 #include <unordered_set>
+#include <unordered_map>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Aff_transformation_2.h>
 #include <CGAL/Alpha_shape_2.h>
@@ -23,7 +25,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/10/2019
+ *     11/11/2019
  */
 
 // CGAL convenience typedefs, adapted from the CGAL docs
@@ -596,24 +598,14 @@ class Boundary2D
             using std::sqrt;
             using std::floor;
 
-            // Instantiate a vector of Weighted_point objects with null weights
+            // Instantiate a vector of Point objects
             std::vector<Point> points;
             unsigned npoints = this->x.size();
-            for (unsigned i = 0; i < npoints; i++)
+            for (unsigned i = 0; i < npoints; ++i)
                 points.emplace_back(Point(this->x[i], this->y[i]));
 
-            // Compute the alpha shape from the points
+            // Compute the alpha shape from the Delaunay triangulation
             Alpha_shape shape(points.begin(), points.end(), FT(1.0), Alpha_shape::REGULARIZED);
-
-            // Run through the edges of the underlying Delaunay triangulation and 
-            // get the minimum distance between all pairs of points
-            double mindist = sqrt((points[1] - points[0]).squared_length());
-            for (auto it = shape.finite_edges_begin(); it != shape.finite_edges_end(); it++)
-            {
-                Segment edge = shape.segment(*it);
-                double dist = sqrt(static_cast<double>(edge.squared_length()));
-                if (dist < mindist) mindist = dist;
-            }
 
             /* ------------------------------------------------------------------ //
              * Determine the optimal value of alpha that satisfies the following 
@@ -645,7 +637,7 @@ class Boundary2D
 
                     // Get the number of vertices in the alpha shape
                     unsigned nvertices = 0;
-                    for (auto itv = shape.alpha_shape_vertices_begin(); itv != shape.alpha_shape_vertices_end(); itv++)
+                    for (auto itv = shape.alpha_shape_vertices_begin(); itv != shape.alpha_shape_vertices_end(); ++itv)
                         nvertices++;
                     
                     // Starting from an arbitrary vertex, travel along the edges
@@ -739,7 +731,7 @@ class Boundary2D
             // with the optimum value of alpha
             shape.set_alpha(opt_alpha);
             double total_area = 0.0;
-            for (auto it = shape.finite_faces_begin(); it != shape.finite_faces_end(); it++)
+            for (auto it = shape.finite_faces_begin(); it != shape.finite_faces_end(); ++it)
             {
                 Face_handle face = Tds::Face_range::s_iterator_to(*it);
                 auto type = shape.classify(face);
@@ -752,31 +744,41 @@ class Boundary2D
                 }
             }
 
+            // Identify, for each vertex in the alpha shape, the point corresponding to it 
+            std::unordered_map<Vertex_handle, std::pair<unsigned, double> > vertices_to_points;
+            for (unsigned i = 0; i < points.size(); ++i)
+            {
+                // Find the nearest vertex to each point 
+                Vertex_handle nearest = shape.nearest_vertex(points[i]);
+
+                // Look for whether the vertex was identified as the nearest 
+                // to any previous point
+                auto found = vertices_to_points.find(nearest);
+
+                // Update the vertex's nearest point if the point is indeed
+                // nearer to the vertex than any previously considered point
+                double sqnorm = CGAL::to_double((nearest->point() - points[i]).squared_length());
+                if (found == vertices_to_points.end() || sqnorm < (found->second).second)
+                {
+                    vertices_to_points[nearest] = std::make_pair(i, sqnorm);
+                }
+            }
+
             // Collect the vertices and edges of the alpha shape 
             std::unordered_set<unsigned> vertex_set;
             std::vector<std::pair<unsigned, unsigned> > edges;
-            for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); it++)
+            for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
             {
-                Segment segment = shape.segment(*it);
-                Point source = segment.source();
-                Point target = segment.target();
-                auto source_it = std::find_if(
-                    points.begin(), points.end(),
-                    [source, mindist](Point p)
-                    {
-                        return (sqrt(static_cast<double>((source - p).squared_length())) < mindist / 2.0); 
-                    }
-                );
-                auto target_it = std::find_if(
-                    points.begin(), points.end(),
-                    [target, mindist](Point p)
-                    {
-                        return (sqrt(static_cast<double>((target - p).squared_length())) < mindist / 2.0);
-                    }
-                );
-                vertex_set.insert(source_it - points.begin());
-                vertex_set.insert(target_it - points.begin());
-                edges.push_back(std::make_pair(source_it - points.begin(), target_it - points.begin()));
+                // Find the source and target vertices of each edge
+                Face_handle f = it->first;
+                int i = it->second;
+                Vertex_handle source = f->vertex(f->cw(i));
+                Vertex_handle target = f->vertex(f->ccw(i));
+                unsigned source_idx = vertices_to_points[source].first;
+                unsigned target_idx = vertices_to_points[target].first;
+                vertex_set.insert(source_idx);
+                vertex_set.insert(target_idx);
+                edges.push_back(std::make_pair(source_idx, target_idx));
             }
             std::vector<unsigned> vertices;
             for (auto&& v : vertex_set) vertices.push_back(v);
@@ -804,10 +806,12 @@ class Boundary2D
                         [source](std::pair<unsigned, unsigned> edge){ return (edge.first == source); }
                     );
                     source = next->second;
-                    edge_lengths.push_back(sqrt((points[next->first] - points[next->second]).squared_length()));
+                    edge_lengths.push_back(
+                        sqrt((points[next->first] - points[next->second]).squared_length())
+                    );
                 }
 
-                // Get the median edge length
+                // Sort the squared edge lengths and get their median
                 std::sort(edge_lengths.begin(), edge_lengths.end());
                 double median;
                 if (edge_lengths.size() % 2 == 1)
@@ -831,41 +835,51 @@ class Boundary2D
                 // Collect the vertices and edges of the simplified Polygon object
                 std::vector<unsigned> vertices_simplified;
                 std::vector<std::pair<unsigned, unsigned> > edges_simplified;
-                for (auto it = polygon.vertices_begin(); it != polygon.vertices_end(); it++)
+                for (auto it = polygon.vertices_begin(); it != polygon.vertices_end(); ++it)
                 {
+                    // Find the vertex in the alpha shape
                     Point p = *it;
                     auto p_it = std::find_if(
-                        points.begin(), points.end(),
-                        [p, mindist](Point q)
+                        vertices_to_points.begin(), vertices_to_points.end(),
+                        [p, points](std::pair<Vertex_handle, std::pair<unsigned, double> > v)
                         {
-                            return (sqrt(static_cast<double>((p - q).squared_length())) < mindist / 2.0); 
+                            unsigned i = v.second.first;
+                            double sqnorm = v.second.second;
+                            return (CGAL::to_double((p - points[i]).squared_length()) <= sqnorm); 
                         }
                     );
-                    vertices_simplified.push_back(p_it - points.begin());
+                    vertices_simplified.push_back(p_it->second.first);
                 }
-                for (auto it = polygon.edges_begin(); it != polygon.edges_end(); it++)
+                for (auto it = polygon.edges_begin(); it != polygon.edges_end(); ++it)
                 {
+                    // Find the source and target vertices in the alpha shape
                     Point source = it->source();
                     Point target = it->target();
                     auto source_it = std::find_if(
-                        points.begin(), points.end(),
-                        [source, mindist](Point p)
+                        vertices_to_points.begin(), vertices_to_points.end(),
+                        [source, points](std::pair<Vertex_handle, std::pair<unsigned, double> > v)
                         {
-                            return (sqrt(static_cast<double>((source - p).squared_length())) < mindist / 2.0);
+                            unsigned i = v.second.first;
+                            double sqnorm = v.second.second;
+                            return (CGAL::to_double((source - points[i]).squared_length()) <= sqnorm);
                         }
                     );
                     auto target_it = std::find_if(
-                        points.begin(), points.end(),
-                        [target, mindist](Point p)
+                        vertices_to_points.begin(), vertices_to_points.end(),
+                        [target, points](std::pair<Vertex_handle, std::pair<unsigned, double> > v)
                         {
-                            return (sqrt(static_cast<double>((target - p).squared_length())) < mindist / 2.0);
+                            unsigned i = v.second.first;
+                            double sqnorm = v.second.second;
+                            return (CGAL::to_double((target - points[i]).squared_length()) <= sqnorm);
                         }
                     );
-                    edges_simplified.push_back(std::make_pair(source_it - points.begin(), target_it - points.begin()));
+                    edges_simplified.push_back(
+                        std::make_pair(source_it->second.first, target_it->second.first)
+                    );
                 }
                 
                 // Compute the area of the simplified Polygon
-                total_area = abs(static_cast<double>(polygon.area()));
+                total_area = abs(CGAL::to_double(polygon.area()));
 
                 return AlphaShape2DProperties(
                     x, y, vertices_simplified, edges_simplified, opt_alpha, total_area,

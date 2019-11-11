@@ -22,7 +22,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/10/2019
+ *     11/11/2019
  */
 using namespace Eigen;
 
@@ -155,7 +155,6 @@ class BoundaryFinder
             Boundary2D boundary(x, y);
             AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, simplify);
             this->vertices = bound_data.vertices;
-            std::cout << this->N << " " << this->vertices.size() << std::endl;
 
             // Write boundary information to file if desired
             if (write_prefix.compare(""))
@@ -175,7 +174,7 @@ class BoundaryFinder
                           << "; enclosed area: " << area
                           << "; change: " << change << std::endl;
             }
-            if (change > 0.0 && change < this->area_tol) return true;
+            if (change >= 0.0 && change < this->area_tol) return true;
             
             // For each of the points in the boundary, mutate the corresponding
             // model parameters once, and evaluate the given function at these
@@ -244,7 +243,7 @@ class BoundaryFinder
                           << "; enclosed area: " << area
                           << "; change: " << change << std::endl;
             }
-            if (change > 0.0 && change < this->area_tol) return true;
+            if (change >= 0.0 && change < this->area_tol) return true;
 
             // Obtain the outward vertex normals along the boundary and,
             // for each vertex in the boundary, "pull" along its outward
