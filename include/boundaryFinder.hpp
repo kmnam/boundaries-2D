@@ -125,7 +125,8 @@ class BoundaryFinder
 
         bool step(std::function<VectorXvar(const Ref<const VectorXvar>&)> func, 
                   std::function<VectorXvar(const Ref<const VectorXvar>&, boost::random::mt19937&, LinearConstraints*)> mutate,
-                  unsigned iter, bool simplify, bool verbose, std::string write_prefix = "")
+                  const unsigned iter, const bool simplify, const bool verbose,
+                  const std::string write_prefix = "")
         {
             /*
              * Given a list of points (with their x- and y-coordinates
@@ -170,7 +171,7 @@ class BoundaryFinder
             this->curr_area = area;
             if (verbose)
             {
-                std::cout << "Iteration " << iter
+                std::cout << "[STEP] Iteration " << iter
                           << "; enclosed area: " << area
                           << "; change: " << change << std::endl;
             }
@@ -202,13 +203,16 @@ class BoundaryFinder
             return false;
         }
 
-        bool pull(std::function<std::pair<double, double>(std::vector<double>)> func,
-                  double delta, unsigned iter, bool simplify, bool verbose,
-                  std::string write_prefix = "")
+        bool pull(std::function<VectorXvar(const Ref<const VectorXvar>&)> func,
+                  const double delta, const double sqp_tol, const bool sqp_check_hessian_posdef,
+                  const unsigned iter, const bool simplify, const bool verbose,
+                  const std::string write_prefix = "")
         {
             /*
              *
              */
+            using std::abs;
+
             // Store point coordinates in two vectors
             std::vector<double> x, y;
             x.resize(this->N);
@@ -239,7 +243,7 @@ class BoundaryFinder
             this->curr_area = area;
             if (verbose)
             {
-                std::cout << "Iteration " << iter
+                std::cout << "[PULL] Iteration " << iter
                           << "; enclosed area: " << area
                           << "; change: " << change << std::endl;
             }
@@ -248,14 +252,15 @@ class BoundaryFinder
             // Obtain the outward vertex normals along the boundary and,
             // for each vertex in the boundary, "pull" along its outward
             // normal by distance delta
-            std::vector<double> x_pulled, y_pulled;
+            MatrixXd pulled(this->vertices.size(), 2);
             std::vector<Vector_2> normals = bound_data.outwardVertexNormals();
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
                 Vector_2 v(x[this->vertices[i]], y[this->vertices[i]]);
-                Vector_2 pulled = v + delta * normals[i];
-                x_pulled.push_back(pulled.x());
-                y_pulled.push_back(pulled.y());
+                Vector_2 v_pulled = v + delta * normals[i];
+                pulled(i, 0) = CGAL::to_double(v_pulled.x());
+                pulled(i, 1) = CGAL::to_double(v_pulled.y());
+                std::cout << x[this->vertices[i]] << " " << y[this->vertices[i]] << "; " << pulled(i,0) << " " << pulled(i,1) << std::endl; 
             }
 
             // Pull out the constraint matrix and vector 
@@ -268,38 +273,41 @@ class BoundaryFinder
 
             // For each vertex in the boundary, minimize the distance to the
             // pulled vertex with a feasible parameter point
-            /*
-            this->params.conservativeResize(this->N + this->vertices.size(), this->D);
-            this->points.conservativeResize(this->N + this->vertices.size(), 2);
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
-                // Extract the i-th parameter point
-                std::vector<double> p;
-                p.resize(this->D);
-                VectorXd::Map(&p[0], this->D) = this->params.row(this->vertices[i]);
-
                 // Minimize the appropriate objective function
-                //VectorXd q = optimizer->run(
-                //    [](){
-                //    },
-                //    this->params.row(this->vertices[i]).cast<var>(),
-                //    tol, check_hessian_posdef, verbose
-                //);
-                //std::pair<double, double> z = func(q);
-                //for (unsigned j = 0; j < q.size(); ++j)
-                //    this->params(this->N + i, j) = q[j];
-                //this->points(this->N + i, 0) = z.first;
-                //this->points(this->N + i, 1) = z.second;
+                VectorXvar target = pulled.row(i).cast<var>();
+                std::function<var(const Ref<const VectorXvar>&)> obj = [func, target](const Ref<const VectorXvar>& x)
+                {
+                    return (target - func(x)).squaredNorm();
+                };
+                VectorXd x_init = this->params.row(this->vertices[i]);
+                VectorXd l_init = VectorXd::Ones(nc) - this->constraints->active(x_init).cast<double>();
+                VectorXvar xl_init(this->D + nc);
+                xl_init << x_init.cast<var>(), l_init.cast<var>();
+                std::cout << "target = [" << target << "]\n";
+                VectorXd q = optimizer->run(obj, xl_init, sqp_tol, sqp_check_hessian_posdef, verbose);
+                VectorXvar z = func(q.cast<var>());
+                
+                // Check that the mutation did not give rise to an already 
+                // computed point
+                double mindist = (this->points.rowwise() - z.cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
+                if (mindist > 0)
+                {
+                    this->N++;
+                    this->params.conservativeResize(this->N, this->D);
+                    this->points.conservativeResize(this->N, 2);
+                    this->params.row(this->N-1) = q.transpose();
+                    this->points.row(this->N-1) = z.cast<double>();
+                }
             }
-            this->N += this->vertices.size();
-            */
             return false;
         }
 
         void run(std::function<VectorXvar(const Ref<const VectorXvar>&)> func,
                  std::function<VectorXvar(const Ref<const VectorXvar>&, boost::random::mt19937&, LinearConstraints*)> mutate,
-                 const Ref<const MatrixXd>& params, bool simplify, bool verbose,
-                 std::string write_prefix = "")
+                 const Ref<const MatrixXd>& params, const bool simplify,
+                 const bool verbose, const std::string write_prefix = "")
         {
             /*
              * Run the boundary sampling until convergence, up to the maximum
@@ -316,6 +324,9 @@ class BoundaryFinder
                 terminate = this->step(func, mutate, i, simplify, verbose, write_prefix);
                 i++;
             }
+
+            // Try pulling once
+            this->pull(func, 0.1, 1e-5, true, i, simplify, verbose, write_prefix); 
 
             // Did the loop terminate without achieving convergence?
             if (!terminate)
