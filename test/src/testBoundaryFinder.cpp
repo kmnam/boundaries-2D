@@ -60,7 +60,7 @@ void testBoundaryFinderProject()
      * constrained to the 6-D cube of side length 2
      */
     const unsigned seed = 1234567890;
-    const unsigned max_iter = 20;    // Maximum of 20 iterations 
+    const unsigned max_iter = 10;    // Maximum of 10 iterations 
     const double tol = 1e-5;         // Tolerance for convergence
     const unsigned n_init = 100;     // Initial number of parameter points
 
@@ -93,7 +93,7 @@ void testBoundaryFinderProjectSimplified()
      * constrained to the 6-D cube of side length 2, with simplification
      */
     const unsigned seed = 1234567890;
-    const unsigned max_iter = 20;    // Maximum of 20 iterations 
+    const unsigned max_iter = 10;    // Maximum of 10 iterations 
     const double tol = 1e-5;         // Tolerance for convergence
     const unsigned n_init = 100;     // Initial number of parameter points
 
