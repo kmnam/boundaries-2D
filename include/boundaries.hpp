@@ -7,6 +7,7 @@
 #include <cmath>
 #include <limits>
 #include <vector>
+#include <queue>
 #include <unordered_set>
 #include <unordered_map>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
@@ -25,7 +26,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/11/2019
+ *     11/12/2019
  */
 
 // CGAL convenience typedefs, adapted from the CGAL docs
@@ -595,7 +596,6 @@ class Boundary2D
              */
             using std::abs;
             using std::pow;
-            using std::sqrt;
             using std::floor;
 
             // Instantiate a vector of Point objects
@@ -764,129 +764,165 @@ class Boundary2D
                 }
             }
 
-            // Collect the vertices and edges of the alpha shape 
+            // Count the number of vertices and edges in the alpha shape
             std::unordered_set<unsigned> vertex_set;
-            std::vector<std::pair<unsigned, unsigned> > edges;
+            unsigned nvertices = 0;
+            unsigned nedges = 0;
+            for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
+            {
+                vertex_set.insert(vertices_to_points[*it].first);
+                nvertices++;
+            }
             for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
             {
-                // Find the source and target vertices of each edge
-                Face_handle f = it->first;
-                int i = it->second;
-                Vertex_handle source = f->vertex(f->cw(i));
-                Vertex_handle target = f->vertex(f->ccw(i));
-                unsigned source_idx = vertices_to_points[source].first;
-                unsigned target_idx = vertices_to_points[target].first;
-                vertex_set.insert(source_idx);
-                vertex_set.insert(target_idx);
-                edges.push_back(std::make_pair(source_idx, target_idx));
+                nedges++;
             }
-            std::vector<unsigned> vertices;
-            for (auto&& v : vertex_set) vertices.push_back(v);
 
-            /* ------------------------------------------------------------------ //
-             * Simplify the alpha shape using Dyken et al.'s polyline simplification
-             * algorithm:
-             * - The cost of decimating a vertex is measured using maximum distance
-             *   between the remaining vertices and the new line segment formed
-             * - The simplification is terminated once the total cost of decimation
-             *   exceeds 1e-5
-             * ------------------------------------------------------------------ */
-            if (simply_connected && simplify)
+            // If the alpha shape is simply connected, organize the vertices 
+            // and edges so that they are given in order
+            if (simply_connected)
             {
-                // Run through the edges of the alpha shape in order, collecting the 
-                // source vertex of each and keeping track of their squared lengths
+                // Run through the edges of the alpha shape in order from an arbitrary
+                // vertex, keeping track of their squared lengths
+                std::vector<unsigned> vertices_in_order;
+                std::vector<std::pair<unsigned, unsigned> > edges_in_order;
                 std::vector<Point> points_in_order;
                 std::vector<double> edge_lengths;
-                unsigned source = edges[0].first;
-                while (points_in_order.size() < vertices.size())
+                std::unordered_map<unsigned, std::unordered_set<unsigned> > visited_edges;
+                for (auto&& v : vertex_set) visited_edges[v] = {};
+                unsigned source = *(vertex_set.begin());
+                while (points_in_order.size() < nvertices)
                 {
+                    vertices_in_order.push_back(source);
                     points_in_order.push_back(points[source]);
                     auto next = std::find_if(
-                        edges.begin(), edges.end(),
-                        [source](std::pair<unsigned, unsigned> edge){ return (edge.first == source); }
+                        shape.alpha_shape_edges_begin(), shape.alpha_shape_edges_end(),
+                        [source, vertices_to_points, visited_edges](std::pair<Face_handle, int> e)
+                        {
+                            // Find the source and target vertices of each edge
+                            Face_handle f = e.first;
+                            int i = e.second;
+                            Vertex_handle s = f->vertex(f->cw(i));
+                            Vertex_handle t = f->vertex(f->ccw(i));
+                            unsigned si = (vertices_to_points.find(s)->second).first;
+                            unsigned ti = (vertices_to_points.find(t)->second).first;
+                            bool visited = (visited_edges.find(si)->second).count(ti);
+                            return (si == source && !visited);
+                        }
                     );
-                    source = next->second;
-                    edge_lengths.push_back(
-                        sqrt((points[next->first] - points[next->second]).squared_length())
-                    );
-                }
-
-                // Sort the squared edge lengths and get their median
-                std::sort(edge_lengths.begin(), edge_lengths.end());
-                double median;
-                if (edge_lengths.size() % 2 == 1)
-                {
-                    unsigned median_idx = static_cast<unsigned>(floor(edge_lengths.size() / 2.0));
-                    median = edge_lengths[median_idx];
-                }
-                else
-                {
-                    unsigned median_idx = static_cast<unsigned>(edge_lengths.size() / 2.0);
-                    median = (edge_lengths[median_idx-1] + edge_lengths[median_idx]) / 2.0;
+                    Face_handle f = next->first;
+                    int i = next->second;
+                    Vertex_handle s = f->vertex(f->cw(i));
+                    Vertex_handle t = f->vertex(f->ccw(i));
+                    unsigned si = vertices_to_points[s].first;
+                    unsigned ti = vertices_to_points[t].first;
+                    visited_edges[si].insert(ti);
+                    visited_edges[ti].insert(si);
+                    edges_in_order.push_back(std::make_pair(si, ti));
+                    edge_lengths.push_back((points[si] - points[ti]).squared_length());
+                    source = ti;
                 }
 
                 // Instantiate a Polygon object with the given vertex order
                 Polygon polygon(points_in_order.begin(), points_in_order.end());
                 assert(polygon.is_simple());
 
-                // Simplify the Polygon object
-                polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(pow(median, 2.0)));
+                /* ------------------------------------------------------------------ //
+                 * Simplify the alpha shape using Dyken et al.'s polyline simplification
+                 * algorithm:
+                 * - The cost of decimating a vertex is measured using maximum distance
+                 *   between the remaining vertices and the new line segment formed
+                 * - The simplification is terminated once the total cost of decimation
+                 *   exceeds 1e-5
+                 * ------------------------------------------------------------------ */
+                if (simplify)
+                {
+                    // Sort the squared edge lengths and get their median
+                    std::sort(edge_lengths.begin(), edge_lengths.end());
+                    double median;
+                    if (edge_lengths.size() % 2 == 1)
+                    {
+                        unsigned median_idx = static_cast<unsigned>(floor(edge_lengths.size() / 2.0));
+                        median = edge_lengths[median_idx];
+                    }
+                    else
+                    {
+                        unsigned median_idx = static_cast<unsigned>(edge_lengths.size() / 2.0);
+                        median = (edge_lengths[median_idx-1] + edge_lengths[median_idx]) / 2.0;
+                    }
 
-                // Collect the vertices and edges of the simplified Polygon object
-                std::vector<unsigned> vertices_simplified;
-                std::vector<std::pair<unsigned, unsigned> > edges_simplified;
-                for (auto it = polygon.vertices_begin(); it != polygon.vertices_end(); ++it)
-                {
-                    // Find the vertex in the alpha shape
-                    Point p = *it;
-                    auto p_it = std::find_if(
-                        vertices_to_points.begin(), vertices_to_points.end(),
-                        [p, points](std::pair<Vertex_handle, std::pair<unsigned, double> > v)
-                        {
-                            unsigned i = v.second.first;
-                            double sqnorm = v.second.second;
-                            return (CGAL::to_double((p - points[i]).squared_length()) <= sqnorm); 
-                        }
-                    );
-                    vertices_simplified.push_back(p_it->second.first);
+                    // Simplify the Polygon object
+                    polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(median));
+
+                    // Collect the vertices and edges of the simplified Polygon object
+                    vertices_in_order.clear();
+                    edges_in_order.clear();
+                    for (auto it = polygon.vertices_begin(); it != polygon.vertices_end(); ++it)
+                    {
+                        // Find the vertex in the alpha shape
+                        Point p = *it;
+                        auto p_it = std::find_if(
+                            vertices_to_points.begin(), vertices_to_points.end(),
+                            [p, points](std::pair<Vertex_handle, std::pair<unsigned, double> > v)
+                            {
+                                unsigned i = v.second.first;
+                                double sqnorm = v.second.second;
+                                return (CGAL::to_double((p - points[i]).squared_length()) <= sqnorm); 
+                            }
+                        );
+                        vertices_in_order.push_back(p_it->second.first);
+                    }
+                    for (auto it = polygon.edges_begin(); it != polygon.edges_end(); ++it)
+                    {
+                        // Find the source and target vertices in the alpha shape
+                        Point source = it->source();
+                        Point target = it->target();
+                        auto source_it = std::find_if(
+                            vertices_to_points.begin(), vertices_to_points.end(),
+                            [source, points](std::pair<Vertex_handle, std::pair<unsigned, double> > v)
+                            {
+                                unsigned i = v.second.first;
+                                double sqnorm = v.second.second;
+                                return (CGAL::to_double((source - points[i]).squared_length()) <= sqnorm);
+                            }
+                        );
+                        auto target_it = std::find_if(
+                            vertices_to_points.begin(), vertices_to_points.end(),
+                            [target, points](std::pair<Vertex_handle, std::pair<unsigned, double> > v)
+                            {
+                                unsigned i = v.second.first;
+                                double sqnorm = v.second.second;
+                                return (CGAL::to_double((target - points[i]).squared_length()) <= sqnorm);
+                            }
+                        );
+                        edges_in_order.push_back(
+                            std::make_pair(source_it->second.first, target_it->second.first)
+                        );
+                    }
+
+                    // Compute the area of the simplified Polygon
+                    total_area = abs(CGAL::to_double(polygon.area()));
                 }
-                for (auto it = polygon.edges_begin(); it != polygon.edges_end(); ++it)
-                {
-                    // Find the source and target vertices in the alpha shape
-                    Point source = it->source();
-                    Point target = it->target();
-                    auto source_it = std::find_if(
-                        vertices_to_points.begin(), vertices_to_points.end(),
-                        [source, points](std::pair<Vertex_handle, std::pair<unsigned, double> > v)
-                        {
-                            unsigned i = v.second.first;
-                            double sqnorm = v.second.second;
-                            return (CGAL::to_double((source - points[i]).squared_length()) <= sqnorm);
-                        }
-                    );
-                    auto target_it = std::find_if(
-                        vertices_to_points.begin(), vertices_to_points.end(),
-                        [target, points](std::pair<Vertex_handle, std::pair<unsigned, double> > v)
-                        {
-                            unsigned i = v.second.first;
-                            double sqnorm = v.second.second;
-                            return (CGAL::to_double((target - points[i]).squared_length()) <= sqnorm);
-                        }
-                    );
-                    edges_simplified.push_back(
-                        std::make_pair(source_it->second.first, target_it->second.first)
-                    );
-                }
-                
-                // Compute the area of the simplified Polygon
-                total_area = abs(CGAL::to_double(polygon.area()));
 
                 return AlphaShape2DProperties(
-                    x, y, vertices_simplified, edges_simplified, opt_alpha, total_area,
+                    x, y, vertices_in_order, edges_in_order, opt_alpha, total_area,
                     connected, simply_connected, simplify
                 );
             }
-     
+
+            // Otherwise, simply collect the vertices and edges in arbitrary order
+            std::vector<std::pair<unsigned, unsigned> > edges;
+            for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
+            {
+                Face_handle f = it->first;
+                int i = it->second;
+                Vertex_handle s = f->vertex(f->cw(i));
+                Vertex_handle t = f->vertex(f->ccw(i));
+                edges.push_back(std::make_pair(vertices_to_points[s].first, vertices_to_points[t].first));
+            }
+            std::vector<unsigned> vertices;
+            for (auto&& v : vertex_set) vertices.push_back(v);
+
             return AlphaShape2DProperties(
                 x, y, vertices, edges, opt_alpha, total_area, connected,
                 simply_connected, simplify
