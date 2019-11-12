@@ -206,7 +206,7 @@ class BoundaryFinder
         bool pull(std::function<VectorXvar(const Ref<const VectorXvar>&)> func,
                   const double delta, const double sqp_tol, const bool sqp_check_hessian_posdef,
                   const unsigned iter, const bool simplify, const bool verbose,
-                  const std::string write_prefix = "")
+                  const bool sqp_verbose, const std::string write_prefix = "")
         {
             /*
              *
@@ -260,7 +260,6 @@ class BoundaryFinder
                 Vector_2 v_pulled = v + delta * normals[i];
                 pulled(i, 0) = CGAL::to_double(v_pulled.x());
                 pulled(i, 1) = CGAL::to_double(v_pulled.y());
-                std::cout << x[this->vertices[i]] << " " << y[this->vertices[i]] << "; " << pulled(i,0) << " " << pulled(i,1) << std::endl; 
             }
 
             // Pull out the constraint matrix and vector 
@@ -285,8 +284,7 @@ class BoundaryFinder
                 VectorXd l_init = VectorXd::Ones(nc) - this->constraints->active(x_init).cast<double>();
                 VectorXvar xl_init(this->D + nc);
                 xl_init << x_init.cast<var>(), l_init.cast<var>();
-                std::cout << "target = [" << target << "]\n";
-                VectorXd q = optimizer->run(obj, xl_init, sqp_tol, sqp_check_hessian_posdef, verbose);
+                VectorXd q = optimizer->run(obj, xl_init, sqp_tol, sqp_check_hessian_posdef, sqp_verbose).head(this->D);
                 VectorXvar z = func(q.cast<var>());
                 
                 // Check that the mutation did not give rise to an already 
@@ -297,7 +295,7 @@ class BoundaryFinder
                     this->N++;
                     this->params.conservativeResize(this->N, this->D);
                     this->points.conservativeResize(this->N, 2);
-                    this->params.row(this->N-1) = q.transpose();
+                    this->params.row(this->N-1) = q;
                     this->points.row(this->N-1) = z.cast<double>();
                 }
             }
@@ -326,7 +324,41 @@ class BoundaryFinder
             }
 
             // Try pulling once
-            this->pull(func, 0.1, 1e-5, true, i, simplify, verbose, write_prefix); 
+            terminate = this->pull(func, 0.1, 1e-5, true, i, simplify, verbose, false, write_prefix);
+            i++;
+
+            // Compute the boundary one last time if the algorithm did not terminate
+            if (!terminate)
+            {
+                std::vector<double> x, y;
+                x.resize(this->N);
+                y.resize(this->N);
+                VectorXd::Map(&x[0], this->N) = this->points.col(0);
+                VectorXd::Map(&y[0], this->N) = this->points.col(1);
+                Boundary2D boundary(x, y);
+                AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, simplify);
+
+                // Write boundary information to file if desired
+                if (write_prefix.compare(""))
+                {
+                    std::stringstream ss;
+                    ss << write_prefix << "_pass" << i << ".txt";
+                    bound_data.write(ss.str());
+                }
+
+                // Compute enclosed area and test for convergence
+                double area = bound_data.area;
+                double change = area - this->curr_area;
+                this->curr_area = area;
+                if (verbose)
+                {
+                    std::cout << "[FINAL] Iteration " << i
+                              << "; enclosed area: " << area
+                              << "; change: " << change << std::endl;
+                }
+                if (change >= 0.0 && change < this->area_tol)
+                    terminate = true;
+            }
 
             // Did the loop terminate without achieving convergence?
             if (!terminate)
