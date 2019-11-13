@@ -60,6 +60,7 @@ void testBoundaryFinderProject()
      * constrained to the 6-D cube of side length 2
      */
     const unsigned seed = 1234567890;
+    boost::random::mt19937 rng(seed);
     const unsigned max_iter = 10;    // Maximum of 10 iterations 
     const double tol = 1e-5;         // Tolerance for convergence
     const unsigned n_init = 100;     // Initial number of parameter points
@@ -79,7 +80,7 @@ void testBoundaryFinderProject()
           0.0,  0.0,  0.0,  0.0, -1.0,  0.0,
           0.0,  0.0,  0.0,  0.0,  0.0, -1.0;
     b << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0;
-    BoundaryFinder finder(6, tol, max_iter, seed, A, b);
+    BoundaryFinder finder(6, tol, max_iter, rng, A, b);
     MatrixXd params = MatrixXd::Ones(n_init, 6) + MatrixXd::Random(n_init, 6);
     std::function<VectorXvar(const Ref<const VectorXvar>&)> func = project<var>;
     std::function<VectorXvar(const Ref<const VectorXvar>&, boost::random::mt19937&, LinearConstraints*)> mutate = add_delta<var>; 
@@ -93,6 +94,7 @@ void testBoundaryFinderProjectSimplified()
      * constrained to the 6-D cube of side length 2, with simplification
      */
     const unsigned seed = 1234567890;
+    boost::random::mt19937 rng(seed);
     const unsigned max_iter = 10;    // Maximum of 10 iterations 
     const double tol = 1e-5;         // Tolerance for convergence
     const unsigned n_init = 100;     // Initial number of parameter points
@@ -112,7 +114,7 @@ void testBoundaryFinderProjectSimplified()
           0.0,  0.0,  0.0,  0.0, -1.0,  0.0,
           0.0,  0.0,  0.0,  0.0,  0.0, -1.0;
     b << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0;
-    BoundaryFinder finder(6, tol, max_iter, seed, A, b);
+    BoundaryFinder finder(6, tol, max_iter, rng, A, b);
     MatrixXd params = MatrixXd::Ones(n_init, 6) + MatrixXd::Random(n_init, 6);
     std::function<VectorXvar(const Ref<const VectorXvar>&)> func = project<var>;
     std::function<VectorXvar(const Ref<const VectorXvar>&, boost::random::mt19937&, LinearConstraints*)> mutate = add_delta<var>; 
