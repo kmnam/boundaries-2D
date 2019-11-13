@@ -64,7 +64,7 @@ class BoundaryFinder
 
     public:
         BoundaryFinder(unsigned D, double area_tol, unsigned max_iter,
-                       unsigned seed, const Ref<const MatrixXd>& A,
+                       boost::random::mt19937& rng, const Ref<const MatrixXd>& A,
                        const Ref<const VectorXd>& b)
         {
             /*
@@ -75,7 +75,7 @@ class BoundaryFinder
             this->area_tol = area_tol;
             this->max_iter = max_iter;
             this->curr_area = 0.0;
-            this->rng.seed(seed);
+            this->rng = rng;
             this->constraints = new LinearConstraints(A, b);
         }
 
