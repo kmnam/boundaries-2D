@@ -2,7 +2,9 @@
 #define LINEAR_CONSTRAINTS_HPP
 
 #include <iostream>
+#include <fstream>
 #include <sstream>
+#include <string>
 #include <stdexcept>
 #include <Eigen/Dense>
 #include <CGAL/QP_models.h>
@@ -13,7 +15,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/10/2019
+ *     11/13/2019
  */
 using namespace Eigen;
 typedef CGAL::Gmpzf ET;
@@ -66,6 +68,8 @@ class LinearConstraints
                 throw std::invalid_argument(ss.str());
             }
             this->nearest_L2 = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
+
+            // Update quadratic program
             for (unsigned i = 0; i < this->N; ++i)
             {
                 for (unsigned j = 0; j < this->D; ++j)
@@ -88,10 +92,67 @@ class LinearConstraints
             delete this->nearest_L2;
         }
 
+        void parse(std::string polytope_file)
+        {
+            /*
+             * Given a file specifying a convex polytope in terms of 
+             * half-spaces (inequalities), read in the constraint matrix
+             * and vector. 
+             */
+            unsigned D = 0;
+            unsigned N = 0;
+            MatrixXd A(N, D);
+            VectorXd b(N);
+            
+            std::string line;
+            std::ifstream infile(polytope_file);
+            if (infile.is_open())
+            {
+                while (std::getline(infile, line))
+                {
+                    std::stringstream ss(line);
+                    std::string token;
+                    std::vector<double> row;
+                    N++;
+                    while (std::getline(ss, token, ' '))
+                        row.push_back(std::stod(token));
+                    if (D == 0) D = row.size() - 1;
+                    A.conservativeResize(N, D);
+                    b.conservativeResize(N);
+                    for (unsigned i = 1; i < row.size(); ++i)
+                        A(N-1, i-1) = row[i];
+                    b(N-1) = -row[0];
+                }
+                infile.close();
+            }
+            else
+                throw std::invalid_argument("Specified file does not exist");
+
+            // Update this->A, this->b, this->N, this->D 
+            this->A = A;
+            this->b = b;
+            this->N = N;
+            this->D = D;
+
+            // Update quadratic program
+            for (unsigned i = 0; i < this->N; ++i)
+            {
+                for (unsigned j = 0; j < this->D; ++j)
+                    this->nearest_L2->set_a(j, i, this->A(i,j));
+                this->nearest_L2->set_b(i, this->b(i));
+            }
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                this->nearest_L2->set_d(i, i, 2.0);
+                this->nearest_L2->set_c0(0.0);
+                this->nearest_L2->set_c(i, 0.0);
+            }
+        }
+
         void setAb(const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
         {
             /*
-             * Update this->A.
+             * Update this->A and this->b.
              */
             this->A = A;
             this->b = b;
@@ -104,6 +165,20 @@ class LinearConstraints
                    << this->A.rows() << "," << this->A.cols()
                    << ") vs. " << this->b.size() << std::endl;
                 throw std::invalid_argument(ss.str());
+            }
+
+            // Update quadratic program
+            for (unsigned i = 0; i < this->N; ++i)
+            {
+                for (unsigned j = 0; j < this->D; ++j)
+                    this->nearest_L2->set_a(j, i, this->A(i,j));
+                this->nearest_L2->set_b(i, this->b(i));
+            }
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                this->nearest_L2->set_d(i, i, 2.0);
+                this->nearest_L2->set_c0(0.0);
+                this->nearest_L2->set_c(i, 0.0);
             }
         }
 
