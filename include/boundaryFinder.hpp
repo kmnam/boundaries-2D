@@ -14,8 +14,6 @@
 #include <Eigen/Dense>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Vector_2.h>
-#include <autodiff/reverse/reverse.hpp>
-#include <autodiff/reverse/eigen.hpp>
 #include "boundaries.hpp"
 #include "linearConstraints.hpp"
 #include "SQP.hpp"
@@ -27,7 +25,6 @@
  *     11/13/2019
  */
 using namespace Eigen;
-using namespace autodiff;
 
 typedef CGAL::Exact_predicates_inexact_constructions_kernel    K;
 typedef K::Vector_2                                            Vector_2;
