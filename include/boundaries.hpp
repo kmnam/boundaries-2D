@@ -7,7 +7,6 @@
 #include <cmath>
 #include <limits>
 #include <vector>
-#include <queue>
 #include <unordered_set>
 #include <unordered_map>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
@@ -26,7 +25,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/12/2019
+ *     11/13/2019
  */
 
 // CGAL convenience typedefs, adapted from the CGAL docs
