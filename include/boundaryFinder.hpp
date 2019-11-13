@@ -14,6 +14,8 @@
 #include <Eigen/Dense>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Vector_2.h>
+#include <autodiff/reverse/reverse.hpp>
+#include <autodiff/reverse/eigen.hpp>
 #include "boundaries.hpp"
 #include "linearConstraints.hpp"
 #include "SQP.hpp"
@@ -22,13 +24,15 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/11/2019
+ *     11/13/2019
  */
 using namespace Eigen;
+using namespace autodiff;
 
 typedef CGAL::Exact_predicates_inexact_constructions_kernel    K;
 typedef K::Vector_2                                            Vector_2;
 
+template <typename DT>
 class BoundaryFinder 
 {
     /*
@@ -96,7 +100,7 @@ class BoundaryFinder
             this->constraints->setAb(A, b);
         }
 
-        void initialize(std::function<VectorXvar(const Ref<const VectorXvar>&)> func,
+        void initialize(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
                         const Ref<const MatrixXd>& params)
         {
             /*
@@ -111,20 +115,20 @@ class BoundaryFinder
                 // parameter point (if it satisfies the required constraints)
                 if (this->constraints->check(params.row(i).transpose()))
                 {
-                    VectorXvar y = func(params.row(i).cast<var>());
+                    Matrix<DT, Dynamic, 1> y = func(params.row(i).cast<DT>());
                     this->N++;
                     this->params.conservativeResize(this->N, this->D);
                     this->points.conservativeResize(this->N, 2);
                     this->params.row(this->N-1) = params.row(i);
-                    this->points.row(this->N-1) = y.cast<double>();
+                    this->points.row(this->N-1) = y.template cast<double>();
                 }
             }
             if (this->N == 0)
                 throw std::invalid_argument("No valid parameter values given");
         }
 
-        bool step(std::function<VectorXvar(const Ref<const VectorXvar>&)> func, 
-                  std::function<VectorXvar(const Ref<const VectorXvar>&, boost::random::mt19937&, LinearConstraints*)> mutate,
+        bool step(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func, 
+                  std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&, LinearConstraints*)> mutate,
                   const unsigned iter, const bool simplify, const bool verbose,
                   const std::string write_prefix = "")
         {
@@ -184,26 +188,26 @@ class BoundaryFinder
             {
                 // Evaluate the given function at a randomly generated 
                 // parameter point
-                VectorXvar p = this->params.row(this->vertices[i]).cast<var>();
-                VectorXvar q = mutate(p, this->rng, this->constraints);
-                VectorXvar z = func(q);
+                Matrix<DT, Dynamic, 1> p = this->params.row(this->vertices[i]).cast<DT>();
+                Matrix<DT, Dynamic, 1> q = mutate(p, this->rng, this->constraints);
+                Matrix<DT, Dynamic, 1> z = func(q);
                 
                 // Check that the mutation did not give rise to an already 
                 // computed point 
-                double mindist = (this->points.rowwise() - z.cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
+                double mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
                 if (mindist > 0)
                 {
                     this->N++;
                     this->params.conservativeResize(this->N, this->D);
                     this->points.conservativeResize(this->N, 2);
-                    this->params.row(this->N-1) = q.cast<double>();
-                    this->points.row(this->N-1) = z.cast<double>();
+                    this->params.row(this->N-1) = q.template cast<double>();
+                    this->points.row(this->N-1) = z.template cast<double>();
                 }
             }
             return false;
         }
 
-        bool pull(std::function<VectorXvar(const Ref<const VectorXvar>&)> func,
+        bool pull(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
                   const double delta, const double sqp_tol, const bool sqp_check_hessian_posdef,
                   const unsigned iter, const bool simplify, const bool verbose,
                   const bool sqp_verbose, const std::string write_prefix = "")
@@ -275,35 +279,35 @@ class BoundaryFinder
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
                 // Minimize the appropriate objective function
-                VectorXvar target = pulled.row(i).cast<var>();
-                std::function<var(const Ref<const VectorXvar>&)> obj = [func, target](const Ref<const VectorXvar>& x)
+                Matrix<DT, Dynamic, 1> target = pulled.row(i).cast<DT>();
+                std::function<DT(const Ref<const Matrix<DT, Dynamic, 1> >&)> obj = [func, target](const Ref<const Matrix<DT, Dynamic, 1> >& x)
                 {
                     return (target - func(x)).squaredNorm();
                 };
                 VectorXd x_init = this->params.row(this->vertices[i]);
                 VectorXd l_init = VectorXd::Ones(nc) - this->constraints->active(x_init).cast<double>();
-                VectorXvar xl_init(this->D + nc);
-                xl_init << x_init.cast<var>(), l_init.cast<var>();
+                Matrix<DT, Dynamic, 1> xl_init(this->D + nc);
+                xl_init << x_init.cast<DT>(), l_init.cast<DT>();
                 VectorXd q = optimizer->run(obj, xl_init, sqp_tol, sqp_check_hessian_posdef, sqp_verbose).head(this->D);
-                VectorXvar z = func(q.cast<var>());
+                Matrix<DT, Dynamic, 1> z = func(q.cast<DT>());
                 
                 // Check that the mutation did not give rise to an already 
                 // computed point
-                double mindist = (this->points.rowwise() - z.cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
+                double mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
                 if (mindist > 0)
                 {
                     this->N++;
                     this->params.conservativeResize(this->N, this->D);
                     this->points.conservativeResize(this->N, 2);
                     this->params.row(this->N-1) = q;
-                    this->points.row(this->N-1) = z.cast<double>();
+                    this->points.row(this->N-1) = z.template cast<double>();
                 }
             }
             return false;
         }
 
-        void run(std::function<VectorXvar(const Ref<const VectorXvar>&)> func,
-                 std::function<VectorXvar(const Ref<const VectorXvar>&, boost::random::mt19937&, LinearConstraints*)> mutate,
+        void run(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
+                 std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&, LinearConstraints*)> mutate,
                  const Ref<const MatrixXd>& params, const bool simplify,
                  const bool verbose, const std::string write_prefix = "")
         {
