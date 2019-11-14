@@ -90,11 +90,11 @@ class SQPOptimizer
 
         Matrix<DT, Dynamic, 1> step(std::function<DT(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
                                     const Ref<const Matrix<DT, Dynamic, 1> >& xl,
-                                    bool check_hessian_posdef, unsigned iter, bool verbose);
+                                    unsigned iter, bool verbose);
 
         VectorXd run(std::function<DT(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                     const Ref<const Matrix<DT, Dynamic, 1> >& xl_init, double tol,
-                     bool check_hessian_posdef, bool verbose)
+                     const Ref<const Matrix<DT, Dynamic, 1> >& xl_init,
+                     double tol, bool verbose)
         {
             /*
              *
@@ -111,7 +111,7 @@ class SQPOptimizer
             double delta = 2 * tol;
             while (i < this->max_iter && delta > tol)
             {
-                Matrix<DT, Dynamic, 1> xl_new = this->step(func, xl, check_hessian_posdef, i, verbose);
+                Matrix<DT, Dynamic, 1> xl_new = this->step(func, xl, i, verbose);
                 delta = (xl - xl_new).template cast<double>().norm();
                 i++;
                 xl = xl_new;
@@ -127,9 +127,10 @@ class SQPOptimizer
 template <>
 VectorXvar SQPOptimizer<autodiff::var>::step(std::function<autodiff::var(const Ref<const VectorXvar>&)> func,
                                              const Ref<const VectorXvar>& xl,
-                                             bool check_hessian_posdef,
                                              unsigned iter, bool verbose)
 {
+    // TODO Add an option for quasi-Newton Hessian approximation
+
     /*
      * Run one step of the SQP algorithm: 
      * 1) Given an input vector xl = (x,l) with this->D + this->N
@@ -153,7 +154,7 @@ VectorXvar SQPOptimizer<autodiff::var>::step(std::function<autodiff::var(const R
     // Evaluate the objective and the Lagrangian 
     VectorXvar x = xl.head(this->D);
     autodiff::var y = func(x);
-    autodiff::var L = lagrangian(func, xl);
+    autodiff::var L = this->lagrangian(func, xl);
 
     // Evaluate the gradient of the objective
     VectorXd dy = autodiff::gradient(y, x);
@@ -162,29 +163,25 @@ VectorXvar SQPOptimizer<autodiff::var>::step(std::function<autodiff::var(const R
     // the input space) 
     MatrixXd d2L = autodiff::hessian(L, xl).block(0, 0, this->D, this->D);
 
-    // If desired, check that the Hessian is positive definite
-    // with the Cholesky decomposition
-    if (check_hessian_posdef)
-    {
-        LLT<MatrixXd> decomp(d2L);
-        bool hessian_posdef = (decomp.info() == Success);
+    // Check that the Hessian is positive definite with the Cholesky decomposition
+    LLT<MatrixXd> decomp(d2L);
+    bool hessian_posdef = (decomp.info() == Success);
 
-        // If the Hessian is not positive definite, follow the 
-        // prescription by Nocedal & Wright (Alg.3.3, p.51) by
-        // adding successive multiples of the identity
-        double beta = 1e-3;
-        double tau = 0.0;
-        unsigned num_updates = 0;
-        while (!hessian_posdef) // TODO Make this customizable
-        {
-            if (tau == 0.0)
-                tau = std::abs(d2L.diagonal().minCoeff()) + beta;
-            else
-                tau *= 2.0;
-            d2L += tau * MatrixXd::Identity(this->D, this->D);
-            decomp.compute(d2L);
-            hessian_posdef = (decomp.info() == Success);
-        }
+    // If the Hessian is not positive definite, follow the 
+    // prescription by Nocedal & Wright (Alg.3.3, p.51) by
+    // adding successive multiples of the identity
+    double beta = 1e-3;
+    double tau = 0.0;
+    unsigned num_updates = 0;
+    while (!hessian_posdef) // TODO Make this customizable
+    {
+        if (tau == 0.0)
+            tau = std::abs(d2L.diagonal().minCoeff()) + beta;
+        else
+            tau *= 2.0;
+        d2L += tau * MatrixXd::Identity(this->D, this->D);
+        decomp.compute(d2L);
+        hessian_posdef = (decomp.info() == Success);
     }
 
     // Evaluate the constraints and their gradients
