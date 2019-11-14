@@ -74,8 +74,6 @@ MatrixXd modify(const Ref<const MatrixXd>& A)
     // Check that A is positive definite with the Cholesky decomposition
     LLT<MatrixXd> dec(A);
     bool posdef = (dec.info() == Success);
-    if (posdef) std::cout << "positive definite\n";
-    else        std::cout << "not positive definite\n";
 
     // TODO Make this customizable
     MatrixXd B(A);
@@ -371,6 +369,9 @@ StepData<autodiff::var> SQPOptimizer<autodiff::var>::step(std::function<autodiff
     // the input space)
     VectorXvar x_new = xl_new.head(this->D);
     VectorXd df_new = this->func_with_gradient(func, x_new).second;
+    VectorXvar xl_mixed(xl);
+    xl_mixed.tail(this->N) = xl_new.tail(this->N);
+    std::pair<autodiff::var, VectorXd> lagr_mixed = this->lagrangian_with_gradient(func, xl_mixed);
     std::pair<autodiff::var, VectorXd> lagr_new = this->lagrangian_with_gradient(func, xl_new);
     autodiff::var L_new = lagr_new.first;
     VectorXd dL_new = lagr_new.second.head(this->D);
@@ -384,26 +385,16 @@ StepData<autodiff::var> SQPOptimizer<autodiff::var>::step(std::function<autodiff
 
         case BFGS:
             s = (x_new - x).cast<double>();
+            dL = lagr_mixed.second.head(this->D);
             y = dL_new - dL; 
             d2L_new = modify(updateBFGS<double>(d2L, s, y));
             break;
 
-        case BFGS_INVERSE:
-            s = (x_new - x).cast<double>();
-            y = dL_new - dL; 
-            d2L_new = modify(updateBFGSInv<double>(d2L, s, y));
-            break;
-
         case SR1:
             s = (x_new - x).cast<double>();
+            dL = lagr_mixed.second.head(this->D);
             y = dL_new - dL; 
             d2L_new = modify(updateSR1<double>(d2L, s, y));
-            break;
-
-        case SR1_INVERSE:
-            s = (x_new - x).cast<double>();
-            y = dL_new - dL; 
-            d2L_new = modify(updateSR1Inv<double>(d2L, s, y));
             break;
 
         default:
