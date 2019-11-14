@@ -4,25 +4,97 @@
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
+#include <cmath>
 #include <Eigen/Dense>
 #include <CGAL/QP_models.h>
 #include <CGAL/QP_functions.h>
 #include <autodiff/reverse/reverse.hpp>
 #include <autodiff/reverse/eigen.hpp>
 #include "linearConstraints.hpp"
+#include "quasiNewton.hpp"
 
 /*
+ * An implementation of a nonlinear optimizer with respect to linear 
+ * constraints with sequential quadratic programming (SQP) with automatic
+ * differentiation and/or quasi-Newton Hessian approximations. 
+ *
  * Authors: 
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/13/2019
+ *     11/14/2019
  */
 using namespace Eigen;
 typedef CGAL::Gmpzf ET;
 typedef CGAL::Quadratic_program<double> Program;
 typedef CGAL::Quadratic_program_solution<ET> Solution;
 
-template <typename DT>
+enum QuasiNewtonMethod
+{
+    NONE,
+    BFGS,
+    BFGS_INVERSE,
+    BFGS_CHOLESKY,
+    SR1,
+    SR1_INVERSE
+};
+
+template <typename T>
+struct StepData
+{
+    public:
+        Matrix<T, Dynamic, 1> xl;
+        VectorXd df;
+        VectorXd dL;
+        MatrixXd d2L;
+
+        StepData()
+        {
+            /*
+             * Empty constructor.
+             */
+        }
+
+        ~StepData()
+        {
+            /*
+             * Empty destructor.
+             */
+        }
+};
+
+MatrixXd modify(const Ref<const MatrixXd>& A)
+{
+    /*
+     * Following the prescription of Nocedal and Wright (Algorithm 3.3, p.51), 
+     * add successive multiples of the identity until the given matrix is 
+     * positive-definite.
+     *
+     * The input matrix is assumed to be symmetric. 
+     */
+    // Check that A is positive definite with the Cholesky decomposition
+    LLT<MatrixXd> dec(A);
+    bool posdef = (dec.info() == Success);
+    if (posdef) std::cout << "positive definite\n";
+    else        std::cout << "not positive definite\n";
+
+    // TODO Make this customizable
+    MatrixXd B(A);
+    double tau = 0.0;
+    while (!posdef)
+    {
+        double beta = 1e-3;
+        if (tau == 0.0)
+            tau = B.cwiseAbs().diagonal().minCoeff() + beta;
+        else
+            tau *= 2.0;
+        B += tau * MatrixXd::Identity(B.rows(), B.cols());
+        dec.compute(B);
+        posdef = (dec.info() == Success);
+    }
+    return B;
+}
+
+template <typename T>
 class SQPOptimizer
 {
     /*
@@ -33,20 +105,18 @@ class SQPOptimizer
     private:
         unsigned D;                        // Dimension of input space
         unsigned N;                        // Number of constraints 
-        unsigned max_iter;                 // Maximum number of iterations 
         LinearConstraints* constraints;    // Linear inequality constraints
         Program* program;                  // Internal quadratic program to be solved at each step
 
     public:
-        SQPOptimizer(unsigned D, unsigned N, unsigned max_iter,
-                     const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
+        SQPOptimizer(unsigned D, unsigned N, const Ref<const MatrixXd>& A,
+                     const Ref<const VectorXd>& b)
         {
             /*
              * Straightforward constructor.
              */
             this->D = D;
             this->N = N;
-            this->max_iter = max_iter;
             if (A.rows() != this->N || A.cols() != this->D || b.size() != this->N)
                 throw std::invalid_argument("Invalid input matrix dimensions");
             this->constraints = new LinearConstraints(A, b);
@@ -72,8 +142,14 @@ class SQPOptimizer
             this->constraints = new LinearConstraints(A, b);
         }
 
-        DT lagrangian(std::function<DT(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                       const Ref<const Matrix<DT, Dynamic, 1> >& xl)
+        VectorXd gradient(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
+                          const Ref<const Matrix<T, Dynamic, 1> >& x);
+
+        std::pair<T, VectorXd> func_with_gradient(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
+                                                  const Ref<const Matrix<T, Dynamic, 1> >& x); 
+
+        T lagrangian(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
+                     const Ref<const Matrix<T, Dynamic, 1> >& xl)
         {
             /*
              * Given a vector xl of dimension D + N, whose first D coordinates
@@ -81,23 +157,28 @@ class SQPOptimizer
              * coordinates specify the values of the Lagrange multipliers,
              * evaluate the Lagrangian of the objective function. 
              */
-            Matrix<DT, Dynamic, 1> x = xl.head(this->D);
-            Matrix<DT, Dynamic, 1> l = xl.tail(this->N);
-            Matrix<DT, Dynamic, Dynamic> A = this->constraints->getA().cast<DT>();
-            Matrix<DT, Dynamic, 1> b = this->constraints->getb().cast<DT>();
+            Matrix<T, Dynamic, 1> x = xl.head(this->D);
+            Matrix<T, Dynamic, 1> l = xl.tail(this->N);
+            Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().cast<T>();
+            Matrix<T, Dynamic, 1> b = this->constraints->getb().cast<T>();
             return func(x) - l.dot(A * x - b);
         }
 
-        Matrix<DT, Dynamic, 1> step(std::function<DT(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                                    const Ref<const Matrix<DT, Dynamic, 1> >& xl,
-                                    unsigned iter, bool verbose);
+        std::pair<T, VectorXd> lagrangian_with_gradient(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
+                                                        const Ref<const Matrix<T, Dynamic, 1> >& xl);
 
-        VectorXd run(std::function<DT(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                     const Ref<const Matrix<DT, Dynamic, 1> >& xl_init,
-                     double tol, bool verbose)
+        StepData<T> step(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
+                                         const unsigned iter, const QuasiNewtonMethod quasi_newton,
+                                         const StepData<T> prev_data, const bool verbose);
+
+        VectorXd run(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
+                     const Ref<const Matrix<T, Dynamic, 1> >& xl_init,
+                     const unsigned max_iter, const double tol,
+                     const QuasiNewtonMethod quasi_newton, const bool verbose)
         {
             /*
-             *
+             * Run the optimization with the given objective, initial vector,
+             * and settings.   
              */
             // Print the input vector and value of the objective function
             if (verbose)
@@ -106,17 +187,37 @@ class SQPOptimizer
                           << "; " << "f(x) = " << func(xl_init.head(this->D)) << std::endl; 
             }
 
-            Matrix<DT, Dynamic, 1> xl(xl_init);
+            // Evaluate the objective and its gradient
+            VectorXvar x = xl_init.head(this->D);
+            std::pair<T, VectorXd> grad = this->func_with_gradient(func, x);
+            T f = grad.first;
+            VectorXd df = grad.second;
+            
+            // Evaluate the Lagrangian and its gradient
+            std::pair<T, VectorXd> lagr = this->lagrangian_with_gradient(func, xl_init);
+            T L = lagr.first;
+            VectorXd dL = lagr.second.head(this->D);
+
+            // Collect current objective, gradient, and Hessian information
+            StepData<T> curr_data;
+            curr_data.xl = xl_init;
+            curr_data.df = df;
+            curr_data.dL = dL;
+            curr_data.d2L = MatrixXd::Identity(this->D, this->D);
+
             unsigned i = 0;
             double delta = 2 * tol;
-            while (i < this->max_iter && delta > tol)
+            while (i < max_iter && delta > tol)
             {
-                Matrix<DT, Dynamic, 1> xl_new = this->step(func, xl, i, verbose);
-                delta = (xl - xl_new).template cast<double>().norm();
+                StepData<T> next_data = this->step(func, i, quasi_newton, curr_data, verbose); 
+                delta = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).template cast<double>().norm();
                 i++;
-                xl = xl_new;
+                curr_data.xl = next_data.xl;
+                curr_data.df = next_data.df;
+                curr_data.dL = next_data.dL;
+                curr_data.d2L = next_data.d2L;
             }
-            return xl.template cast<double>();
+            return curr_data.xl.head(this->D).template cast<double>();
         }
 };
 
@@ -125,12 +226,43 @@ class SQPOptimizer
 //             FORWARD AND REVERSE MODE AUTODIFF               //
 // ----------------------------------------------------------- //
 template <>
-VectorXvar SQPOptimizer<autodiff::var>::step(std::function<autodiff::var(const Ref<const VectorXvar>&)> func,
-                                             const Ref<const VectorXvar>& xl,
-                                             unsigned iter, bool verbose)
+std::pair<autodiff::var, VectorXd>
+    SQPOptimizer<autodiff::var>::func_with_gradient(std::function<autodiff::var(const Ref<const VectorXvar>&)> func,
+                                                    const Ref<const VectorXvar>& x)
 {
-    // TODO Add an option for quasi-Newton Hessian approximation
+    /*
+     * Compute the given function and its gradient at the given vector.
+     */
+    autodiff::var f = func(x);
+    VectorXd df = autodiff::gradient(f, x);
+    return std::make_pair(f, df);
+}
 
+template <>
+std::pair<autodiff::var, VectorXd>
+    SQPOptimizer<autodiff::var>::lagrangian_with_gradient(std::function<autodiff::var(const Ref<const VectorXvar>&)> func,
+                                                          const Ref<const VectorXvar>& xl)
+{
+    /*
+     * Compute the Lagrangian of the given function and its gradient at
+     * the given vector.
+     */
+    VectorXvar x = xl.head(this->D);
+    VectorXvar l = xl.tail(this->N);
+    MatrixXvar A = this->constraints->getA().cast<autodiff::var>();
+    VectorXvar b = this->constraints->getb().cast<autodiff::var>();
+    autodiff::var L = func(x) - l.dot(A * x - b);
+    VectorXd dL = autodiff::gradient(L, xl);
+    return std::make_pair(L, dL);
+} 
+
+template <>
+StepData<autodiff::var> SQPOptimizer<autodiff::var>::step(std::function<autodiff::var(const Ref<const VectorXvar>&)> func,
+                                                          const unsigned iter,
+                                                          const QuasiNewtonMethod quasi_newton,
+                                                          StepData<autodiff::var> prev_data,
+                                                          const bool verbose)
+{
     /*
      * Run one step of the SQP algorithm: 
      * 1) Given an input vector xl = (x,l) with this->D + this->N
@@ -138,6 +270,7 @@ VectorXvar SQPOptimizer<autodiff::var>::step(std::function<autodiff::var(const R
      * 2) Compute the Lagrangian, L(x,l) = f(x) - l.T * A * x, where
      *    A is the constraint matrix, and its Hessian matrix of 
      *    second derivatives w.r.t. x.
+     *    - Use a quasi-Newton method to compute the Hessian if desired.
      *    - If the Hessian is not positive definite, perturb by 
      *      a small multiple of the identity until it is positive
      *      definite. 
@@ -147,42 +280,11 @@ VectorXvar SQPOptimizer<autodiff::var>::step(std::function<autodiff::var(const R
      *    satisfies the constraints of the original problem, and 
      *    output the new vector.
      */
-    // Check input vector dimensions
-    if (xl.size() != this->D + this->N)
-        throw std::invalid_argument("Invalid input vector dimensions");
-
-    // Evaluate the objective and the Lagrangian 
+    VectorXvar xl = prev_data.xl;
     VectorXvar x = xl.head(this->D);
-    autodiff::var y = func(x);
-    autodiff::var L = this->lagrangian(func, xl);
-
-    // Evaluate the gradient of the objective
-    VectorXd dy = autodiff::gradient(y, x);
-
-    // Evaluate the Hessian of the Lagrangian (with respect to 
-    // the input space) 
-    MatrixXd d2L = autodiff::hessian(L, xl).block(0, 0, this->D, this->D);
-
-    // Check that the Hessian is positive definite with the Cholesky decomposition
-    LLT<MatrixXd> decomp(d2L);
-    bool hessian_posdef = (decomp.info() == Success);
-
-    // If the Hessian is not positive definite, follow the 
-    // prescription by Nocedal & Wright (Alg.3.3, p.51) by
-    // adding successive multiples of the identity
-    double beta = 1e-3;
-    double tau = 0.0;
-    unsigned num_updates = 0;
-    while (!hessian_posdef) // TODO Make this customizable
-    {
-        if (tau == 0.0)
-            tau = std::abs(d2L.diagonal().minCoeff()) + beta;
-        else
-            tau *= 2.0;
-        d2L += tau * MatrixXd::Identity(this->D, this->D);
-        decomp.compute(d2L);
-        hessian_posdef = (decomp.info() == Success);
-    }
+    VectorXd df = prev_data.df;
+    VectorXd dL = prev_data.dL;
+    MatrixXd d2L = prev_data.d2L;
 
     // Evaluate the constraints and their gradients
     MatrixXd A = this->constraints->getA();
@@ -195,7 +297,7 @@ VectorXvar SQPOptimizer<autodiff::var>::step(std::function<autodiff::var(const R
         {
             this->program->set_d(i, j, d2L(i,j)); 
         }
-        this->program->set_c(i, dy(i));
+        this->program->set_c(i, df(i));
     }
     for (unsigned i = 0; i < this->N; ++i)
     {
@@ -265,8 +367,56 @@ VectorXvar SQPOptimizer<autodiff::var>::step(std::function<autodiff::var(const R
                   << "; " << "f(x) = " << func(xl_new.head(this->D)) << std::endl; 
     }
 
-    // Return the new value
-    return xl_new;
+    // Evaluate the Hessian of the Lagrangian (with respect to 
+    // the input space)
+    VectorXvar x_new = xl_new.head(this->D);
+    VectorXd df_new = this->func_with_gradient(func, x_new).second;
+    std::pair<autodiff::var, VectorXd> lagr_new = this->lagrangian_with_gradient(func, xl_new);
+    autodiff::var L_new = lagr_new.first;
+    VectorXd dL_new = lagr_new.second.head(this->D);
+    MatrixXd d2L_new;
+    VectorXd s, y; 
+    switch (quasi_newton)
+    {
+        case NONE:
+            d2L_new = modify(autodiff::hessian(L_new, xl_new).block(0, 0, this->D, this->D));
+            break;
+
+        case BFGS:
+            s = (x_new - x).cast<double>();
+            y = dL_new - dL; 
+            d2L_new = modify(updateBFGS<double>(d2L, s, y));
+            break;
+
+        case BFGS_INVERSE:
+            s = (x_new - x).cast<double>();
+            y = dL_new - dL; 
+            d2L_new = modify(updateBFGSInv<double>(d2L, s, y));
+            break;
+
+        case SR1:
+            s = (x_new - x).cast<double>();
+            y = dL_new - dL; 
+            d2L_new = modify(updateSR1<double>(d2L, s, y));
+            break;
+
+        case SR1_INVERSE:
+            s = (x_new - x).cast<double>();
+            y = dL_new - dL; 
+            d2L_new = modify(updateSR1Inv<double>(d2L, s, y));
+            break;
+
+        default:
+            break;
+    } 
+
+    // Return the new data
+    StepData<autodiff::var> new_data;
+    new_data.xl = xl_new;
+    new_data.df = df_new;
+    new_data.dL = dL_new;
+    new_data.d2L = d2L_new;
+    return new_data;
 }
 
 #endif 
