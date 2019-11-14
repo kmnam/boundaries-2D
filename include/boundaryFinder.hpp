@@ -269,7 +269,7 @@ class BoundaryFinder
             unsigned nc = A.rows();
 
             // Define an SQPOptimizer instance to be utilized 
-            SQPOptimizer* optimizer = new SQPOptimizer(this->D, nc, max_iter, A, b);
+            SQPOptimizer<DT>* optimizer = new SQPOptimizer<DT>(this->D, nc, max_iter, A, b);
 
             // For each vertex in the boundary, minimize the distance to the
             // pulled vertex with a feasible parameter point
