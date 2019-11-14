@@ -205,9 +205,9 @@ class BoundaryFinder
         }
 
         bool pull(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                  const double delta, const double sqp_tol, const bool sqp_check_hessian_posdef,
-                  const unsigned iter, const bool simplify, const bool verbose,
-                  const bool sqp_verbose, const std::string write_prefix = "")
+                  const double delta, const double sqp_tol, const unsigned iter,
+                  const bool simplify, const bool verbose, const bool sqp_verbose,
+                  const std::string write_prefix = "")
         {
             /*
              *
@@ -277,7 +277,7 @@ class BoundaryFinder
             {
                 // Minimize the appropriate objective function
                 Matrix<DT, Dynamic, 1> target = pulled.row(i).cast<DT>();
-                std::function<DT(const Ref<const Matrix<DT, Dynamic, 1> >&)> obj = [func, target](const Ref<const Matrix<DT, Dynamic, 1> >& x)
+                auto obj = [func, target](const Ref<const Matrix<DT, Dynamic, 1> >& x)
                 {
                     return (target - func(x)).squaredNorm();
                 };
@@ -285,7 +285,7 @@ class BoundaryFinder
                 VectorXd l_init = VectorXd::Ones(nc) - this->constraints->active(x_init).cast<double>();
                 Matrix<DT, Dynamic, 1> xl_init(this->D + nc);
                 xl_init << x_init.cast<DT>(), l_init.cast<DT>();
-                VectorXd q = optimizer->run(obj, xl_init, sqp_tol, sqp_check_hessian_posdef, sqp_verbose).head(this->D);
+                VectorXd q = optimizer->run(obj, xl_init, sqp_tol, sqp_verbose).head(this->D);
                 Matrix<DT, Dynamic, 1> z = func(q.cast<DT>());
                 
                 // Check that the mutation did not give rise to an already 
@@ -325,7 +325,7 @@ class BoundaryFinder
             }
 
             // Try pulling once
-            terminate = this->pull(func, 0.1, 1e-5, true, i, simplify, verbose, false, write_prefix);
+            terminate = this->pull(func, 0.1, 1e-5, i, simplify, verbose, false, write_prefix);
             i++;
 
             // Compute the boundary one last time if the algorithm did not terminate
