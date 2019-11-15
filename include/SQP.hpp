@@ -135,27 +135,8 @@ class SQPOptimizer
             this->constraints = new LinearConstraints(A, b);
         }
 
-        VectorXd gradient(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
-                          const Ref<const Matrix<T, Dynamic, 1> >& x);
-
         std::pair<T, VectorXd> func_with_gradient(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                                                   const Ref<const Matrix<T, Dynamic, 1> >& x); 
-
-        T lagrangian(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
-                     const Ref<const Matrix<T, Dynamic, 1> >& xl)
-        {
-            /*
-             * Given a vector xl of dimension D + N, whose first D coordinates
-             * specify the values of the input space and the latter N
-             * coordinates specify the values of the Lagrange multipliers,
-             * evaluate the Lagrangian of the objective function. 
-             */
-            Matrix<T, Dynamic, 1> x = xl.head(this->D);
-            Matrix<T, Dynamic, 1> l = xl.tail(this->N);
-            Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().cast<T>();
-            Matrix<T, Dynamic, 1> b = this->constraints->getb().cast<T>();
-            return func(x) - l.dot(A * x - b);
-        }
 
         std::pair<T, VectorXd> lagrangian_with_gradient(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                                                         const Ref<const Matrix<T, Dynamic, 1> >& xl);
@@ -281,6 +262,10 @@ StepData<autodiff::var> SQPOptimizer<autodiff::var>::step(std::function<autodiff
     VectorXd df = prev_data.df;
     VectorXd dL = prev_data.dL;
     MatrixXd d2L = prev_data.d2L;
+
+    // If any of the components have a non-finite coordinate, return as is
+    if (!x.cast<double>().array().isFinite().all() || !df.array().isFinite().all() || !dL.array().isFinite().all() || !d2L.array().isFinite().all())
+        return prev_data;
 
     // Evaluate the constraints and their gradients
     MatrixXd A = this->constraints->getA();
@@ -481,6 +466,10 @@ StepData<DualNumber> SQPOptimizer<DualNumber>::step(std::function<DualNumber(con
     VectorXd df = prev_data.df;
     VectorXd dL = prev_data.dL;
     MatrixXd d2L = prev_data.d2L;
+
+    // If any of the components have a non-finite coordinate, return as is
+    if (!x.cast<double>().array().isFinite().all() || !df.array().isFinite().all() || !dL.array().isFinite().all() || !d2L.array().isFinite().all())
+        return prev_data;
 
     // Evaluate the constraints and their gradients
     MatrixXd A = this->constraints->getA();
