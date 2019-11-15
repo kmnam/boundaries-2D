@@ -341,7 +341,7 @@ DualNumber operator-(const double v, const DualNumber& w)
     /*
      * Return the difference between v and w.
      */
-    return DualNumber(v - w.x(), w.d());
+    return DualNumber(v - w.x(), -w.d());
 }
 
 DualNumber operator*(const double v, const DualNumber& w)
@@ -350,6 +350,16 @@ DualNumber operator*(const double v, const DualNumber& w)
      * Return the product of v and w.
      */
     return DualNumber(v * w.x(), v * w.d());
+}
+
+DualNumber operator/(const double v, const DualNumber& w)
+{
+    /*
+     * Return the quotient of v and w.
+     */
+    if (w.x() == 0)
+        throw std::domain_error("Division by zero");
+    return DualNumber(v / w.x(), -(v * w.d()) / (w.x() * w.x()));
 }
 
 bool operator==(const double v, const DualNumber& w)
@@ -398,16 +408,6 @@ bool operator>=(const double v, const DualNumber& w)
      * Greater-than-or-equal-to operator against double (with DualNumber on right-hand side).
      */
     return (v >= w.x());
-}
-
-DualNumber operator/(const double v, const DualNumber& w)
-{
-    /*
-     * Return the quotient of v and w.
-     */
-    if (w.x() == 0)
-        throw std::domain_error("Division by zero");
-    return DualNumber(v / w.x(), -(v * w.d()) / (w.x() * w.x()));
 }
 
 DualNumber pow(const DualNumber& v, const double p)
