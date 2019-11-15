@@ -8,12 +8,12 @@
 #include "../../include/SQP.hpp"
 
 /*
- * Test module for the SQPOptimizer class.
+ * Test module for the SQPOptimizer class with reverse-mode variables.
  *
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/13/2019
+ *     11/14/2019
  */
 using namespace Eigen;
 

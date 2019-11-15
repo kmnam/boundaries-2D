@@ -4,6 +4,8 @@
 #include <functional>
 #include <boost/random.hpp>
 #include <Eigen/Dense>
+#include <autodiff/reverse/reverse.hpp>
+#include <autodiff/reverse/eigen.hpp>
 #include "../../include/boundaryFinder.hpp"
 #include "../../include/linearConstraints.hpp"
 
@@ -11,14 +13,15 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/11/2019
+ *     11/13/2019
  */
 using namespace Eigen;
-boost::random::uniform_int_distribution<> dist(0, 1);
+
+boost::random::uniform_int_distribution<> fair_bernoulli_dist(0, 1);
 
 int coin_toss(boost::random::mt19937& rng)
 {
-    return dist(rng);
+    return fair_bernoulli_dist(rng);
 }
 
 // -------------------------------------------------------- //
@@ -80,11 +83,9 @@ void testBoundaryFinderProject()
           0.0,  0.0,  0.0,  0.0, -1.0,  0.0,
           0.0,  0.0,  0.0,  0.0,  0.0, -1.0;
     b << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0;
-    BoundaryFinder finder(6, tol, max_iter, rng, A, b);
+    BoundaryFinder<autodiff::var> finder(6, tol, max_iter, rng, A, b);
     MatrixXd params = MatrixXd::Ones(n_init, 6) + MatrixXd::Random(n_init, 6);
-    std::function<VectorXvar(const Ref<const VectorXvar>&)> func = project<var>;
-    std::function<VectorXvar(const Ref<const VectorXvar>&, boost::random::mt19937&, LinearConstraints*)> mutate = add_delta<var>; 
-    finder.run(func, mutate, params, false, true, "project");
+    finder.run(project<autodiff::var>, add_delta<autodiff::var>, params, false, true, "project");
 }
 
 void testBoundaryFinderProjectSimplified()
@@ -114,11 +115,9 @@ void testBoundaryFinderProjectSimplified()
           0.0,  0.0,  0.0,  0.0, -1.0,  0.0,
           0.0,  0.0,  0.0,  0.0,  0.0, -1.0;
     b << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0;
-    BoundaryFinder finder(6, tol, max_iter, rng, A, b);
+    BoundaryFinder<autodiff::var> finder(6, tol, max_iter, rng, A, b);
     MatrixXd params = MatrixXd::Ones(n_init, 6) + MatrixXd::Random(n_init, 6);
-    std::function<VectorXvar(const Ref<const VectorXvar>&)> func = project<var>;
-    std::function<VectorXvar(const Ref<const VectorXvar>&, boost::random::mt19937&, LinearConstraints*)> mutate = add_delta<var>; 
-    finder.run(func, mutate, params, true, true, "project-simplified");
+    finder.run(project<autodiff::var>, add_delta<autodiff::var>, params, true, true, "project-simplified");
 }
 
 int main()
