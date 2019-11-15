@@ -7,7 +7,7 @@
 #include <Eigen/Dense>
 #include <CGAL/QP_models.h>
 #include <CGAL/QP_functions.h>
-#include <autodiff/forward/forward.hpp>
+#include <autodiff/forward.hpp>
 #include <autodiff/forward/eigen.hpp>
 #include "linearConstraints.hpp"
 #include "quasiNewton.hpp"
@@ -33,7 +33,7 @@ std::pair<autodiff::dual, VectorXd>
      * Compute the given function and its gradient at the given vector.
      */
     autodiff::dual f;
-    VectorXd df = autodiff::gradient(func, autodiff::wrt(x), autodiff::at(x), f);
+    VectorXd df = autodiff::forward::gradient(func, autodiff::forward::wrt(x), autodiff::forward::at(x), f);
     return std::make_pair(f, df);
 }
 
@@ -51,7 +51,9 @@ std::pair<autodiff::dual, VectorXd>
     MatrixXdual A = this->constraints->getA().cast<autodiff::dual>();
     VectorXdual b = this->constraints->getb().cast<autodiff::dual>();
     autodiff::dual L;
-    VectorXd dL = autodiff::gradient([l, A, b](VectorXdual a){ func(a) - l.dot(A * a - b); }, autodiff::wrt(x), autodiff::at(x), L);
+    VectorXd dL = autodiff::forward::gradient(
+        [func, l, A, b](const VectorXdual& a){ func(a) - l.dot(A * a - b); }, autodiff::forward::wrt(x), autodiff::forward::at(x), L
+    );
     return std::make_pair(L, dL);
 } 
 
