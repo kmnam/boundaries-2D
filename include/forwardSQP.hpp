@@ -15,6 +15,10 @@
 /*
  * Class template specialization of SQPOptimizer for forward-mode variables.
  *
+ * NOTE: Any code that instantiates SQPOptimizer<autodiff::dual> is not
+ * expected to compile until issues related to metaprogramming in autodiff
+ * are resolved (https://github.com/autodiff/autodiff/issues/62).
+ *
  * Authors: 
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
