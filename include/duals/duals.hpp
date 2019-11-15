@@ -93,6 +93,22 @@ class DualNumber
             return *this;
         }
 
+        bool operator==(const DualNumber& v) const
+        {
+            /*
+             * Equality operator.
+             */
+            return (this->x_ == v.x() && this->d_ == v.d());
+        }
+
+        bool operator!=(const DualNumber& v) const
+        {
+            /*
+             * Inequality operator.
+             */
+            return (this->x_ != v.x() || this->x_ != v.d());
+        }
+
         DualNumber operator+(const DualNumber& v) const
         {
             /*
@@ -125,6 +141,40 @@ class DualNumber
             if (v.x() == 0)
                 throw std::domain_error("Division by zero");
             return DualNumber(this->x_ / v.x(), (this->d_ * v.x() - this->x_ * v.d()) / (v.x() * v.x()));
+        }
+
+        DualNumber operator+(const double v) const
+        {
+            /*
+             * Return the result of adding v.
+             */
+            return DualNumber(this->x_ + v, this->d_);
+        }
+
+        DualNumber operator-(const double v) const
+        {
+            /*
+             * Return the result of subtracting v.
+             */
+            return DualNumber(this->x_ - v, this->d_);
+        }
+
+        DualNumber operator*(const double v) const
+        {
+            /*
+             * Return the result of multiplying by v.
+             */
+            return DualNumber(this->x_ * v, this->d_);
+        }
+
+        DualNumber operator/(const double v) const
+        {
+            /*
+             * Return the result of dividing by v.
+             */
+            if (v == 0)
+                throw std::domain_error("Division by zero");
+            return DualNumber(this->x_ / v, this->d_);
         }
 
         DualNumber& operator+=(const DualNumber& v)
@@ -168,6 +218,56 @@ class DualNumber
             this->d_ = (this->d_ * v.x() - this->x_ * v.d()) / (v.x() * v.x());
             return *this;
         }
+
+        DualNumber& operator+=(const double v)
+        {
+            /*
+             * In-place addition by v.
+             */
+            this->x_ += v;
+            return *this;
+        }
+
+        DualNumber& operator-=(const double v)
+        {
+            /*
+             * In-place subtraction by v.
+             */
+            this->x_ -= v;
+            return *this;
+        }
+
+        DualNumber& operator*=(const double v)
+        {
+            /*
+             * In-place multiplication by v.
+             */
+            this->x_ *= v;
+            this->d_ *= v;
+            return *this;
+        }
+
+        DualNumber& operator/=(const double v)
+        {
+            /*
+             * In-place division by v.
+             */
+            if (v == 0)
+                throw std::domain_error("Division by zero");
+            this->x_ /= v;
+            this->d_ /= v;
+            return *this;
+        }
+
+        operator double() const
+        {
+            /*
+             * Conversion to double.
+             */
+            return this->x_;
+        }
+
+        friend std::ostream& operator<<(std::ostream& stream, const DualNumber& v);
 };
 
 int sign(double x)
@@ -178,6 +278,40 @@ int sign(double x)
     if (x > 0)      return 1;
     else if (x < 0) return -1;
     else            return 0;
+}
+
+DualNumber operator+(const double v, const DualNumber& w)
+{
+    /*
+     * Return the sum of v and w.
+     */
+    return DualNumber(v + w.x(), w.d());
+}
+
+DualNumber operator-(const double v, const DualNumber& w)
+{
+    /*
+     * Return the difference between v and w.
+     */
+    return DualNumber(v - w.x(), w.d());
+}
+
+DualNumber operator*(const double v, const DualNumber& w)
+{
+    /*
+     * Return the product of v and w.
+     */
+    return DualNumber(v * w.x(), v * w.d());
+}
+
+DualNumber operator/(const double v, const DualNumber& w)
+{
+    /*
+     * Return the quotient of v and w.
+     */
+    if (w.x() == 0)
+        throw std::domain_error("Division by zero");
+    return DualNumber(v / w.x(), -(v * w.d()) / (w.x() * w.x()));
 }
 
 DualNumber pow(const DualNumber& v, const double p)
@@ -274,6 +408,15 @@ DualNumber abs2(const DualNumber& v)
      * Return v squared.
      */
     return DualNumber(v.x() * v.x(), 2 * v.x() * v.d());
+}
+
+std::ostream& operator<<(std::ostream& stream, const DualNumber& v)
+{
+    /*
+     * Output the real part of v to the stream. 
+     */
+    stream << v.x();
+    return stream;
 }
 
 }   // namespace Duals
