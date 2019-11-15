@@ -109,6 +109,54 @@ class DualNumber
             return (this->x_ != v.x() || this->x_ != v.d());
         }
 
+        bool operator==(const double v) const
+        {
+            /*
+             * Equality operator against double.
+             */
+            return (this->x_ == v);
+        }
+
+        bool operator!=(const double v) const
+        {
+            /*
+             * Inequality operator against double.
+             */
+            return (this->x_ != v);
+        }
+
+        bool operator<(const double v) const
+        {
+            /*
+             * Less-than operator against double.
+             */
+            return (this->x_ < v);
+        }
+
+        bool operator>(const double v) const
+        {
+            /* 
+             * Greater-than operator against double.
+             */
+            return (this->x_ > v);
+        }
+
+        bool operator<=(const double v) const
+        {
+            /* 
+             * Less-than-or-equal-to operator against double.
+             */
+            return (this->x_ <= v);
+        }
+
+        bool operator>=(const double v) const
+        {
+            /*
+             * Greater-than-or-equal-to operator against double.
+             */
+            return (this->x_ >= v);
+        }
+
         DualNumber operator+(const DualNumber& v) const
         {
             /*
@@ -302,6 +350,54 @@ DualNumber operator*(const double v, const DualNumber& w)
      * Return the product of v and w.
      */
     return DualNumber(v * w.x(), v * w.d());
+}
+
+bool operator==(const double v, const DualNumber& w)
+{
+    /*
+     * Equality operator against double (with DualNumber on right-hand side).
+     */
+    return (v == w.x());
+}
+
+bool operator!=(const double v, const DualNumber& w)
+{
+    /*
+     * Inequality operator against double (with DualNumber on right-hand side).
+     */
+    return (v != w.x());
+}
+
+bool operator<(const double v, const DualNumber& w)
+{
+    /*
+     * Less-than operator against double (with DualNumber on right-hand side).
+     */
+    return (v < w.x());
+}
+
+bool operator>(const double v, const DualNumber& w)
+{
+    /*
+     * Greater-than operator against double (with DualNumber on right-hand side).
+     */
+    return (v > w.x());
+}
+
+bool operator<=(const double v, const DualNumber& w)
+{
+    /*
+     * Less-than-or-equal-to operator against double (with DualNumber on right-hand side).
+     */
+    return (v <= w.x());
+}
+
+bool operator>=(const double v, const DualNumber& w)
+{
+    /*
+     * Greater-than-or-equal-to operator against double (with DualNumber on right-hand side).
+     */
+    return (v >= w.x());
 }
 
 DualNumber operator/(const double v, const DualNumber& w)
