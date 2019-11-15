@@ -314,7 +314,7 @@ class BoundaryFinder
                      const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&, LinearConstraints*)> mutate,
                  const Ref<const MatrixXd>& params, const unsigned max_step_iter,
                  const unsigned max_pull_iter, const bool simplify, const bool verbose,
-                 const double sqp_delta, const unsigned sqp_max_iter, const double sqp_tol,
+                 const unsigned sqp_max_iter, const double sqp_tol,
                  const bool sqp_verbose, const std::string write_prefix = "")
         {
             /*
@@ -333,13 +333,13 @@ class BoundaryFinder
                 i++;
             }
 
-            // Try pulling twice
+            // Pull the boundary points outward
             unsigned j = 0;
             while (j < max_pull_iter && !terminate)
             {
                 terminate = this->pull(
-                    func, sqp_delta, sqp_max_iter, sqp_tol, i + j, simplify, verbose,
-                    sqp_verbose, write_prefix
+                    func, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
+                    i + j, simplify, verbose, sqp_verbose, write_prefix
                 );
                 j++;
             }
