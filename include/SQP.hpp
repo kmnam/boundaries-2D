@@ -438,16 +438,16 @@ std::pair<DualNumber, VectorXd>
      * Compute the Lagrangian of the given function and its gradient at
      * the given vector.
      */
-    VectorXDual x = xl.head(this->D);
-    VectorXDual l = xl.tail(this->N);
+    unsigned D = this->D;
+    unsigned N = this->N;
     MatrixXDual A = this->constraints->getA().cast<DualNumber>();
     VectorXDual b = this->constraints->getb().cast<DualNumber>();
     DualNumber L;
-    std::function<DualNumber(const Ref<const VectorXDual>&)> lagr = [func, l, A, b](const Ref<const VectorXDual>& a)
+    std::function<DualNumber(const Ref<const VectorXDual>&)> lagr = [func, D, N, A, b](const Ref<const VectorXDual>& a)
     {
-        return func(a) - l.dot(A * a - b);
+        return func(a.head(D)) - a.tail(N).dot(A * a.head(D) - b);
     };
-    VectorXd dL = Duals::gradient(lagr, x, L);
+    VectorXd dL = Duals::gradient(lagr, xl, L);
     return std::make_pair(L, dL);
 } 
 
@@ -603,6 +603,5 @@ StepData<DualNumber> SQPOptimizer<DualNumber>::step(std::function<DualNumber(con
     new_data.d2L = d2L_new;
     return new_data;
 }
-
 
 #endif 
