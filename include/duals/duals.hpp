@@ -418,6 +418,14 @@ DualNumber pow(const DualNumber& v, const double p)
     return DualNumber(std::pow(v.x(), p), p * std::pow(v.x(), p - 1.0) * v.d());
 }
 
+DualNumber pow(const double v, const DualNumber& p)
+{
+    /*
+     * Return v raised to the power of p.
+     */
+    return DualNumber(std::pow(v, p.x()), std::pow(v, p.x()) * std::log(v) * p.d());
+}
+
 DualNumber exp(const DualNumber& v)
 {
     /*
@@ -432,6 +440,14 @@ DualNumber log(const DualNumber& v)
      * Return the natural log of v.
      */
     return DualNumber(std::log(v.x()), v.d() / v.x());
+}
+
+DualNumber log10(const DualNumber& v)
+{
+    /*
+     * Return the base-10 log of v.
+     */
+    return DualNumber(std::log10(v.x()), v.d() / (v.x() * std::log(10.0)));
 }
 
 DualNumber sqrt(const DualNumber& v)
