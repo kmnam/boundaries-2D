@@ -191,7 +191,7 @@ class BoundaryFinder
             {
                 // Evaluate the given function at a randomly generated 
                 // parameter point
-                Matrix<DT, Dynamic, 1> p = this->params.row(this->vertices[i]).cast<DT>();
+                Matrix<DT, Dynamic, 1> p = this->params.row(this->vertices[i]).template cast<DT>();
                 Matrix<DT, Dynamic, 1> q = mutate(p, this->rng, this->constraints);
                 Matrix<DT, Dynamic, 1> z = func(q);
                 
@@ -288,7 +288,7 @@ class BoundaryFinder
                     return (target - func(x)).squaredNorm();
                 };
                 VectorXd x_init = this->params.row(this->vertices[i]);
-                VectorXd l_init = VectorXd::Ones(nc) - this->constraints->active(x_init).cast<double>();
+                VectorXd l_init = VectorXd::Ones(nc) - this->constraints->active(x_init).template cast<double>();
                 Matrix<DT, Dynamic, 1> xl_init(this->D + nc);
                 xl_init << x_init.cast<DT>(), l_init.cast<DT>();
                 VectorXd q = optimizer->run(obj, xl_init, max_iter, sqp_tol, BFGS, sqp_verbose);

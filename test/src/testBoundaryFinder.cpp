@@ -83,9 +83,20 @@ void testBoundaryFinderProject()
           0.0,  0.0,  0.0,  0.0, -1.0,  0.0,
           0.0,  0.0,  0.0,  0.0,  0.0, -1.0;
     b << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0;
-    BoundaryFinder<autodiff::var> finder(6, tol, max_iter, rng, A, b);
+    BoundaryFinder<autodiff::var> finder(6, tol, rng, A, b);
     MatrixXd params = MatrixXd::Ones(n_init, 6) + MatrixXd::Random(n_init, 6);
-    finder.run(project<autodiff::var>, add_delta<autodiff::var>, params, false, true, "project");
+    finder.run(
+        project<autodiff::var>, add_delta<autodiff::var>, params,
+        10,    // Maximum of 10 mutation iterations
+        5,     // Maximum of 5 pulling iterations
+        false, // Do not simplify the boundary
+        true,  // Verbose output
+        0.1,   // Distance by which to pull boundary points
+        10,    // Maximum of 10 quadratic programs per SQP iteration
+        1e-4,  // SQP convergence tolerance
+        false, // Suppress SQP output
+        "project"
+    );
 }
 
 void testBoundaryFinderProjectSimplified()
@@ -115,9 +126,20 @@ void testBoundaryFinderProjectSimplified()
           0.0,  0.0,  0.0,  0.0, -1.0,  0.0,
           0.0,  0.0,  0.0,  0.0,  0.0, -1.0;
     b << 0.0, 0.0, 0.0, 0.0, 0.0, 0.0, -2.0, -2.0, -2.0, -2.0, -2.0, -2.0;
-    BoundaryFinder<autodiff::var> finder(6, tol, max_iter, rng, A, b);
+    BoundaryFinder<autodiff::var> finder(6, tol, rng, A, b);
     MatrixXd params = MatrixXd::Ones(n_init, 6) + MatrixXd::Random(n_init, 6);
-    finder.run(project<autodiff::var>, add_delta<autodiff::var>, params, true, true, "project-simplified");
+    finder.run(
+        project<autodiff::var>, add_delta<autodiff::var>, params,
+        10,    // Maximum of 10 mutation iterations
+        5,     // Maximum of 5 pulling iterations
+        true,  // Simplify the boundary
+        true,  // Verbose output
+        0.1,   // Distance by which to pull boundary points
+        10,    // Maximum of 10 quadratic programs per SQP iteration
+        1e-4,  // SQP convergence tolerance
+        false, // Suppress SQP output
+        "project-simplified"
+    );
 }
 
 int main()
