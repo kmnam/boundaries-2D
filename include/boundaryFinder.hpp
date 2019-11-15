@@ -22,7 +22,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/13/2019
+ *     11/14/2019
  */
 using namespace Eigen;
 
@@ -64,9 +64,8 @@ class BoundaryFinder
         boost::random::mt19937 rng;
 
     public:
-        BoundaryFinder(unsigned D, double area_tol, unsigned max_iter,
-                       boost::random::mt19937& rng, const Ref<const MatrixXd>& A,
-                       const Ref<const VectorXd>& b)
+        BoundaryFinder(unsigned D, double area_tol, boost::random::mt19937& rng,
+                       const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
         {
             /*
              * Straightforward constructor.
@@ -74,7 +73,6 @@ class BoundaryFinder
             this->D = D;
             this->N = 0;
             this->area_tol = area_tol;
-            this->max_iter = max_iter;
             this->curr_area = 0.0;
             this->rng = rng;
             this->constraints = new LinearConstraints(A, b);
@@ -95,6 +93,14 @@ class BoundaryFinder
              * the given matrix and vector. 
              */
             this->constraints->setAb(A, b);
+        }
+
+        MatrixXd getParams()
+        {
+            /*
+             * Get the stored matrix of parameter values.
+             */
+            return this->params; 
         }
 
         void initialize(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
@@ -205,9 +211,9 @@ class BoundaryFinder
         }
 
         bool pull(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                  const double delta, const double sqp_tol, const unsigned iter,
-                  const bool simplify, const bool verbose, const bool sqp_verbose,
-                  const std::string write_prefix = "")
+                  const double delta, const unsigned max_iter, const double sqp_tol,
+                  const unsigned iter, const bool simplify, const bool verbose,
+                  const bool sqp_verbose, const std::string write_prefix = "")
         {
             /*
              *
@@ -269,7 +275,7 @@ class BoundaryFinder
             unsigned nc = A.rows();
 
             // Define an SQPOptimizer instance to be utilized 
-            SQPOptimizer<DT>* optimizer = new SQPOptimizer<DT>(this->D, nc, max_iter, A, b);
+            SQPOptimizer<DT>* optimizer = new SQPOptimizer<DT>(this->D, nc, A, b);
 
             // For each vertex in the boundary, minimize the distance to the
             // pulled vertex with a feasible parameter point
@@ -285,7 +291,7 @@ class BoundaryFinder
                 VectorXd l_init = VectorXd::Ones(nc) - this->constraints->active(x_init).cast<double>();
                 Matrix<DT, Dynamic, 1> xl_init(this->D + nc);
                 xl_init << x_init.cast<DT>(), l_init.cast<DT>();
-                VectorXd q = optimizer->run(obj, xl_init, sqp_tol, sqp_verbose).head(this->D);
+                VectorXd q = optimizer->run(obj, xl_init, max_iter, sqp_tol, BFGS, sqp_verbose);
                 Matrix<DT, Dynamic, 1> z = func(q.cast<DT>());
                 
                 // Check that the mutation did not give rise to an already 
@@ -304,9 +310,12 @@ class BoundaryFinder
         }
 
         void run(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                 std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&, LinearConstraints*)> mutate,
-                 const Ref<const MatrixXd>& params, const bool simplify,
-                 const bool verbose, const std::string write_prefix = "")
+                 std::function<Matrix<DT, Dynamic, 1>(
+                     const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&, LinearConstraints*)> mutate,
+                 const Ref<const MatrixXd>& params, const unsigned max_step_iter,
+                 const unsigned max_pull_iter, const bool simplify, const bool verbose,
+                 const double sqp_delta, const unsigned sqp_max_iter, const double sqp_tol,
+                 const bool sqp_verbose, const std::string write_prefix = "")
         {
             /*
              * Run the boundary sampling until convergence, up to the maximum
@@ -318,15 +327,22 @@ class BoundaryFinder
             // ... then take up to the maximum number of iterations 
             unsigned i = 0;
             bool terminate = false;
-            while (i < this->max_iter && !terminate)
+            while (i < max_step_iter && !terminate)
             {
                 terminate = this->step(func, mutate, i, simplify, verbose, write_prefix);
                 i++;
             }
 
-            // Try pulling once
-            terminate = this->pull(func, 0.1, 1e-5, i, simplify, verbose, false, write_prefix);
-            i++;
+            // Try pulling twice
+            unsigned j = 0;
+            while (j < max_pull_iter && !terminate)
+            {
+                terminate = this->pull(
+                    func, sqp_delta, sqp_max_iter, sqp_tol, i + j, simplify, verbose,
+                    sqp_verbose, write_prefix
+                );
+                j++;
+            }
 
             // Compute the boundary one last time if the algorithm did not terminate
             if (!terminate)
@@ -343,7 +359,7 @@ class BoundaryFinder
                 if (write_prefix.compare(""))
                 {
                     std::stringstream ss;
-                    ss << write_prefix << "_pass" << i << ".txt";
+                    ss << write_prefix << "_pass" << i + j << ".txt";
                     bound_data.write(ss.str());
                 }
 
@@ -353,7 +369,7 @@ class BoundaryFinder
                 this->curr_area = area;
                 if (verbose)
                 {
-                    std::cout << "[FINAL] Iteration " << i
+                    std::cout << "[FINAL] Iteration " << i + j
                               << "; enclosed area: " << area
                               << "; change: " << change << std::endl;
                 }
@@ -364,12 +380,13 @@ class BoundaryFinder
             // Did the loop terminate without achieving convergence?
             if (!terminate)
             {
-                std::cout << "Reached maximum number of iterations (" << max_iter
+                std::cout << "Reached maximum number of iterations ("
+                          << max_step_iter + max_pull_iter
                           << ") without convergence" << std::endl;
             }
             else
             {
-                std::cout << "Reached convergence within " << i << " iterations"
+                std::cout << "Reached convergence within " << i + j << " iterations"
                           << std::endl;
             }
         }
