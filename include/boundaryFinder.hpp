@@ -22,7 +22,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/14/2019
+ *     11/20/2019
  */
 using namespace Eigen;
 
@@ -131,7 +131,7 @@ class BoundaryFinder
         }
 
         bool step(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func, 
-                  std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&, LinearConstraints*)> mutate,
+                  std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
                   const unsigned iter, const bool simplify, const bool verbose,
                   const std::string write_prefix = "")
         {
@@ -192,7 +192,7 @@ class BoundaryFinder
                 // Evaluate the given function at a randomly generated 
                 // parameter point
                 Matrix<DT, Dynamic, 1> p = this->params.row(this->vertices[i]).template cast<DT>();
-                Matrix<DT, Dynamic, 1> q = mutate(p, this->rng, this->constraints);
+                Matrix<DT, Dynamic, 1> q = this->constraints->nearestL2(mutate(p, this->rng).template cast<double>()).template cast<DT>();
                 Matrix<DT, Dynamic, 1> z = func(q);
                 
                 // Check that the mutation did not give rise to an already 
@@ -310,8 +310,7 @@ class BoundaryFinder
         }
 
         void run(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                 std::function<Matrix<DT, Dynamic, 1>(
-                     const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&, LinearConstraints*)> mutate,
+                 std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
                  const Ref<const MatrixXd>& params, const unsigned max_step_iter,
                  const unsigned max_pull_iter, const bool simplify, const bool verbose,
                  const unsigned sqp_max_iter, const double sqp_tol,
