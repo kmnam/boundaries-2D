@@ -19,10 +19,12 @@
 #include "SQP.hpp"
 
 /*
+ * An implementation of a "boundary-finding" algorithm in the plane. 
+ *
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/20/2019
+ *     11/21/2019
  */
 using namespace Eigen;
 
@@ -119,11 +121,17 @@ class BoundaryFinder
                 if (this->constraints->check(params.row(i).transpose()))
                 {
                     Matrix<DT, Dynamic, 1> y = func(params.row(i).cast<DT>());
-                    this->N++;
-                    this->params.conservativeResize(this->N, this->D);
-                    this->points.conservativeResize(this->N, 2);
-                    this->params.row(this->N-1) = params.row(i);
-                    this->points.row(this->N-1) = y.template cast<double>();
+                    
+                    // Check that the point in the output space is not too 
+                    // close to the others
+                    if (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff() > 1e-8)
+                    {
+                        this->N++;
+                        this->params.conservativeResize(this->N, this->D);
+                        this->points.conservativeResize(this->N, 2);
+                        this->params.row(this->N-1) = params.row(i);
+                        this->points.row(this->N-1) = y.template cast<double>();
+                    }
                 }
             }
             if (this->N == 0)
@@ -160,6 +168,7 @@ class BoundaryFinder
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
 
             // Get boundary of the points in position/steepness space
+            std::cout << this->points << "\n\n";
             Boundary2D boundary(x, y);
             AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, simplify);
             this->vertices = bound_data.vertices;
@@ -198,7 +207,7 @@ class BoundaryFinder
                 // Check that the mutation did not give rise to an already 
                 // computed point 
                 double mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
-                if (mindist > 0)
+                if (mindist > 1e-8)
                 {
                     this->N++;
                     this->params.conservativeResize(this->N, this->D);
