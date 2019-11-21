@@ -168,7 +168,6 @@ class BoundaryFinder
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
 
             // Get boundary of the points in position/steepness space
-            std::cout << this->points << "\n\n";
             Boundary2D boundary(x, y);
             AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, simplify);
             this->vertices = bound_data.vertices;
