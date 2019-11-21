@@ -10,10 +10,12 @@
 #include "../../include/linearConstraints.hpp"
 
 /*
+ * Test module for the BoundaryFinder class. 
+ *
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/13/2019
+ *     11/20/2019
  */
 using namespace Eigen;
 
@@ -40,8 +42,7 @@ Matrix<T, Dynamic, 1> project(const Ref<const Matrix<T, Dynamic, 1> >& x)
 //                     MUTATION FUNCTIONS                   //
 // -------------------------------------------------------- //
 template <typename T>
-Matrix<T, Dynamic, 1> add_delta(const Ref<const Matrix<T, Dynamic, 1> >& x, boost::random::mt19937& rng,
-                                LinearConstraints* constraints)
+Matrix<T, Dynamic, 1> add_delta(const Ref<const Matrix<T, Dynamic, 1> >& x, boost::random::mt19937& rng)
 {
     Matrix<T, Dynamic, 1> y(x.size());
     T delta = 0.1;
@@ -50,7 +51,7 @@ Matrix<T, Dynamic, 1> add_delta(const Ref<const Matrix<T, Dynamic, 1> >& x, boos
         int toss = coin_toss(rng);
         y(i) = (!toss ? x(i) + delta : x(i) - delta);
     }
-    return constraints->nearestL2(y.template cast<double>()).template cast<T>();
+    return y;
 }
 
 // -------------------------------------------------------- //
@@ -91,7 +92,6 @@ void testBoundaryFinderProject()
         5,     // Maximum of 5 pulling iterations
         false, // Do not simplify the boundary
         true,  // Verbose output
-        0.1,   // Distance by which to pull boundary points
         10,    // Maximum of 10 quadratic programs per SQP iteration
         1e-4,  // SQP convergence tolerance
         false, // Suppress SQP output
@@ -134,7 +134,6 @@ void testBoundaryFinderProjectSimplified()
         5,     // Maximum of 5 pulling iterations
         true,  // Simplify the boundary
         true,  // Verbose output
-        0.1,   // Distance by which to pull boundary points
         10,    // Maximum of 10 quadratic programs per SQP iteration
         1e-4,  // SQP convergence tolerance
         false, // Suppress SQP output
