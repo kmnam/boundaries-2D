@@ -11,7 +11,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/14/2019
+ *     11/20/2019
  */
 
 namespace Duals {
@@ -107,6 +107,38 @@ class DualNumber
              * Inequality operator.
              */
             return (this->x_ != v.x() || this->x_ != v.d());
+        }
+
+        bool operator<(const DualNumber& v) const
+        {
+            /*
+             * Less-than operator (compare w.r.t real part).
+             */
+            return (this->x_ < v.x());
+        }
+
+        bool operator>(const DualNumber& v) const
+        {
+            /*
+             * Greater-than operator (compare w.r.t real part).
+             */
+            return (this->x_ > v.x());
+        }
+
+        bool operator<=(const DualNumber& v) const
+        {
+            /*
+             * Less-than-or-equal-to operator (compare w.r.t real part).
+             */
+            return (this->x_ <= v.x());
+        }
+
+        bool operator>=(const DualNumber& v) const
+        {
+            /*
+             * Greater-than-or-equal-to operator (compare w.r.t real part).
+             */
+            return (this->x_ >= v.x());
         }
 
         bool operator==(const double v) const
