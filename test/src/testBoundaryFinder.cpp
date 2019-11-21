@@ -2,7 +2,7 @@
 #include <vector>
 #include <utility>
 #include <functional>
-#include <boost/random.hpp>
+#include <random>
 #include <Eigen/Dense>
 #include <autodiff/reverse/reverse.hpp>
 #include <autodiff/reverse/eigen.hpp>
@@ -19,9 +19,9 @@
  */
 using namespace Eigen;
 
-boost::random::uniform_int_distribution<> fair_bernoulli_dist(0, 1);
+std::uniform_int_distribution<> fair_bernoulli_dist(0, 1);
 
-int coin_toss(boost::random::mt19937& rng)
+int coin_toss(std::mt19937& rng)
 {
     return fair_bernoulli_dist(rng);
 }
@@ -42,7 +42,7 @@ Matrix<T, Dynamic, 1> project(const Ref<const Matrix<T, Dynamic, 1> >& x)
 //                     MUTATION FUNCTIONS                   //
 // -------------------------------------------------------- //
 template <typename T>
-Matrix<T, Dynamic, 1> add_delta(const Ref<const Matrix<T, Dynamic, 1> >& x, boost::random::mt19937& rng)
+Matrix<T, Dynamic, 1> add_delta(const Ref<const Matrix<T, Dynamic, 1> >& x, std::mt19937& rng)
 {
     Matrix<T, Dynamic, 1> y(x.size());
     T delta = 0.1;
@@ -64,7 +64,7 @@ void testBoundaryFinderProject()
      * constrained to the 6-D cube of side length 2
      */
     const unsigned seed = 1234567890;
-    boost::random::mt19937 rng(seed);
+    std::mt19937 rng(seed);
     const unsigned max_iter = 10;    // Maximum of 10 iterations 
     const double tol = 1e-5;         // Tolerance for convergence
     const unsigned n_init = 100;     // Initial number of parameter points
@@ -106,7 +106,7 @@ void testBoundaryFinderProjectSimplified()
      * constrained to the 6-D cube of side length 2, with simplification
      */
     const unsigned seed = 1234567890;
-    boost::random::mt19937 rng(seed);
+    std::mt19937 rng(seed);
     const unsigned max_iter = 10;    // Maximum of 10 iterations 
     const double tol = 1e-5;         // Tolerance for convergence
     const unsigned n_init = 100;     // Initial number of parameter points
