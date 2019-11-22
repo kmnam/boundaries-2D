@@ -616,8 +616,8 @@ StepData<autodiff::var> SQPOptimizer<autodiff::var>::step(std::function<autodiff
 // -------------------------------------------------------------- //
 //    CLASS TEMPLATE SPECIALIZATION FOR FORWARD-MODE VARIABLES    //
 // -------------------------------------------------------------- //
-#include "duals/duals.hpp"
-#include "duals/eigen.hpp"
+#include <duals.hpp>
+#include <duals-eigen/eigen.hpp>
 
 using Duals::DualNumber;
 

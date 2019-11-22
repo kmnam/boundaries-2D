@@ -3,9 +3,9 @@
 #include <cmath>
 #include <Eigen/Dense>
 #include <boost/test/included/unit_test.hpp>
+#include <duals.hpp>
+#include <duals-eigen/eigen.hpp>
 #include "../../include/SQP.hpp"
-#include "../../include/duals/duals.hpp"
-#include "../../include/duals/eigen.hpp"
 
 /*
  * Test module for the SQPOptimizer class with Duals::DualNumber scalars.
