@@ -50,7 +50,7 @@ class LinearConstraints
             this->nearest_L2 = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
         }
 
-        LinearConstraints(unsigned D, unsigned lower, unsigned upper)
+        LinearConstraints(unsigned D, double lower, double upper)
         {
             /*
              * Constructor which sets each variable to between the given 
@@ -59,13 +59,13 @@ class LinearConstraints
             this->N = 2 * D;
             this->D = D;
             this->A.resize(this->N, this->D);
-            this->b.resize(this->D);
+            this->b.resize(this->N);
             for (unsigned i = 0; i < this->D; ++i)
             {
                 VectorXd v = VectorXd::Zero(this->D);
                 v(i) = 1.0;
-                this->A.row(i) = v;
-                this->A.row(this->D + i) = -v;
+                this->A.row(i) = v.transpose();
+                this->A.row(this->D + i) = -v.transpose();
                 this->b(i) = lower;
                 this->b(this->D + i) = -upper;
             }
