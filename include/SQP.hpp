@@ -245,14 +245,14 @@ std::pair<double, VectorXd>
 
     // Evaluate the Lagrangian at 2 * D values, with each coordinate 
     // perturbed by +/- delta
-    VectorXd dL(this->D);
-    for (unsigned i = 0; i < this->D; ++i)
+    VectorXd dL(this->D + this->N);
+    for (unsigned i = 0; i < this->D + this->N; ++i)
     {
-        VectorXd y(x);
+        VectorXd y(xl);
         y(i) += delta;
-        double f1 = func(y) - l.dot(A * y - b);
+        double f1 = func(y.head(this->D)) - y.tail(this->N).dot(A * y.head(this->D) - b);
         y(i) -= 2 * delta;
-        double f2 = func(y) - l.dot(A * y - b);
+        double f2 = func(y.head(this->D)) - y.tail(this->N).dot(A * y.head(this->D) - b);
         dL(i) = (f1 - f2) / (2 * delta);
     }
     return std::make_pair(L, dL);
