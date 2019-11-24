@@ -25,7 +25,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/13/2019
+ *     11/24/2019
  */
 
 // CGAL convenience typedefs, adapted from the CGAL docs
@@ -46,8 +46,6 @@ typedef Delaunay_triangulation::Face_handle                        Face_handle;
 typedef Delaunay_triangulation::Vertex_handle                      Vertex_handle;
 typedef CGAL::Polyline_simplification_2::Squared_distance_cost     Cost;
 typedef CGAL::Polyline_simplification_2::Stop_above_cost_threshold Stop;
-
-const double two_pi = 2 * std::acos(-1);
 
 struct Grid2DProperties
 {
@@ -121,6 +119,7 @@ struct AlphaShape2DProperties
             using std::cos;
             using std::acos;
             using std::sqrt;
+            const double two_pi = 2 * acos(-1);
 
             Vector_2 v, w, normal;
             double angle;
