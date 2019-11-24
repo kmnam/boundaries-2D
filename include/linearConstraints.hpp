@@ -15,7 +15,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/13/2019
+ *     11/24/2019
  */
 using namespace Eigen;
 typedef CGAL::Gmpzf ET;
@@ -49,6 +49,42 @@ class LinearConstraints
             this->b = VectorXd::Zero(0);
             this->nearest_L2 = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
         }
+
+        LinearConstraints(unsigned D, unsigned lower, unsigned upper)
+        {
+            /*
+             * Constructor which sets each variable to between the given 
+             * lower and upper bounds.
+             */
+            this->N = 2 * D;
+            this->D = D;
+            this->A.resize(this->N, this->D);
+            this->b.resize(this->D);
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                VectorXd v = VectorXd::Zero(this->D);
+                v(i) = 1.0;
+                this->A.row(i) = v;
+                this->A.row(this->D + i) = -v;
+                this->b(i) = lower;
+                this->b(this->D + i) = -upper;
+            }
+            this->nearest_L2 = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
+
+            // Update quadratic program
+            for (unsigned i = 0; i < this->N; ++i)
+            {
+                for (unsigned j = 0; j < this->D; ++j)
+                    this->nearest_L2->set_a(j, i, this->A(i,j));
+                this->nearest_L2->set_b(i, this->b(i));
+            }
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                this->nearest_L2->set_d(i, i, 2.0);
+                this->nearest_L2->set_c0(0.0);
+                this->nearest_L2->set_c(i, 0.0);
+            }
+        } 
 
         LinearConstraints(const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
         {
