@@ -19,7 +19,7 @@
  * Authors: 
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/20/2019
+ *     11/24/2019
  */
 using namespace Eigen;
 typedef CGAL::Gmpzf ET;
@@ -616,8 +616,8 @@ StepData<autodiff::var> SQPOptimizer<autodiff::var>::step(std::function<autodiff
 // -------------------------------------------------------------- //
 //    CLASS TEMPLATE SPECIALIZATION FOR FORWARD-MODE VARIABLES    //
 // -------------------------------------------------------------- //
-#include <duals.hpp>
-#include <duals-eigen/eigen.hpp>
+#include <duals/duals.hpp>
+#include <duals/eigen.hpp>
 
 using Duals::DualNumber;
 
