@@ -180,11 +180,6 @@ class BoundaryFinder
                 std::stringstream ss;
                 ss << write_prefix << "-pass" << iter << ".txt";
                 bound_data.write(ss.str());
-
-                // Plot the boundary to a pdf file with the same name
-                std::stringstream ssp;
-                ssp << write_prefix << "-pass" << i + j << ".pdf";
-                plotBoundary(ss.str(), ssp.str(), xlabel, ylabel);
             }
 
             // Compute enclosed area and test for convergence
@@ -197,7 +192,17 @@ class BoundaryFinder
                           << "; enclosed area: " << area
                           << "; change: " << change << std::endl;
             }
-            if (change >= 0.0 && change < this->area_tol) return true;
+            if (change >= 0.0 && change < this->area_tol)
+            {
+                // Plot the boundary to a pdf file if desired
+                if (write_prefix.compare(""))
+                {
+                    std::stringstream ssp;
+                    ssp << write_prefix << "-pass" << iter << ".pdf";
+                    plotBoundary(ss.str(), ssp.str(), xlabel, ylabel);
+                }
+                return true;
+            }
             
             // For each of the points in the boundary, mutate the corresponding
             // model parameters once, and evaluate the given function at these
@@ -259,11 +264,6 @@ class BoundaryFinder
                 std::stringstream ss;
                 ss << write_prefix << "-pass" << iter << ".txt";
                 bound_data.write(ss.str());
-
-                // Plot the boundary to a pdf file with the same name
-                std::stringstream ssp;
-                ssp << write_prefix << "-pass" << i + j << ".pdf";
-                plotBoundary(ss.str(), ssp.str(), xlabel, ylabel);
             }
 
             // Compute enclosed area and test for convergence
@@ -276,7 +276,17 @@ class BoundaryFinder
                           << "; enclosed area: " << area
                           << "; change: " << change << std::endl;
             }
-            if (change >= 0.0 && change < this->area_tol) return true;
+            if (change >= 0.0 && change < this->area_tol)
+            {
+                // Plot the boundary to a pdf file if desired
+                if (write_prefix.compare(""))
+                {
+                    std::stringstream ssp;
+                    ssp << write_prefix << "-pass" << iter << ".pdf";
+                    plotBoundary(ss.str(), ssp.str(), xlabel, ylabel);
+                }
+                return true;
+            }
 
             // Obtain the outward vertex normals along the boundary and,
             // for each vertex in the boundary, "pull" along its outward
