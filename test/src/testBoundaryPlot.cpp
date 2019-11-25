@@ -14,8 +14,8 @@ int main()
      * Plot the simplified boundary given in the examples directory. 
      */
     plotBoundary(
-        "/Users/kmnam/Dropbox/gene-regulation/projects/boundaries/example/boundary_AN3_simplified.txt",
-        "/Users/kmnam/Dropbox/gene-regulation/projects/boundaries/example/boundary_AN3_simplified.pdf",
+        "/n/groups/gunawardena/chris_nam/boundaries/example/boundary_AN3_simplified.txt",
+        "/n/groups/gunawardena/chris_nam/boundaries/example/boundary_AN3_simplified.pdf",
         "Position", "Steepness"
     );
     return 0;

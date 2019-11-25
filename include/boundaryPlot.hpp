@@ -1,5 +1,6 @@
 #include <iostream>
 #include <pybind11/pybind11.h>
+#include <pybind11/embed.h>
 
 /*
  * Authors:
@@ -7,6 +8,7 @@
  * Last updated:
  *     11/24/2019
  */
+namespace py = pybind11;
 
 void plotBoundary(std::string boundary_filename, std::string plot_filename,
                   std::string xlabel, std::string ylabel)
@@ -15,6 +17,8 @@ void plotBoundary(std::string boundary_filename, std::string plot_filename,
      * Plot the boundary written in the given input file, and save it 
      * to a PDF file at the given path. 
      */
+    py::scoped_interpreter guard{};   // Start interpreter 
+
     // From matplotlib.pyplot import figure
     py::object figure = py::module::import("matplotlib.pyplot").attr("figure");
 
@@ -26,7 +30,8 @@ void plotBoundary(std::string boundary_filename, std::string plot_filename,
 
     // Instantiate a figure and grab its axes
     py::object fig = figure();
-    py::object ax = fig.attr("gca");
+    py::object ax = fig.attr("gca")();
+    std::cout << "instantiated figure\n";
 
     // Plot the boundary onto the instantiated axes
     b.attr("plot")(ax);
