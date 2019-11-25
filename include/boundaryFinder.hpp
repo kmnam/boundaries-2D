@@ -17,6 +17,7 @@
 #include "boundaries.hpp"
 #include "linearConstraints.hpp"
 #include "SQP.hpp"
+#include "boundaryPlot.hpp"
 
 /*
  * An implementation of a "boundary-finding" algorithm in the plane. 
@@ -24,7 +25,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/21/2019
+ *     11/25/2019
  */
 using namespace Eigen;
 
@@ -141,7 +142,8 @@ class BoundaryFinder
         bool step(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func, 
                   std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, std::mt19937&)> mutate,
                   const unsigned iter, const bool simplify, const bool verbose,
-                  const std::string write_prefix = "")
+                  const std::string write_prefix = "", const std::string xlabel = "",
+                  const std::string ylabel = "")
         {
             /*
              * Given a list of points (with their x- and y-coordinates
@@ -176,8 +178,13 @@ class BoundaryFinder
             if (write_prefix.compare(""))
             {
                 std::stringstream ss;
-                ss << write_prefix << "_pass" << iter << ".txt";
+                ss << write_prefix << "-pass" << iter << ".txt";
                 bound_data.write(ss.str());
+
+                // Plot the boundary to a pdf file with the same name
+                std::stringstream ssp;
+                ssp << write_prefix << "-pass" << i + j << ".pdf";
+                plotBoundary(ss.str(), ssp.str(), xlabel, ylabel);
             }
 
             // Compute enclosed area and test for convergence
@@ -221,10 +228,12 @@ class BoundaryFinder
         bool pull(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
                   const double delta, const unsigned max_iter, const double sqp_tol,
                   const unsigned iter, const bool simplify, const bool verbose,
-                  const bool sqp_verbose, const std::string write_prefix = "")
+                  const bool sqp_verbose, const std::string write_prefix = "",
+                  const std::string xlabel = "", const std::string ylabel = "")
         {
             /*
-             *
+             * "Pull" the boundary points along their outward normal vectors
+             * with sequential quadratic programming. 
              */
             using std::abs;
 
@@ -248,8 +257,13 @@ class BoundaryFinder
             if (write_prefix.compare(""))
             {
                 std::stringstream ss;
-                ss << write_prefix << "_pass" << iter << ".txt";
+                ss << write_prefix << "-pass" << iter << ".txt";
                 bound_data.write(ss.str());
+
+                // Plot the boundary to a pdf file with the same name
+                std::stringstream ssp;
+                ssp << write_prefix << "-pass" << i + j << ".pdf";
+                plotBoundary(ss.str(), ssp.str(), xlabel, ylabel);
             }
 
             // Compute enclosed area and test for convergence
@@ -322,7 +336,8 @@ class BoundaryFinder
                  const Ref<const MatrixXd>& params, const unsigned max_step_iter,
                  const unsigned max_pull_iter, const bool simplify, const bool verbose,
                  const unsigned sqp_max_iter, const double sqp_tol,
-                 const bool sqp_verbose, const std::string write_prefix = "")
+                 const bool sqp_verbose, const std::string write_prefix = "",
+                 const std::string xlabel = "", const std::string ylabel = "")
         {
             /*
              * Run the boundary sampling until convergence, up to the maximum
@@ -366,8 +381,13 @@ class BoundaryFinder
                 if (write_prefix.compare(""))
                 {
                     std::stringstream ss;
-                    ss << write_prefix << "_pass" << i + j << ".txt";
+                    ss << write_prefix << "-pass" << i + j << ".txt";
                     bound_data.write(ss.str());
+
+                    // Plot the boundary to a pdf file with the same name
+                    std::stringstream ssp;
+                    ssp << write_prefix << "-pass" << i + j << ".pdf";
+                    plotBoundary(ss.str(), ssp.str(), xlabel, ylabel);
                 }
 
                 // Compute enclosed area and test for convergence
