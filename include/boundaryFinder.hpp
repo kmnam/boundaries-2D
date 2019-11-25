@@ -197,7 +197,8 @@ class BoundaryFinder
                 // Plot the boundary to a pdf file if desired
                 if (write_prefix.compare(""))
                 {
-                    std::stringstream ssp;
+                    std::stringstream ss, ssp;
+                    ss  << write_prefix << "-pass" << iter << ".txt";
                     ssp << write_prefix << "-pass" << iter << ".pdf";
                     plotBoundary(ss.str(), ssp.str(), xlabel, ylabel);
                 }
@@ -281,7 +282,8 @@ class BoundaryFinder
                 // Plot the boundary to a pdf file if desired
                 if (write_prefix.compare(""))
                 {
-                    std::stringstream ssp;
+                    std::stringstream ss, ssp;
+                    ss  << write_prefix << "-pass" << iter << ".txt";
                     ssp << write_prefix << "-pass" << iter << ".pdf";
                     plotBoundary(ss.str(), ssp.str(), xlabel, ylabel);
                 }

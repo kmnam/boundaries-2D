@@ -29,7 +29,6 @@ void plotBoundary(std::string boundary_filename, std::string plot_filename,
     // Instantiate a figure and grab its axes
     py::object fig = figure();
     py::object ax = fig.attr("gca")();
-    std::cout << "instantiated figure\n";
 
     // Plot the boundary onto the instantiated axes
     b.attr("plot")(ax);

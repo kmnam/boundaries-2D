@@ -6,6 +6,7 @@
 #include <Eigen/Dense>
 #include <autodiff/reverse/reverse.hpp>
 #include <autodiff/reverse/eigen.hpp>
+#include <pybind11/embed.h>
 #include "../../include/boundaryFinder.hpp"
 #include "../../include/linearConstraints.hpp"
 
@@ -15,7 +16,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/20/2019
+ *     11/25/2019
  */
 using namespace Eigen;
 
@@ -25,6 +26,8 @@ int coin_toss(std::mt19937& rng)
 {
     return fair_bernoulli_dist(rng);
 }
+
+py::scoped_interpreter guard{};   // Start Python interpreter 
 
 // -------------------------------------------------------- //
 //                      TEST FUNCTIONS                      //
@@ -95,7 +98,7 @@ void testBoundaryFinderProject()
         10,    // Maximum of 10 quadratic programs per SQP iteration
         1e-4,  // SQP convergence tolerance
         false, // Suppress SQP output
-        "project"
+        "/n/groups/gunawardena/chris_nam/boundaries/test/project"
     );
 }
 
@@ -137,7 +140,7 @@ void testBoundaryFinderProjectSimplified()
         10,    // Maximum of 10 quadratic programs per SQP iteration
         1e-4,  // SQP convergence tolerance
         false, // Suppress SQP output
-        "project-simplified"
+        "/n/groups/gunawardena/chris_nam/boundaries/test/project-simplified"
     );
 }
 
