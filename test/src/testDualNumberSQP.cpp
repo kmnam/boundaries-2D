@@ -3,8 +3,8 @@
 #include <cmath>
 #include <Eigen/Dense>
 #include <boost/test/included/unit_test.hpp>
-#include <duals.hpp>
-#include <duals-eigen/eigen.hpp>
+#include <duals/duals.hpp>
+#include <duals/eigen.hpp>
 #include "../../include/SQP.hpp"
 
 /*
