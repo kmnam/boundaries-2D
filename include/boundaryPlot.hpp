@@ -17,8 +17,6 @@ void plotBoundary(std::string boundary_filename, std::string plot_filename,
      * Plot the boundary written in the given input file, and save it 
      * to a PDF file at the given path. 
      */
-    py::scoped_interpreter guard{};   // Start interpreter 
-
     // From matplotlib.pyplot import figure
     py::object figure = py::module::import("matplotlib.pyplot").attr("figure");
 
