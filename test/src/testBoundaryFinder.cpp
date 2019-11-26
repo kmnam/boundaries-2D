@@ -6,7 +6,6 @@
 #include <Eigen/Dense>
 #include <autodiff/reverse/reverse.hpp>
 #include <autodiff/reverse/eigen.hpp>
-#include <pybind11/embed.h>
 #include "../../include/boundaryFinder.hpp"
 #include "../../include/linearConstraints.hpp"
 
@@ -26,8 +25,6 @@ int coin_toss(std::mt19937& rng)
 {
     return fair_bernoulli_dist(rng);
 }
-
-py::scoped_interpreter guard{};   // Start Python interpreter 
 
 // -------------------------------------------------------- //
 //                      TEST FUNCTIONS                      //
