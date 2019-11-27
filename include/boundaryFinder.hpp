@@ -337,9 +337,13 @@ class BoundaryFinder
             // ... then take up to the maximum number of iterations 
             unsigned i = 0;
             bool terminate = false;
+            unsigned converged = 0;
             while (i < max_step_iter && !terminate)
             {
-                terminate = this->step(func, mutate, i, simplify, verbose, write_prefix);
+                bool conv = this->step(func, mutate, i, simplify, verbose, write_prefix);
+                if (!conv) converged = 0;
+                else       converged += 1;
+                terminate = (converged >= 5);
                 i++;
             }
 
@@ -347,10 +351,13 @@ class BoundaryFinder
             unsigned j = 0;
             while (j < max_pull_iter && !terminate)
             {
-                terminate = this->pull(
+                bool conv = this->pull(
                     func, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
                     i + j, simplify, verbose, sqp_verbose, write_prefix
                 );
+                if (!conv) converged = 0;
+                else       converged += 1;
+                terminate = (converged >= 5);
                 j++;
             }
 
