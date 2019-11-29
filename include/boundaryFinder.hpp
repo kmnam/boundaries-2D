@@ -24,7 +24,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/25/2019
+ *     11/29/2019
  */
 using namespace Eigen;
 
@@ -322,7 +322,8 @@ class BoundaryFinder
 
         void run(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
                  std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, std::mt19937&)> mutate,
-                 const Ref<const MatrixXd>& params, const unsigned max_step_iter,
+                 const Ref<const MatrixXd>& params, const unsigned min_step_iter,
+                 const unsigned max_step_iter, const unsigned min_pull_iter,
                  const unsigned max_pull_iter, const bool simplify, const bool verbose,
                  const unsigned sqp_max_iter, const double sqp_tol,
                  const bool sqp_verbose, const std::string write_prefix = "")
@@ -338,18 +339,19 @@ class BoundaryFinder
             unsigned i = 0;
             bool terminate = false;
             unsigned converged = 0;
-            while (i < max_step_iter && !terminate)
+            while (i < min_step_iter || (i < max_step_iter && !terminate))
             {
                 bool conv = this->step(func, mutate, i, simplify, verbose, write_prefix);
                 if (!conv) converged = 0;
                 else       converged += 1;
-                terminate = (converged >= 5);
+                terminate = (converged >= 10);
                 i++;
             }
 
             // Pull the boundary points outward
             unsigned j = 0;
-            while (j < max_pull_iter && !terminate)
+            converged = 0;
+            while (j < min_step_iter || (j < max_pull_iter && !terminate))
             {
                 bool conv = this->pull(
                     func, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
@@ -357,7 +359,7 @@ class BoundaryFinder
                 );
                 if (!conv) converged = 0;
                 else       converged += 1;
-                terminate = (converged >= 5);
+                terminate = (converged >= 3);
                 j++;
             }
 
