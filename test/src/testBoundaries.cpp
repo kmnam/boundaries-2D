@@ -14,7 +14,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/9/2019
+ *     11/30/2019
  */
 using namespace Eigen;
 typedef CGAL::Exact_predicates_inexact_constructions_kernel    K;
@@ -67,6 +67,40 @@ AlphaShape2DProperties getTwentyPoints()
     );
 }
 
+AlphaShape2DProperties getRibbon()
+{
+    /*
+     * Return an AlphaShape2DProperties instance with six points
+     * forming a ribbon.
+     */
+    MatrixXd points(6, 2);
+    points << 0,   0,
+              1,   1,
+              2,   0,
+              2, 2.5,
+              1, 1.5,
+              0, 2.5;
+    std::vector<double> x, y;
+    for (unsigned i = 0; i < 6; ++i)
+    {
+        x.push_back(points(i, 0));
+        y.push_back(points(i, 1));
+    }
+
+    // Vertices are specified in counterclockwise (left turns) order
+    std::vector<unsigned> vertices = {0, 1, 2, 3, 4, 5};
+    std::vector<std::pair<unsigned, unsigned> > edges = { {0, 1}, {1, 2}, {2, 3}, {3, 4}, {4, 5}, {5, 0} };
+    
+    return AlphaShape2DProperties(
+        x, y, vertices, edges,
+        100.0,                // alpha set to some arbitrary value
+        100.0,                // area set to some arbitrary value
+        true, true, false,    // connected, simply connected, not simplified
+        true                  // check ordering of vertices 
+    );
+
+}
+
 BOOST_AUTO_TEST_CASE(testAlphaShape2DPropertiesOrient)
 {
     /*
@@ -96,7 +130,7 @@ BOOST_AUTO_TEST_CASE(testAlphaShape2DPropertiesOrient)
     BOOST_TEST((shape.vertices[6] == 14 && shape.edges[6].first == 14 && shape.edges[6].second == 7));
 }
 
-BOOST_AUTO_TEST_CASE(testAlphaShape2DPropertiesVertexNormals)
+BOOST_AUTO_TEST_CASE(testAlphaShape2DPropertiesVertexNormalsRandomConvex)
 {
     /*
      * Test that the outward vertex normals of 20-point-set convex hull are
@@ -121,4 +155,31 @@ BOOST_AUTO_TEST_CASE(testAlphaShape2DPropertiesVertexNormals)
     BOOST_TEST(abs(normals[5].y() -   0.44434853)  < tol);
     BOOST_TEST(abs(normals[6].x() - (-0.98262386)) < tol);
     BOOST_TEST(abs(normals[6].y() -   0.18560808)  < tol);
+}
+
+BOOST_AUTO_TEST_CASE(testAlphaShape2DPropertiesVertexNormalsRibbon)
+{
+    /*
+     * Test that the outward vertex normals of the six-point ribbon set
+     * are correctly calculated.
+     */
+    using std::abs;
+    using std::cos;
+    using std::sin;
+    double tol = 1e-7;
+
+    AlphaShape2DProperties shape = getRibbon();
+    std::vector<Vector_2> normals = shape.outwardVertexNormals();
+    BOOST_TEST(abs(normals[0].x() - cos(4.3196898987)) < tol);   // cos(247.5)
+    BOOST_TEST(abs(normals[0].y() - sin(4.3196898987)) < tol);   // sin(247.5)
+    BOOST_TEST(abs(normals[1].x() - cos(4.7123889804)) < tol);   // cos(270)
+    BOOST_TEST(abs(normals[1].y() - sin(4.7123889804)) < tol);   // sin(270)
+    BOOST_TEST(abs(normals[2].x() - cos(5.1050880621)) < tol);   // cos(292.5)
+    BOOST_TEST(abs(normals[2].y() - sin(5.1050880621)) < tol);   // sin(292.5)
+    BOOST_TEST(abs(normals[3].x() - cos(1.1780972451)) < tol);   // cos(67.5)
+    BOOST_TEST(abs(normals[3].y() - sin(1.1780972451)) < tol);   // sin(67.5)
+    BOOST_TEST(abs(normals[4].x() - cos(1.5707963268)) < tol);   // cos(90)
+    BOOST_TEST(abs(normals[4].y() - sin(1.5707963268)) < tol);   // sin(90)
+    BOOST_TEST(abs(normals[5].x() - cos(1.9634954085)) < tol);   // cos(112.5)
+    BOOST_TEST(abs(normals[5].y() - sin(1.9634954085)) < tol);   // sin(112.5) 
 }
