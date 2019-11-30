@@ -24,7 +24,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/29/2019
+ *     11/30/2019
  */
 using namespace Eigen;
 
@@ -140,6 +140,7 @@ class BoundaryFinder
 
         bool step(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func, 
                   std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, std::mt19937&)> mutate,
+                  std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter,
                   const unsigned iter, const bool simplify, const bool verbose,
                   const std::string write_prefix = "")
         {
@@ -188,6 +189,7 @@ class BoundaryFinder
             {
                 std::cout << "[STEP] Iteration " << iter
                           << "; enclosed area: " << area
+                          << "; " << this->vertices.size() << " boundary points" 
                           << "; change: " << change << std::endl;
             }
             if (change >= 0.0 && change < this->area_tol)
@@ -198,12 +200,17 @@ class BoundaryFinder
             // mutated parameter values
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
-                // Evaluate the given function at a randomly generated 
-                // parameter point
-                Matrix<DT, Dynamic, 1> p = this->params.row(this->vertices[i]).template cast<DT>();
-                Matrix<DT, Dynamic, 1> q = this->constraints->nearestL2(mutate(p, this->rng).template cast<double>()).template cast<DT>();
-                Matrix<DT, Dynamic, 1> z = func(q);
-                
+                bool filtered = true;
+                Matrix<DT, Dynamic, 1> q, z;
+                while (filtered)
+                {
+                    // Evaluate the given function at a randomly generated 
+                    // parameter point
+                    Matrix<DT, Dynamic, 1> p = this->params.row(this->vertices[i]).template cast<DT>();
+                    q = this->constraints->nearestL2(mutate(p, this->rng).template cast<double>()).template cast<DT>();
+                    z = func(q);
+                    filtered = filter(z);
+                }
                 // Check that the mutation did not give rise to an already 
                 // computed point 
                 double mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
@@ -220,6 +227,7 @@ class BoundaryFinder
         }
 
         bool pull(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
+                  std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter,
                   const double delta, const unsigned max_iter, const double sqp_tol,
                   const unsigned iter, const bool simplify, const bool verbose,
                   const bool sqp_verbose, const std::string write_prefix = "")
@@ -262,6 +270,7 @@ class BoundaryFinder
             {
                 std::cout << "[PULL] Iteration " << iter
                           << "; enclosed area: " << area
+                          << "; " << this->vertices.size() << " boundary points" 
                           << "; change: " << change << std::endl;
             }
             if (change >= 0.0 && change < this->area_tol)
@@ -278,6 +287,14 @@ class BoundaryFinder
                 Vector_2 v_pulled = v + delta * normals[i];
                 pulled(i, 0) = CGAL::to_double(v_pulled.x());
                 pulled(i, 1) = CGAL::to_double(v_pulled.y());
+
+                // Check that the pulled point is not subject to filtering
+                if (filter(pulled.row(i)))
+                {
+                    // If so, simply don't pull that vertex
+                    pulled(i, 0) = x[this->vertices[i]];
+                    pulled(i, 1) = y[this->vertices[i]];
+                }
             }
 
             // Pull out the constraint matrix and vector 
@@ -322,6 +339,7 @@ class BoundaryFinder
 
         void run(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
                  std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, std::mt19937&)> mutate,
+                 std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter,
                  const Ref<const MatrixXd>& params, const unsigned min_step_iter,
                  const unsigned max_step_iter, const unsigned min_pull_iter,
                  const unsigned max_pull_iter, const bool simplify, const bool verbose,
@@ -341,7 +359,7 @@ class BoundaryFinder
             unsigned converged = 0;
             while (i < min_step_iter || (i < max_step_iter && !terminate))
             {
-                bool conv = this->step(func, mutate, i, simplify, verbose, write_prefix);
+                bool conv = this->step(func, mutate, filter, i, simplify, verbose, write_prefix);
                 if (!conv) converged = 0;
                 else       converged += 1;
                 terminate = (converged >= 10);
@@ -354,7 +372,7 @@ class BoundaryFinder
             while (j < min_step_iter || (j < max_pull_iter && !terminate))
             {
                 bool conv = this->pull(
-                    func, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
+                    func, filter, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
                     i + j, simplify, verbose, sqp_verbose, write_prefix
                 );
                 if (!conv) converged = 0;
@@ -373,6 +391,7 @@ class BoundaryFinder
                 VectorXd::Map(&y[0], this->N) = this->points.col(1);
                 Boundary2D boundary(x, y);
                 AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, simplify);
+                this->vertices = bound_data.vertices;
 
                 // Write boundary information to file if desired
                 if (write_prefix.compare(""))
@@ -390,6 +409,7 @@ class BoundaryFinder
                 {
                     std::cout << "[FINAL] Iteration " << i + j
                               << "; enclosed area: " << area
+                              << "; " << this->vertices.size() << " boundary points" 
                               << "; change: " << change << std::endl;
                 }
                 if (change >= 0.0 && change < this->area_tol)
