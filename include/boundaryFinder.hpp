@@ -141,7 +141,7 @@ class BoundaryFinder
         bool step(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func, 
                   std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, std::mt19937&)> mutate,
                   std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter,
-                  const unsigned iter, const bool simplify, const bool verbose,
+                  const unsigned iter, const unsigned max_edges, const bool verbose,
                   const std::string write_prefix = "")
         {
             /*
@@ -170,7 +170,7 @@ class BoundaryFinder
 
             // Get boundary of the points in position/steepness space
             Boundary2D boundary(x, y);
-            AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, simplify);
+            AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, max_edges);
             this->vertices = bound_data.vertices;
 
             // Write boundary information to file if desired
@@ -228,7 +228,7 @@ class BoundaryFinder
         bool pull(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
                   std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter,
                   const double delta, const unsigned max_iter, const double sqp_tol,
-                  const unsigned iter, const bool simplify, const bool verbose,
+                  const unsigned iter, const unsigned max_edges, const bool verbose,
                   const bool sqp_verbose, const std::string write_prefix = "")
         {
             /*
@@ -246,7 +246,7 @@ class BoundaryFinder
 
             // Get boundary of the points
             Boundary2D boundary(x, y);
-            AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, simplify);
+            AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, max_edges);
 
             // Re-orient the points so that the boundary is traversed clockwise
             bound_data.orient(CGAL::RIGHT_TURN);
@@ -341,7 +341,7 @@ class BoundaryFinder
                  std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter,
                  const Ref<const MatrixXd>& params, const unsigned min_step_iter,
                  const unsigned max_step_iter, const unsigned min_pull_iter,
-                 const unsigned max_pull_iter, const bool simplify, const bool verbose,
+                 const unsigned max_pull_iter, const unsigned max_edges, const bool verbose,
                  const unsigned sqp_max_iter, const double sqp_tol,
                  const bool sqp_verbose, const std::string write_prefix = "")
         {
@@ -358,7 +358,7 @@ class BoundaryFinder
             unsigned converged = 0;
             while (i < min_step_iter || (i < max_step_iter && !terminate))
             {
-                bool conv = this->step(func, mutate, filter, i, simplify, verbose, write_prefix);
+                bool conv = this->step(func, mutate, filter, i, max_edges, verbose, write_prefix);
                 if (!conv) converged = 0;
                 else       converged += 1;
                 terminate = (converged >= 10);
@@ -372,7 +372,7 @@ class BoundaryFinder
             {
                 bool conv = this->pull(
                     func, filter, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
-                    i + j, simplify, verbose, sqp_verbose, write_prefix
+                    i + j, max_edges, verbose, sqp_verbose, write_prefix
                 );
                 if (!conv) converged = 0;
                 else       converged += 1;
@@ -389,7 +389,7 @@ class BoundaryFinder
                 VectorXd::Map(&x[0], this->N) = this->points.col(0);
                 VectorXd::Map(&y[0], this->N) = this->points.col(1);
                 Boundary2D boundary(x, y);
-                AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, simplify);
+                AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, max_edges);
                 this->vertices = bound_data.vertices;
 
                 // Write boundary information to file if desired

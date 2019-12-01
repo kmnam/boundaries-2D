@@ -25,27 +25,27 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/24/2019
+ *     11/30/2019
  */
 
 // CGAL convenience typedefs, adapted from the CGAL docs
-typedef CGAL::Exact_predicates_inexact_constructions_kernel        K;
-typedef K::FT                                                      FT;
-typedef K::Point_2                                                 Point;
-typedef K::Segment_2                                               Segment;
-typedef K::Vector_2                                                Vector_2;
-typedef CGAL::Aff_transformation_2<K>                              Transformation;
-typedef CGAL::Orientation                                          Orientation;
-typedef CGAL::Polygon_2<K>                                         Polygon;
-typedef CGAL::Alpha_shape_vertex_base_2<K>                         Vb;
-typedef CGAL::Alpha_shape_face_base_2<K>                           Fb;
-typedef CGAL::Triangulation_data_structure_2<Vb, Fb>               Tds;
-typedef CGAL::Delaunay_triangulation_2<K, Tds>                     Delaunay_triangulation;
-typedef CGAL::Alpha_shape_2<Delaunay_triangulation>                Alpha_shape;
-typedef Delaunay_triangulation::Face_handle                        Face_handle;
-typedef Delaunay_triangulation::Vertex_handle                      Vertex_handle;
-typedef CGAL::Polyline_simplification_2::Squared_distance_cost     Cost;
-typedef CGAL::Polyline_simplification_2::Stop_above_cost_threshold Stop;
+typedef CGAL::Exact_predicates_inexact_constructions_kernel         K;
+typedef K::FT                                                       FT;
+typedef K::Point_2                                                  Point;
+typedef K::Segment_2                                                Segment;
+typedef K::Vector_2                                                 Vector_2;
+typedef CGAL::Aff_transformation_2<K>                               Transformation;
+typedef CGAL::Orientation                                           Orientation;
+typedef CGAL::Polygon_2<K>                                          Polygon;
+typedef CGAL::Alpha_shape_vertex_base_2<K>                          Vb;
+typedef CGAL::Alpha_shape_face_base_2<K>                            Fb;
+typedef CGAL::Triangulation_data_structure_2<Vb, Fb>                Tds;
+typedef CGAL::Delaunay_triangulation_2<K, Tds>                      Delaunay_triangulation;
+typedef CGAL::Alpha_shape_2<Delaunay_triangulation>                 Alpha_shape;
+typedef Delaunay_triangulation::Face_handle                         Face_handle;
+typedef Delaunay_triangulation::Vertex_handle                       Vertex_handle;
+typedef CGAL::Polyline_simplification_2::Squared_distance_cost      Cost;
+typedef CGAL::Polyline_simplification_2::Stop_below_count_threshold Stop;
 
 struct Grid2DProperties
 {
@@ -195,7 +195,7 @@ struct AlphaShape2DProperties
         double area;
         bool connected;
         bool simply_connected;
-        bool simplified;
+        unsigned max_edges;
         unsigned min;               // Index of point with minimum y-coordinate
         Orientation orientation;    // Orientation of edges
 
@@ -203,7 +203,7 @@ struct AlphaShape2DProperties
                                std::vector<unsigned> vertices,
                                std::vector<std::pair<unsigned, unsigned> > edges,
                                double alpha, double area, bool connected, 
-                               bool simply_connected, bool simplified,
+                               bool simply_connected, unsigned max_edges,
                                bool check_order = false)
         {
             /*
@@ -228,7 +228,7 @@ struct AlphaShape2DProperties
             this->area = area;
             this->connected = connected;
             this->simply_connected = simply_connected;
-            this->simplified = simplified;
+            this->max_edges = max_edges;
 
             // Find the vertex with minimum y-coordinate, breaking any 
             // ties with whichever point has the smallest x-coordinate
@@ -584,7 +584,7 @@ class Boundary2D
         }
 
         AlphaShape2DProperties getBoundary(bool connected = true, bool simply_connected = false,
-                                           bool simplify = true)
+                                           unsigned max_edges = 100)
         {
             /*
              * Return an AlphaShape2DProperties object containing the indices 
@@ -833,24 +833,10 @@ class Boundary2D
                  * - The simplification is terminated once the total cost of decimation
                  *   exceeds 1e-5
                  * ------------------------------------------------------------------ */
-                if (simplify)
+                if (nedges > max_edges)
                 {
-                    // Sort the squared edge lengths and get their median
-                    std::sort(edge_lengths.begin(), edge_lengths.end());
-                    double median;
-                    if (edge_lengths.size() % 2 == 1)
-                    {
-                        unsigned median_idx = static_cast<unsigned>(floor(edge_lengths.size() / 2.0));
-                        median = edge_lengths[median_idx];
-                    }
-                    else
-                    {
-                        unsigned median_idx = static_cast<unsigned>(edge_lengths.size() / 2.0);
-                        median = (edge_lengths[median_idx-1] + edge_lengths[median_idx]) / 2.0;
-                    }
-
                     // Simplify the Polygon object
-                    polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(median));
+                    polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
 
                     // Collect the vertices and edges of the simplified Polygon object
                     vertices_in_order.clear();
@@ -904,7 +890,7 @@ class Boundary2D
 
                 return AlphaShape2DProperties(
                     x, y, vertices_in_order, edges_in_order, opt_alpha, total_area,
-                    connected, simply_connected, simplify
+                    connected, simply_connected, max_edges
                 );
             }
 
@@ -923,7 +909,7 @@ class Boundary2D
 
             return AlphaShape2DProperties(
                 x, y, vertices, edges, opt_alpha, total_area, connected,
-                simply_connected, simplify
+                simply_connected, max_edges
             );
         }
 };
