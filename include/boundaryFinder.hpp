@@ -124,7 +124,7 @@ class BoundaryFinder
                     
                     // Check that the point in the output space is not too 
                     // close to the others
-                    if (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff() > 1e-8)
+                    if (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff() > 1e-20)
                     {
                         this->N++;
                         this->params.conservativeResize(this->N, this->D);
@@ -201,8 +201,9 @@ class BoundaryFinder
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
                 bool filtered = true;
+                double mindist = 2e-20;
                 Matrix<DT, Dynamic, 1> q, z;
-                while (filtered)
+                while (filtered || mindist < 1e-20)
                 {
                     // Evaluate the given function at a randomly generated 
                     // parameter point
@@ -210,18 +211,16 @@ class BoundaryFinder
                     q = this->constraints->nearestL2(mutate(p, this->rng).template cast<double>()).template cast<DT>();
                     z = func(q);
                     filtered = filter(z);
+                    
+                    // Check that the mutation did not give rise to an already 
+                    // computed point 
+                    mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
                 }
-                // Check that the mutation did not give rise to an already 
-                // computed point 
-                double mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
-                if (mindist > 1e-8)
-                {
-                    this->N++;
-                    this->params.conservativeResize(this->N, this->D);
-                    this->points.conservativeResize(this->N, 2);
-                    this->params.row(this->N-1) = q.template cast<double>();
-                    this->points.row(this->N-1) = z.template cast<double>();
-                }
+                this->N++;
+                this->params.conservativeResize(this->N, this->D);
+                this->points.conservativeResize(this->N, 2);
+                this->params.row(this->N-1) = q.template cast<double>();
+                this->points.row(this->N-1) = z.template cast<double>();
             }
             return false;
         }
