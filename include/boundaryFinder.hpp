@@ -288,7 +288,7 @@ class BoundaryFinder
                 pulled(i, 1) = CGAL::to_double(v_pulled.y());
 
                 // Check that the pulled point is not subject to filtering
-                if (filter(pulled.row(i)))
+                if (filter(pulled.row(i).template cast<DT>()))
                 {
                     // If so, simply don't pull that vertex
                     pulled(i, 0) = x[this->vertices[i]];
