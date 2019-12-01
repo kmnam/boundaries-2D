@@ -24,7 +24,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/30/2019
+ *     12/1/2019
  */
 using namespace Eigen;
 
@@ -106,7 +106,8 @@ class BoundaryFinder
         }
 
         void initialize(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                        const Ref<const MatrixXd>& params)
+                        const Ref<const MatrixXd>& params,
+                        std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter)
         {
             /*
              * Initialize the sampling run by evaluating the given function
@@ -124,7 +125,7 @@ class BoundaryFinder
                     
                     // Check that the point in the output space is not too 
                     // close to the others
-                    if (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff() > 1e-20)
+                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff() > 1e-30))
                     {
                         this->N++;
                         this->params.conservativeResize(this->N, this->D);
@@ -201,9 +202,10 @@ class BoundaryFinder
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
                 bool filtered = true;
-                double mindist = 2e-20;
+                double mindist = 0.0;
+                unsigned j = 0;
                 Matrix<DT, Dynamic, 1> q, z;
-                while (filtered || mindist < 1e-20)
+                while ((filtered || mindist < 1e-20) && j < 500)
                 {
                     // Evaluate the given function at a randomly generated 
                     // parameter point
@@ -215,6 +217,8 @@ class BoundaryFinder
                     // Check that the mutation did not give rise to an already 
                     // computed point 
                     mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
+
+                    j++;
                 }
                 this->N++;
                 this->params.conservativeResize(this->N, this->D);
@@ -350,7 +354,7 @@ class BoundaryFinder
              * number of iterations. 
              */
             // Initialize the sampling run ...
-            this->initialize(func, params);
+            this->initialize(func, params, filter);
 
             // ... then take up to the maximum number of iterations 
             unsigned i = 0;
