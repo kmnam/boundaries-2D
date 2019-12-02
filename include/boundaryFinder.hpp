@@ -220,11 +220,14 @@ class BoundaryFinder
 
                     j++;
                 }
-                this->N++;
-                this->params.conservativeResize(this->N, this->D);
-                this->points.conservativeResize(this->N, 2);
-                this->params.row(this->N-1) = q.template cast<double>();
-                this->points.row(this->N-1) = z.template cast<double>();
+                if (!filtered && mindist > 1e-20)
+                {
+                    this->N++;
+                    this->params.conservativeResize(this->N, this->D);
+                    this->points.conservativeResize(this->N, 2);
+                    this->params.row(this->N-1) = q.template cast<double>();
+                    this->points.row(this->N-1) = z.template cast<double>();
+                }
             }
             return false;
         }
