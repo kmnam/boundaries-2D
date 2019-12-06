@@ -17,12 +17,14 @@ Example usage:
 Authors:
     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
 Last updated:
-    4/8/2019
+    12/5/2019
 
 """
 import sys
 import numpy as np
 import matplotlib.pyplot as plt
+from matplotlib.colors import to_rgba
+import matplotlib.patches as patches
 import seaborn as sns
 
 class Boundary2D(object):
@@ -68,7 +70,8 @@ class Boundary2D(object):
         return b
 
     #######################################################
-    def plot(self, ax, interior_color=sns.xkcd_rgb['denim blue'],
+    def plot(self, ax, plot_interior=False, shade_interior=False,
+             interior_color=sns.xkcd_rgb['denim blue'],
              boundary_color=sns.xkcd_rgb['pale red'], interior_size=20,
              boundary_size=30, interior_alpha=0.1, rasterized=True):
         """
@@ -84,12 +87,21 @@ class Boundary2D(object):
         -------
         None
         """
-        # Plot the interior points
-        ax.scatter(
-            self.points[:,0], self.points[:,1], c=interior_color, s=interior_size,
-            alpha=interior_alpha, zorder=0, rasterized=rasterized
-        )
+        # Shade in the interior if desired
+        if shade_interior:
+            polygon = patches.Polygon(
+                self.points[self.vertices,:], closed=True, facecolor=boundary_color,
+                edgecolor=boundary_color, alpha=0.3
+            )
+            ax.add_patch(polygon)
 
+        # Plot the interior points if desired
+        if plot_interior:
+            ax.scatter(
+                self.points[:,0], self.points[:,1], c=interior_color, s=interior_size,
+                alpha=interior_alpha, zorder=0, rasterized=rasterized
+            )
+        
         # Plot the boundary points
         ax.scatter(
             self.points[self.vertices,0], self.points[self.vertices,1],
@@ -99,5 +111,4 @@ class Boundary2D(object):
         # Plot each boundary edge
         for edge in self.edges:
             ax.plot(self.points[edge,0], self.points[edge,1], c='black', zorder=1)
-
 
