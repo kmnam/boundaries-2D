@@ -87,9 +87,13 @@ void testBoundaryFinderProject()
     BoundaryFinder<autodiff::var> finder(6, tol, rng, A, b);
     MatrixXd params = MatrixXd::Ones(n_init, 6) + MatrixXd::Random(n_init, 6);
     finder.run(
-        project<autodiff::var>, add_delta<autodiff::var>, params,
-        10,    // Maximum of 10 mutation iterations
-        5,     // Maximum of 5 pulling iterations
+        project<autodiff::var>, add_delta<autodiff::var>,
+        [](const Ref<const VectorXvar>&){ return false; },
+        params,
+        10,    // Minimum of 10 mutation iterations
+        100,   // Maximum of 100 mutation iterations
+        3,     // Minimum of 3 pulling iterations
+        20,    // Maximum of 20 pulling iterations
         false, // Do not simplify the boundary
         true,  // Verbose output
         10,    // Maximum of 10 quadratic programs per SQP iteration
@@ -129,9 +133,13 @@ void testBoundaryFinderProjectSimplified()
     BoundaryFinder<autodiff::var> finder(6, tol, rng, A, b);
     MatrixXd params = MatrixXd::Ones(n_init, 6) + MatrixXd::Random(n_init, 6);
     finder.run(
-        project<autodiff::var>, add_delta<autodiff::var>, params,
-        10,    // Maximum of 10 mutation iterations
-        5,     // Maximum of 5 pulling iterations
+        project<autodiff::var>, add_delta<autodiff::var>,
+        [](const Ref<const VectorXvar>&){ return false; },
+        params,
+        10,    // Minimum of 10 mutation iterations
+        100,   // Maximum of 100 mutation iterations
+        3,     // Minimum of 3 pulling iterations
+        20,    // Maximum of 20 pulling iterations
         true,  // Simplify the boundary
         true,  // Verbose output
         10,    // Maximum of 10 quadratic programs per SQP iteration
