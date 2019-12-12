@@ -3,6 +3,7 @@
 
 #include <stdio.h>
 #include <iostream>
+#include <fstream>
 #include <sstream>
 #include <vector>
 #include <utility>
@@ -24,12 +25,156 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     12/1/2019
+ *     12/11/2019
  */
 using namespace Eigen;
 
 typedef CGAL::Exact_predicates_inexact_constructions_kernel    K;
 typedef K::Vector_2                                            Vector_2;
+
+struct ParamFileCollection
+{
+    /*
+     * A class that dumps and reads parameter values to and from a 
+     * collection of files.
+     */
+    public:
+        std::string prefix;                // Prefix for filenames
+        std::vector<std::string> paths;    // Vector of filenames
+        unsigned nfiles;                   // Number of files (length of paths)
+
+        ParamFileCollection(std::string prefix)
+        {
+            /*
+             * Trivial constructor.
+             */
+            this->prefix = prefix;
+        }
+
+        ~ParamFileCollection()
+        {
+            /*
+             * Empty destructor.
+             */
+        }
+
+        void dump(MatrixXd params)
+        {
+            /*
+             * Dump parameter values to a new tab-delimited file.
+             */
+            std::stringstream ss;
+            ss << this->prefix << "-" << this->nfiles << ".tsv";
+            std::string path = ss.str();
+            std::ofstream outfile(path);
+            if (outfile.is_open())
+            {
+                outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                for (unsigned i = 0; i < params.rows(); ++i)
+                {
+                    for (unsigned j = 0; j < params.cols() - 1; ++j)
+                    {
+                        outfile << params(i,j) << "\t";
+                    }
+                    outfile << params(i,params.cols()-1) << "\n";
+                }
+            }
+            outfile.close();
+            this->nfiles++;
+            this->paths.push_back(path);
+        }
+
+        MatrixXd read(unsigned i)
+        {
+            /*
+             * Read the i-th file in the collection.
+             */
+            if (i >= this->nfiles)
+            {
+                std::stringstream ss;
+                ss << "File does not exist: " << this->prefix << "-" << i << ".tsv";
+                throw std::runtime_error(ss.str());
+            }
+
+            MatrixXd params;
+            std::stringstream ss;
+            ss << this->prefix << "-" << i << ".tsv";
+            std::string path = ss.str();
+            std::ifstream infile(path);
+            if (path.is_open())
+            {
+                unsigned nrows = 0, ncols = 0;
+                std::string line;
+                std::vector<double> row;
+                while (std::getline(infile, line))
+                {
+                    std::string token;
+                    while (std::getline(line, token, '\t'))
+                    {
+                        row.push_back(std::stod(token));
+                    }
+                    if (nrows == 0) ncols = row.size();
+                    nrows++;
+                    params.conservativeResize(nrows, ncols);
+                    for (unsigned i = 0; i < row.size(); ++i)
+                    {
+                        params(nrows-1, i) = row[i];
+                    }
+                    row.clear();
+                }
+            }
+            return params;
+        }
+
+        void writeToFile(std::string filename)
+        {
+            /*
+             * Write the parameters in the entire collection to a single
+             * file at the given path. 
+             */
+            if (this->nfiles == 0)
+            {
+                throw std::runtime_error("Parameter file collection is empty");
+            }
+
+            // Start with the 0-th file ...
+            MatrixXd params = this->read(0);
+            std::ofstream outfile(filename);
+            if (outfile.is_open())
+            {
+                outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                for (unsigned i = 0; i < params.rows(); ++i)
+                {
+                    for (unsigned j = 0; j < params.cols() - 1; ++j)
+                    {
+                        outfile << params(i,j) << "\t";
+                    }
+                    outfile << params(i,params.cols()-1) << "\n";
+                }
+            }
+            outfile.close();
+
+            // ... then run through the remaining files
+            for (unsigned k = 1; k < this->nfiles; ++k)
+            {
+                params = this->read(k);
+                std::ofstream outfile2(filename, std::ios_base::app);
+                if (outfile2.is_open())
+                {
+                    outfile2 << std::setprecision(std::numeric_limits<double>::max_digits10);
+                    for (unsigned i = 0; i < params.rows(); ++i)
+                    {
+                        for (unsigned j = 0; j < params.cols() - 1; ++j)
+                        {
+                            outfile2 << params(i,j) << "\t";
+                        }
+                        outfile2 << params(i,params.cols()-1) << "\n";
+                    }
+                }
+                outfile2.close();
+            }
+        }
+};
 
 template <typename DT>
 class BoundaryFinder 
