@@ -32,7 +32,7 @@ using namespace Eigen;
 typedef CGAL::Exact_predicates_inexact_constructions_kernel    K;
 typedef K::Vector_2                                            Vector_2;
 
-struct ParamFileCollection
+class ParamFileCollection
 {
     /*
      * A class that dumps and reads parameter values to and from a 
@@ -58,7 +58,7 @@ struct ParamFileCollection
              */
         }
 
-        void dump(MatrixXd params)
+        void dump(const Ref<const MatrixXd>& params)
         {
             /*
              * Dump parameter values to a new tab-delimited file.
@@ -101,15 +101,16 @@ struct ParamFileCollection
             ss << this->prefix << "-" << i << ".tsv";
             std::string path = ss.str();
             std::ifstream infile(path);
-            if (path.is_open())
+            if (infile.is_open())
             {
                 unsigned nrows = 0, ncols = 0;
                 std::string line;
-                std::vector<double> row;
                 while (std::getline(infile, line))
                 {
+                    std::istringstream ssl(line);
                     std::string token;
-                    while (std::getline(line, token, '\t'))
+                    std::vector<double> row;
+                    while (std::getline(ssl, token, '\t'))
                     {
                         row.push_back(std::stod(token));
                     }
@@ -120,7 +121,6 @@ struct ParamFileCollection
                     {
                         params(nrows-1, i) = row[i];
                     }
-                    row.clear();
                 }
             }
             return params;
