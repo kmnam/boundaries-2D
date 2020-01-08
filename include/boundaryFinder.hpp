@@ -11,10 +11,10 @@
 #include <algorithm>
 #include <unordered_map>
 #include <functional>
-#include <random>
 #include <Eigen/Dense>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Vector_2.h>
+#include <boost/random.hpp>
 #include "boundaries.hpp"
 #include "linearConstraints.hpp"
 #include "SQP.hpp"
@@ -207,11 +207,11 @@ class BoundaryFinder
         std::vector<unsigned> vertices;
         std::vector<std::pair<unsigned, unsigned> > edges;
 
-        // std::mt19937 random number generator
-        std::mt19937 rng;
+        // boost::random::mt19937 random number generator
+        boost::random::mt19937 rng;
 
     public:
-        BoundaryFinder(unsigned D, double area_tol, std::mt19937& rng,
+        BoundaryFinder(unsigned D, double area_tol, boost::random::mt19937& rng,
                        const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
         {
             /*
@@ -285,7 +285,7 @@ class BoundaryFinder
         }
 
         bool step(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func, 
-                  std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, std::mt19937&)> mutate,
+                  std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
                   std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter,
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const std::string write_prefix = "")
@@ -489,7 +489,7 @@ class BoundaryFinder
         }
 
         void run(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                 std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, std::mt19937&)> mutate,
+                 std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
                  std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter,
                  const Ref<const MatrixXd>& params, const unsigned min_step_iter,
                  const unsigned max_step_iter, const unsigned min_pull_iter,
