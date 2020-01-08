@@ -25,7 +25,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     12/11/2019
+ *     1/8/2020
  */
 using namespace Eigen;
 
@@ -336,7 +336,7 @@ class BoundaryFinder
                 std::cout << "[STEP] Iteration " << iter
                           << "; enclosed area: " << area
                           << "; " << this->vertices.size() << " boundary points" 
-                          << "; change: " << change << std::endl;
+                          << "; change in area: " << change << std::endl;
             }
             if (change >= 0.0 && change < this->area_tol)
                 return true;
@@ -422,7 +422,7 @@ class BoundaryFinder
                 std::cout << "[PULL] Iteration " << iter
                           << "; enclosed area: " << area
                           << "; " << this->vertices.size() << " boundary points" 
-                          << "; change: " << change << std::endl;
+                          << "; change in area: " << change << std::endl;
             }
             if (change >= 0.0 && change < this->area_tol)
                 return true;
@@ -532,27 +532,28 @@ class BoundaryFinder
                 j++;
             }
 
-            // Compute the boundary one last time if the algorithm did not terminate
+            // Compute the boundary one last time
+            std::vector<double> x, y;
+            x.resize(this->N);
+            y.resize(this->N);
+            VectorXd::Map(&x[0], this->N) = this->points.col(0);
+            VectorXd::Map(&y[0], this->N) = this->points.col(1);
+            Boundary2D boundary(x, y);
+            AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, max_edges);
+            this->vertices = bound_data.vertices;
+
+            // Write boundary information to file if desired
+            if (write_prefix.compare(""))
+            {
+                std::stringstream ss;
+                ss << write_prefix << "-final.txt";
+                bound_data.write(ss.str());
+            }
+
+            // Compute enclosed area and test for convergence if algorithm
+            // did not already terminate
             if (!terminate)
             {
-                std::vector<double> x, y;
-                x.resize(this->N);
-                y.resize(this->N);
-                VectorXd::Map(&x[0], this->N) = this->points.col(0);
-                VectorXd::Map(&y[0], this->N) = this->points.col(1);
-                Boundary2D boundary(x, y);
-                AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, max_edges);
-                this->vertices = bound_data.vertices;
-
-                // Write boundary information to file if desired
-                if (write_prefix.compare(""))
-                {
-                    std::stringstream ss;
-                    ss << write_prefix << "-pass" << i + j << ".txt";
-                    bound_data.write(ss.str());
-                }
-
-                // Compute enclosed area and test for convergence
                 double area = bound_data.area;
                 double change = area - this->curr_area;
                 this->curr_area = area;
@@ -561,7 +562,7 @@ class BoundaryFinder
                     std::cout << "[FINAL] Iteration " << i + j
                               << "; enclosed area: " << area
                               << "; " << this->vertices.size() << " boundary points" 
-                              << "; change: " << change << std::endl;
+                              << "; change in area: " << change << std::endl;
                 }
                 if (change >= 0.0 && change < this->area_tol)
                     terminate = true;
