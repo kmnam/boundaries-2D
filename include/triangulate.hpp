@@ -15,7 +15,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     1/11/2020
+ *     1/14/2020
  */
 using namespace Eigen;
 typedef CGAL::Epick_d<CGAL::Dynamic_dimension_tag> K;
@@ -26,11 +26,10 @@ typedef Delaunay_triangulation::Vertex_handle      Vertex_handle;
 typedef Delaunay_triangulation::Vertex             Vertex;
 typedef Delaunay_triangulation::Point              Point;
 
-std::pair<Delaunay_triangulation, unsigned> triangulate(std::string vertices_file)
+std::vector<std::vector<double> > parseVertices(std::string vertices_file)
 {
     /*
-     * Given a .vert file specifying a convex polytope in terms of its
-     * vertices, compute its Delaunay triangulation. 
+     * Parse the vertices given in a .vert file. 
      */
     // Vector of vertex coordinates
     std::vector<std::vector<double> > vertices;
@@ -55,7 +54,14 @@ std::pair<Delaunay_triangulation, unsigned> triangulate(std::string vertices_fil
     }
     infile.close();
 
-    // Compute the Delaunay triangulation of the vertices
+    return vertices;
+}
+
+std::pair<Delaunay_triangulation, unsigned> triangulate(std::vector<std::vector<double> > vertices)
+{
+    /*
+     * Given a vector of vertices, compute its Delaunay triangulation. 
+     */
     unsigned dim = vertices[0].size();
     Delaunay_triangulation dt(dim);
     std::vector<Point> points;
@@ -69,17 +75,34 @@ std::pair<Delaunay_triangulation, unsigned> triangulate(std::string vertices_fil
     return std::make_pair(dt, dim); 
 }
 
-std::vector<Simplex> convexHullFacets(std::string vertices_file)
+std::vector<Simplex> getSimplices(Delaunay_triangulation dt, unsigned dim)
 {
     /*
-     * Given a .vert file specifying a convex polytope in terms of its
-     * vertices, compute its Delaunay triangulation and return the 
-     * vector of facets of the covered convex hull.  
+     * Given a Delaunay triangulation, return a vector of Simplex objects
+     * for each of the simplices in the triangulation.  
      */
-    std::pair<Delaunay_triangulation, unsigned> data = triangulate(vertices_file);
-    Delaunay_triangulation dt = data.first;
-    unsigned dim = data.second; 
+    // Run through the (finite) simplices in the triangulation
+    std::vector<Simplex> simplices;
+    for (auto it = dt.finite_full_cells_begin(); it != dt.finite_full_cells_end(); ++it)
+    {
+        // Write the vertices of each simplex to a matrix
+        MatrixXd vertices(dim + 1, dim);
+        for (unsigned i = 0; i < dim + 1; ++i)
+        {
+            Point p = it->vertex(i)->point();
+            for (unsigned j = 0; j < p.dimension(); ++j) vertices(i,j) = p[j];
+        }
+        simplices.emplace_back(Simplex(vertices));
+    }
+    return simplices; 
+}
 
+std::vector<Simplex> getConvexHullFacets(Delaunay_triangulation dt, unsigned dim)
+{
+    /*
+     * Given a Delaunay triangulation, return the vector of facets of the
+     * covered convex hull.  
+     */
     // Run through the facets of the covered convex hull
     std::vector<Simplex> simplices;
     for (auto it = dt.full_cells_begin(); it != dt.full_cells_end(); ++it)
