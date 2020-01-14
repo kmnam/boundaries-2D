@@ -117,7 +117,7 @@ class Simplex
             // Sample the desired number of points from the flat Dirichlet 
             // distribution on the standard simplex of appropriate dimension
             MatrixXd barycentric(npoints, this->points.rows());
-            boost::random::gamma_distribution<double> gamma_dist(1.0);
+            boost::random::gamma_distribution<> gamma_dist(1.0);
             for (unsigned i = 0; i < npoints; ++i)
             {
                 // Sample independent Gamma-distributed variables with
@@ -135,5 +135,52 @@ class Simplex
             return sample;
         }
 };
+
+MatrixXd sampleFromSimplices(std::vector<Simplex> simplices, unsigned npoints,
+                             boost::random::mt19937& rng)
+{
+    /*
+     * Given a vector of simplices, sample with probability proportional 
+     * to each simplex's volume. The simplices all must have the same
+     * dimension.
+     */
+    // Check that the simplices all have the same dimension and are 
+    // embedded in the same space
+    if (simplices.size() == 0)
+        throw std::invalid_argument("Specified no input simplices");
+    unsigned d = simplices[0].d;
+    unsigned k = simplices[0].k;
+    for (auto&& simplex : simplices)
+    {
+        if (simplex.d != d || simplex.k != k)
+            throw std::invalid_argument("Invalid input vector of simplices");
+    }
+
+    // Compute the volume of each simplex
+    std::vector<double> volumes;
+    std::vector<unsigned> idx;
+    for (auto&& simplex : simplices)
+        volumes.push_back(simplex.faceVolume(idx));
+
+    // Instantiate a categorical distribution with probabilities 
+    // proportional to the simplex volumes 
+    double sum_volumes = 0.0;
+    for (auto&& v : volumes) sum_volumes += v;
+    for (auto&& v : volumes) v /= sum_volumes;
+    boost::random::discrete_distribution<> dist(volumes);
+
+    // Maintain an array of points ...
+    MatrixXd sample(npoints, d);
+    for (unsigned i = 0; i < npoints; i++)
+    {
+        // Sample a simplex with probability proportional to its volume
+        int j = dist(rng);
+
+        // Sample a point from the selected simplex
+        sample.row(i) = simplices[j].sample(1, rng);
+    }
+
+    return sample;
+} 
 
 #endif 
