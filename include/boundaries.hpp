@@ -583,7 +583,7 @@ class Boundary2D
         }
 
         AlphaShape2DProperties getBoundary(bool connected = true, bool simply_connected = false,
-                                           unsigned max_edges = 100)
+                                           unsigned max_edges = -1)
         {
             /*
              * Return an AlphaShape2DProperties object containing the indices 
@@ -832,6 +832,7 @@ class Boundary2D
                  * - The simplification is terminated once the total cost of decimation
                  *   exceeds 1e-5
                  * ------------------------------------------------------------------ */
+                if (max_edges == -1) max_edges = nedges;
                 if (nedges > max_edges)
                 {
                     // Simplify the Polygon object
