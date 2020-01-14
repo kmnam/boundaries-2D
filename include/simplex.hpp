@@ -13,7 +13,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     1/11/2020
+ *     1/14/2020
  */
 using namespace Eigen;
 
@@ -106,6 +106,33 @@ class Simplex
             }
 
             return std::sqrt(std::abs(cayley_menger.determinant()) / (std::pow(factorial(size - 2), 2) * std::pow(2, size - 2))); 
+        }
+
+        MatrixXd sample(unsigned npoints, boost::random::mt19937& rng)
+        {
+            /*
+             * Randomly sample the given number of points from the 
+             * uniform density (i.e., flat Dirichlet) on the simplex.
+             */
+            // Sample the desired number of points from the flat Dirichlet 
+            // distribution on the standard simplex of appropriate dimension
+            MatrixXd barycentric(npoints, this->points.rows());
+            boost::random::gamma_distribution<double> gamma_dist(1.0);
+            for (unsigned i = 0; i < npoints; ++i)
+            {
+                // Sample independent Gamma-distributed variables with
+                // alpha = 1, and normalize by their sum
+                for (unsigned j = 0; j < this->points.rows(); ++j)
+                    barycentric(i,j) = gamma_dist(rng);
+                barycentric.row(i) = barycentric.row(i) / barycentric.row(i).sum();
+            }
+       
+            // Convert from barycentric coordinates to Cartesian coordinates
+            MatrixXd sample(npoints, this->points.cols());
+            for (unsigned i = 0; i < npoints; ++i)
+                sample.row(i) = barycentric.row(i) * this->points;
+
+            return sample;
         }
 };
 
