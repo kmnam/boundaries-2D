@@ -203,9 +203,8 @@ class BoundaryFinder
         // Set of linear constraints that parameters must satisfy
         LinearConstraints* constraints;
 
-        // Vectors containing indices of the boundary points and edges 
+        // Vector containing indices of the boundary points  
         std::vector<unsigned> vertices;
-        std::vector<std::pair<unsigned, unsigned> > edges;
 
         // boost::random::mt19937 random number generator
         boost::random::mt19937 rng;
@@ -228,7 +227,7 @@ class BoundaryFinder
         ~BoundaryFinder()
         {
             /*
-             * Empty destructor. 
+             * Trivial destructor. 
              */
             delete this->constraints;
         }
@@ -295,26 +294,25 @@ class BoundaryFinder
              * specified in vectors of the same length), take one step
              * in the boundary-sampling algorithm as follows: 
              *
-             * 1) Get the boundary of the position/steepness points 
-             *    accrued thus far. 
+             * 1) Get the boundary of the output points accrued thus far. 
              * 2) "Mutate" (randomly perturb) the input points in the
              *    determined boundary by uniformly sampling along each
              *    dimension within [x-radius, x+radius] in logarithmic
              *    coordinates.
              * 3) Plug in the mutated parameter values and obtain new 
-             *    values for position/steepness.
+             *    output points.
              *
              * The return value indicates whether or not the enclosed 
              * area has converged to within the specified area tolerance. 
              */
-            // Convert each position/steepness value to type double
+            // Store the output coordinates in vectors 
             std::vector<double> x, y;
             x.resize(this->N);
             y.resize(this->N);
             VectorXd::Map(&x[0], this->N) = this->points.col(0);
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
 
-            // Get boundary of the points in position/steepness space
+            // Get boundary of the output points in 2-D space
             Boundary2D boundary(x, y);
             AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, max_edges);
             this->vertices = bound_data.vertices;
@@ -403,7 +401,6 @@ class BoundaryFinder
             // Re-orient the points so that the boundary is traversed clockwise
             bound_data.orient(CGAL::RIGHT_TURN);
             this->vertices = bound_data.vertices;
-            this->edges = bound_data.edges;
 
             // Write boundary information to file if desired
             if (write_prefix.compare(""))
