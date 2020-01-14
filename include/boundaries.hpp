@@ -25,25 +25,24 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/30/2019
+ *     1/14/2020
  */
 
 // CGAL convenience typedefs, adapted from the CGAL docs
 typedef CGAL::Exact_predicates_inexact_constructions_kernel         K;
 typedef K::FT                                                       FT;
-typedef K::Point_2                                                  Point;
-typedef K::Segment_2                                                Segment;
+typedef K::Point_2                                                  Point_2;
 typedef K::Vector_2                                                 Vector_2;
 typedef CGAL::Aff_transformation_2<K>                               Transformation;
 typedef CGAL::Orientation                                           Orientation;
-typedef CGAL::Polygon_2<K>                                          Polygon;
+typedef CGAL::Polygon_2<K>                                          Polygon_2;
 typedef CGAL::Alpha_shape_vertex_base_2<K>                          Vb;
 typedef CGAL::Alpha_shape_face_base_2<K>                            Fb;
 typedef CGAL::Triangulation_data_structure_2<Vb, Fb>                Tds;
-typedef CGAL::Delaunay_triangulation_2<K, Tds>                      Delaunay_triangulation;
-typedef CGAL::Alpha_shape_2<Delaunay_triangulation>                 Alpha_shape;
-typedef Delaunay_triangulation::Face_handle                         Face_handle;
-typedef Delaunay_triangulation::Vertex_handle                       Vertex_handle;
+typedef CGAL::Delaunay_triangulation_2<K, Tds>                      Delaunay_triangulation_2;
+typedef CGAL::Alpha_shape_2<Delaunay_triangulation_2>               Alpha_shape;
+typedef Delaunay_triangulation_2::Face_handle                       Face_handle_2;
+typedef Delaunay_triangulation_2::Vertex_handle                     Vertex_handle_2;
 typedef CGAL::Polyline_simplification_2::Squared_distance_cost      Cost;
 typedef CGAL::Polyline_simplification_2::Stop_below_count_threshold Stop;
 
@@ -267,19 +266,19 @@ struct AlphaShape2DProperties
             }
 
             // Find the orientation of the edges
-            Point p, q, r;
+            Point_2 p, q, r;
             unsigned nv = this->vertices.size();
             if (this->min == 0)
             {
-                p = Point(this->x[this->vertices[this->nv-1]], this->y[this->vertices[this->nv-1]]);
-                q = Point(this->x[this->vertices[0]], this->y[this->vertices[0]]);
-                r = Point(this->x[this->vertices[1]], this->y[this->vertices[1]]);
+                p = Point_2(this->x[this->vertices[this->nv-1]], this->y[this->vertices[this->nv-1]]);
+                q = Point_2(this->x[this->vertices[0]], this->y[this->vertices[0]]);
+                r = Point_2(this->x[this->vertices[1]], this->y[this->vertices[1]]);
             }
             else
             {
-                p = Point(this->x[this->vertices[(this->min-1) % this->nv]], this->y[this->vertices[(this->min-1) % this->nv]]);
-                q = Point(this->x[this->vertices[this->min]], this->y[this->vertices[this->min]]);
-                r = Point(this->x[this->vertices[(this->min+1) % this->nv]], this->y[this->vertices[(this->min+1) % this->nv]]);
+                p = Point_2(this->x[this->vertices[(this->min-1) % this->nv]], this->y[this->vertices[(this->min-1) % this->nv]]);
+                q = Point_2(this->x[this->vertices[this->min]], this->y[this->vertices[this->min]]);
+                r = Point_2(this->x[this->vertices[(this->min+1) % this->nv]], this->y[this->vertices[(this->min+1) % this->nv]]);
             }
             this->orientation = CGAL::orientation(p, q, r);
         }
@@ -597,10 +596,10 @@ class Boundary2D
             using std::floor;
 
             // Instantiate a vector of Point objects
-            std::vector<Point> points;
+            std::vector<Point_2> points;
             unsigned npoints = this->x.size();
             for (unsigned i = 0; i < npoints; ++i)
-                points.emplace_back(Point(this->x[i], this->y[i]));
+                points.emplace_back(Point_2(this->x[i], this->y[i]));
 
             // Compute the alpha shape from the Delaunay triangulation
             Alpha_shape shape(points.begin(), points.end(), FT(1.0), Alpha_shape::REGULARIZED);
@@ -645,27 +644,27 @@ class Boundary2D
                     //    along the cycle in one direction) at each vertex returns
                     //    us to the starting vertex after visiting every vertex
                     //    in the alpha shape
-                    std::unordered_set<Vertex_handle> bound;
-                    Vertex_handle curr = *(shape.alpha_shape_vertices_begin());
+                    std::unordered_set<Vertex_handle_2> bound;
+                    Vertex_handle_2 curr = *(shape.alpha_shape_vertices_begin());
                     bool traversed = false;
                     while (!traversed)
                     {
                         bound.insert(curr);
-                        std::vector<Vertex_handle> neighbors;
+                        std::vector<Vertex_handle_2> neighbors;
                         for (auto ite = shape.alpha_shape_edges_begin(); ite != shape.alpha_shape_edges_end(); ite++)
                         {
-                            Face_handle f = ite->first;
+                            Face_handle_2 f = ite->first;
                             auto type = shape.classify(f);
                             if (type != Alpha_shape::REGULAR && type != Alpha_shape::INTERIOR)
                                 throw std::runtime_error(
                                     "Regular triangulation should not have any singular/exterior faces"
                                 );
                             int i = ite->second;
-                            Vertex_handle source = f->vertex(f->cw(i));
-                            Vertex_handle target = f->vertex(f->ccw(i));
+                            Vertex_handle_2 source = f->vertex(f->cw(i));
+                            Vertex_handle_2 target = f->vertex(f->ccw(i));
                             if (source == curr || target == curr)
                             {
-                                Vertex_handle next = (source == curr ? target : source);
+                                Vertex_handle_2 next = (source == curr ? target : source);
                                 neighbors.push_back(next);
                             }
                         }
@@ -709,7 +708,7 @@ class Boundary2D
                     bool regular = true;
                     for (auto itv = shape.finite_vertices_begin(); itv != shape.finite_vertices_end(); itv++)
                     {
-                        Vertex_handle v = Tds::Vertex_range::s_iterator_to(*itv);
+                        Vertex_handle_2 v = Tds::Vertex_range::s_iterator_to(*itv);
                         auto type = shape.classify(v);
                         if (type != Alpha_shape::REGULAR && type != Alpha_shape::INTERIOR)
                         {
@@ -731,23 +730,23 @@ class Boundary2D
             double total_area = 0.0;
             for (auto it = shape.finite_faces_begin(); it != shape.finite_faces_end(); ++it)
             {
-                Face_handle face = Tds::Face_range::s_iterator_to(*it);
+                Face_handle_2 face = Tds::Face_range::s_iterator_to(*it);
                 auto type = shape.classify(face);
                 if (type == Alpha_shape::REGULAR || type == Alpha_shape::INTERIOR)
                 {
-                    Point p = it->vertex(0)->point();
-                    Point q = it->vertex(1)->point();
-                    Point r = it->vertex(2)->point();
+                    Point_2 p = it->vertex(0)->point();
+                    Point_2 q = it->vertex(1)->point();
+                    Point_2 r = it->vertex(2)->point();
                     total_area += CGAL::area(p, q, r);
                 }
             }
 
             // Identify, for each vertex in the alpha shape, the point corresponding to it 
-            std::unordered_map<Vertex_handle, std::pair<unsigned, double> > vertices_to_points;
+            std::unordered_map<Vertex_handle_2, std::pair<unsigned, double> > vertices_to_points;
             for (unsigned i = 0; i < points.size(); ++i)
             {
                 // Find the nearest vertex to each point 
-                Vertex_handle nearest = shape.nearest_vertex(points[i]);
+                Vertex_handle_2 nearest = shape.nearest_vertex(points[i]);
 
                 // Look for whether the vertex was identified as the nearest 
                 // to any previous point
@@ -784,7 +783,7 @@ class Boundary2D
                 // vertex, keeping track of their squared lengths
                 std::vector<unsigned> vertices_in_order;
                 std::vector<std::pair<unsigned, unsigned> > edges_in_order;
-                std::vector<Point> points_in_order;
+                std::vector<Point_2> points_in_order;
                 std::vector<double> edge_lengths;
                 std::unordered_map<unsigned, std::unordered_set<unsigned> > visited_edges;
                 for (auto&& v : vertex_set) visited_edges[v] = {};
@@ -795,23 +794,23 @@ class Boundary2D
                     points_in_order.push_back(points[source]);
                     auto next = std::find_if(
                         shape.alpha_shape_edges_begin(), shape.alpha_shape_edges_end(),
-                        [source, vertices_to_points, visited_edges](std::pair<Face_handle, int> e)
+                        [source, vertices_to_points, visited_edges](std::pair<Face_handle_2, int> e)
                         {
                             // Find the source and target vertices of each edge
-                            Face_handle f = e.first;
+                            Face_handle_2 f = e.first;
                             int i = e.second;
-                            Vertex_handle s = f->vertex(f->cw(i));
-                            Vertex_handle t = f->vertex(f->ccw(i));
+                            Vertex_handle_2 s = f->vertex(f->cw(i));
+                            Vertex_handle_2 t = f->vertex(f->ccw(i));
                             unsigned si = (vertices_to_points.find(s)->second).first;
                             unsigned ti = (vertices_to_points.find(t)->second).first;
                             bool visited = (visited_edges.find(si)->second).count(ti);
                             return (si == source && !visited);
                         }
                     );
-                    Face_handle f = next->first;
+                    Face_handle_2 f = next->first;
                     int i = next->second;
-                    Vertex_handle s = f->vertex(f->cw(i));
-                    Vertex_handle t = f->vertex(f->ccw(i));
+                    Vertex_handle_2 s = f->vertex(f->cw(i));
+                    Vertex_handle_2 t = f->vertex(f->ccw(i));
                     unsigned si = vertices_to_points[s].first;
                     unsigned ti = vertices_to_points[t].first;
                     visited_edges[si].insert(ti);
@@ -822,7 +821,7 @@ class Boundary2D
                 }
 
                 // Instantiate a Polygon object with the given vertex order
-                Polygon polygon(points_in_order.begin(), points_in_order.end());
+                Polygon_2 polygon(points_in_order.begin(), points_in_order.end());
                 assert(polygon.is_simple());
 
                 /* ------------------------------------------------------------------ //
@@ -844,10 +843,10 @@ class Boundary2D
                     for (auto it = polygon.vertices_begin(); it != polygon.vertices_end(); ++it)
                     {
                         // Find the vertex in the alpha shape
-                        Point p = *it;
+                        Point_2 p = *it;
                         auto p_it = std::find_if(
                             vertices_to_points.begin(), vertices_to_points.end(),
-                            [p, points](std::pair<Vertex_handle, std::pair<unsigned, double> > v)
+                            [p, points](std::pair<Vertex_handle_2, std::pair<unsigned, double> > v)
                             {
                                 unsigned i = v.second.first;
                                 double sqnorm = v.second.second;
@@ -859,11 +858,11 @@ class Boundary2D
                     for (auto it = polygon.edges_begin(); it != polygon.edges_end(); ++it)
                     {
                         // Find the source and target vertices in the alpha shape
-                        Point source = it->source();
-                        Point target = it->target();
+                        Point_2 source = it->source();
+                        Point_2 target = it->target();
                         auto source_it = std::find_if(
                             vertices_to_points.begin(), vertices_to_points.end(),
-                            [source, points](std::pair<Vertex_handle, std::pair<unsigned, double> > v)
+                            [source, points](std::pair<Vertex_handle_2, std::pair<unsigned, double> > v)
                             {
                                 unsigned i = v.second.first;
                                 double sqnorm = v.second.second;
@@ -872,7 +871,7 @@ class Boundary2D
                         );
                         auto target_it = std::find_if(
                             vertices_to_points.begin(), vertices_to_points.end(),
-                            [target, points](std::pair<Vertex_handle, std::pair<unsigned, double> > v)
+                            [target, points](std::pair<Vertex_handle_2, std::pair<unsigned, double> > v)
                             {
                                 unsigned i = v.second.first;
                                 double sqnorm = v.second.second;
@@ -898,10 +897,10 @@ class Boundary2D
             std::vector<std::pair<unsigned, unsigned> > edges;
             for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
             {
-                Face_handle f = it->first;
+                Face_handle_2 f = it->first;
                 int i = it->second;
-                Vertex_handle s = f->vertex(f->cw(i));
-                Vertex_handle t = f->vertex(f->ccw(i));
+                Vertex_handle_2 s = f->vertex(f->cw(i));
+                Vertex_handle_2 t = f->vertex(f->ccw(i));
                 edges.push_back(std::make_pair(vertices_to_points[s].first, vertices_to_points[t].first));
             }
             std::vector<unsigned> vertices;
