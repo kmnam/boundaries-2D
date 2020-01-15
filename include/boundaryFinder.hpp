@@ -294,7 +294,7 @@ class BoundaryFinder
                     
                     // Check that the point in the output space is not too 
                     // close to the others
-                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff() > 1e-30))
+                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().norm().minCoeff() > 1e-30))
                     {
                         this->N++;
                         this->params.conservativeResize(this->N, this->D);
@@ -319,7 +319,7 @@ class BoundaryFinder
                     
                     // Check that the point in the output space is not too 
                     // close to the others
-                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff() > 1e-30))
+                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().norm().minCoeff() > 1e-30))
                     {
                         this->N++;
                         this->params.conservativeResize(this->N, this->D);
@@ -385,8 +385,6 @@ class BoundaryFinder
                           << "; " << this->points.rows() << " total points" 
                           << "; change in area: " << change << std::endl;
             }
-            if (std::abs(change) < this->area_tol)
-                return true;
             
             // For each of the points in the boundary, mutate the corresponding
             // model parameters once, and evaluate the given function at these
@@ -408,7 +406,7 @@ class BoundaryFinder
                     
                     // Check that the mutation did not give rise to an already 
                     // computed point 
-                    mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
+                    mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().norm().minCoeff();
 
                     j++;
                 }
@@ -421,7 +419,8 @@ class BoundaryFinder
                     this->points.row(this->N-1) = z.template cast<double>();
                 }
             }
-            return false;
+
+            return (std::abs(change) < this->area_tol);
         }
 
         bool pull(std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
@@ -471,8 +470,6 @@ class BoundaryFinder
                           << "; " << this->points.rows() << " total points" 
                           << "; change in area: " << change << std::endl;
             }
-            if (std::abs(change) < this->area_tol)
-                return true;
 
             // Obtain the outward vertex normals along the boundary and,
             // for each vertex in the boundary, "pull" along its outward
@@ -532,7 +529,8 @@ class BoundaryFinder
                     this->points.row(this->N-1) = z.template cast<double>();
                 }
             }
-            return false;
+
+            return (std::abs(change) < this->area_tol);
         }
 
         void run(std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
