@@ -420,7 +420,7 @@ class BoundaryFinder
                 }
             }
 
-            return (std::abs(change) < this->area_tol);
+            return (std::abs(change) < this->area_tol * (area - change));
         }
 
         bool pull(std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
@@ -530,7 +530,7 @@ class BoundaryFinder
                 }
             }
 
-            return (std::abs(change) < this->area_tol);
+            return (std::abs(change) < this->area_tol * (area - change));
         }
 
         void run(std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
