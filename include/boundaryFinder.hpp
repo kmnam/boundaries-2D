@@ -1,15 +1,12 @@
 #ifndef BOUNDARY_FINDER_HPP
 #define BOUNDARY_FINDER_HPP
-
 #include <stdio.h>
 #include <iostream>
 #include <fstream>
 #include <sstream>
 #include <vector>
 #include <utility>
-#include <tuple>
 #include <algorithm>
-#include <unordered_map>
 #include <functional>
 #include <Eigen/Dense>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
@@ -18,6 +15,8 @@
 #include "boundaries.hpp"
 #include "linearConstraints.hpp"
 #include "SQP.hpp"
+#include "simplex.hpp"
+#include "triangulate.hpp"
 
 /*
  * An implementation of a "boundary-finding" algorithm in the plane. 
@@ -25,7 +24,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     1/8/2020
+ *     1/15/2020
  */
 using namespace Eigen;
 
@@ -176,7 +175,7 @@ class ParamFileCollection
         }
 };
 
-template <typename DT>
+template <typename T>
 class BoundaryFinder 
 {
     /*
@@ -203,6 +202,13 @@ class BoundaryFinder
         // Set of linear constraints that parameters must satisfy
         LinearConstraints* constraints;
 
+        // Set of simplices in the Delaunay triangulation of the 
+        // convex polytope
+        std::vector<Simplex> interior_simplices;
+
+        // Set of simplices in the boundary of the Delaunay triangulation
+        std::vector<Simplex> boundary_simplices; 
+
         // Vector containing indices of the boundary points  
         std::vector<unsigned> vertices;
 
@@ -210,18 +216,32 @@ class BoundaryFinder
         boost::random::mt19937 rng;
 
     public:
-        BoundaryFinder(unsigned D, double area_tol, boost::random::mt19937& rng,
-                       const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
+        BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
+                       std::string constraints_file, std::string vertices_file)
         {
             /*
              * Straightforward constructor.
              */
-            this->D = D;
             this->N = 0;
             this->area_tol = area_tol;
             this->curr_area = 0.0;
             this->rng = rng;
-            this->constraints = new LinearConstraints(A, b);
+            this->constraints = new LinearConstraints();
+            this->constraints->parse(constraints_file);
+
+            // Parse the vertices from the given .vert file 
+            std::vector<std::vector<double> > vertices = parseVertices(vertices_file);
+
+            // Triangulate the parsed polytope 
+            std::pair<Delaunay_triangulation, unsigned> result = triangulate(vertices);
+            Delaunay_triangulation dt = result.first;
+            this->D = result.second;
+
+            // Get the simplices of the triangulation
+            this->interior_simplices = getSimplices(dt, this->D);
+
+            // Get the facets of the convex hull
+            this->boundary_simplices = getConvexHullFacets(dt, this->D);
         }
 
         ~BoundaryFinder()
@@ -249,23 +269,28 @@ class BoundaryFinder
             return this->params; 
         }
 
-        void initialize(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                        const Ref<const MatrixXd>& params,
-                        std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter)
+        void initialize(std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
+                        std::function<bool(const Ref<const Matrix<T, Dynamic, 1> >&)> filter,
+                        unsigned n_within, unsigned n_bound)
         {
             /*
              * Initialize the sampling run by evaluating the given function
              * for a specified number of random parameter values in the
              * given logarithmic range.
              */
-            // Run through the specified parameter values
-            for (unsigned i = 0; i < params.rows(); ++i)
+            this->N = 0;
+
+            // Sample until the given number of points have been sampled
+            // from the interior of the polytope  
+            while (this->N < n_within)
             {
+                MatrixXd params = sampleFromSimplices(this->interior_simplices, n_within - this->N, this->rng);
+
                 // Evaluate the given function at a randomly generated 
                 // parameter point (if it satisfies the required constraints)
-                if (this->constraints->check(params.row(i).transpose()))
+                for (unsigned i = 0; i < params.rows(); ++i)
                 {
-                    Matrix<DT, Dynamic, 1> y = func(params.row(i).cast<DT>());
+                    Matrix<T, Dynamic, 1> y = func(params.row(i).cast<T>());
                     
                     // Check that the point in the output space is not too 
                     // close to the others
@@ -279,13 +304,36 @@ class BoundaryFinder
                     }
                 }
             }
-            if (this->N == 0)
-                throw std::invalid_argument("No valid parameter values given");
+
+            // Sample until the given number of points have been sampled
+            // from the boundary of the polytope  
+            while (this->N < n_bound + n_within)
+            {
+                MatrixXd params = sampleFromSimplices(this->boundary_simplices, n_bound + n_within - this->N, this->rng);
+
+                // Evaluate the given function at a randomly generated 
+                // parameter point (if it satisfies the required constraints)
+                for (unsigned i = 0; i < params.rows(); ++i)
+                {
+                    Matrix<T, Dynamic, 1> y = func(params.row(i).cast<T>());
+                    
+                    // Check that the point in the output space is not too 
+                    // close to the others
+                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff() > 1e-30))
+                    {
+                        this->N++;
+                        this->params.conservativeResize(this->N, this->D);
+                        this->points.conservativeResize(this->N, 2);
+                        this->params.row(this->N-1) = params.row(i);
+                        this->points.row(this->N-1) = y.template cast<double>();
+                    }
+                }
+            }
         }
 
-        bool step(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func, 
-                  std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
-                  std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter,
+        bool step(std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&)> func, 
+                  std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
+                  std::function<bool(const Ref<const Matrix<T, Dynamic, 1> >&)> filter,
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const std::string write_prefix = "")
         {
@@ -333,10 +381,11 @@ class BoundaryFinder
             {
                 std::cout << "[STEP] Iteration " << iter
                           << "; enclosed area: " << area
-                          << "; " << this->vertices.size() << " boundary points" 
+                          << "; " << this->vertices.size() << " boundary points"
+                          << "; " << this->points.rows() << " total points" 
                           << "; change in area: " << change << std::endl;
             }
-            if (change >= 0.0 && change < this->area_tol)
+            if (std::abs(change) < this->area_tol)
                 return true;
             
             // For each of the points in the boundary, mutate the corresponding
@@ -347,13 +396,13 @@ class BoundaryFinder
                 bool filtered = true;
                 double mindist = 0.0;
                 unsigned j = 0;
-                Matrix<DT, Dynamic, 1> q, z;
-                while ((filtered || mindist < 1e-20) && j < 500)
+                Matrix<T, Dynamic, 1> q, z;
+                while ((filtered || mindist < 1e-30) && j < 20)   // Attempt 20 mutations
                 {
                     // Evaluate the given function at a randomly generated 
                     // parameter point
-                    Matrix<DT, Dynamic, 1> p = this->params.row(this->vertices[i]).template cast<DT>();
-                    q = this->constraints->nearestL2(mutate(p, this->rng).template cast<double>()).template cast<DT>();
+                    Matrix<T, Dynamic, 1> p = this->params.row(this->vertices[i]).template cast<T>();
+                    q = this->constraints->nearestL2(mutate(p, this->rng).template cast<double>()).template cast<T>();
                     z = func(q);
                     filtered = filter(z);
                     
@@ -363,7 +412,7 @@ class BoundaryFinder
 
                     j++;
                 }
-                if (!filtered && mindist > 1e-20)
+                if (!filtered && mindist > 1e-30)
                 {
                     this->N++;
                     this->params.conservativeResize(this->N, this->D);
@@ -375,8 +424,8 @@ class BoundaryFinder
             return false;
         }
 
-        bool pull(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                  std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter,
+        bool pull(std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
+                  std::function<bool(const Ref<const Matrix<T, Dynamic, 1> >&)> filter,
                   const double delta, const unsigned max_iter, const double sqp_tol,
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const bool sqp_verbose, const std::string write_prefix = "")
@@ -419,9 +468,10 @@ class BoundaryFinder
                 std::cout << "[PULL] Iteration " << iter
                           << "; enclosed area: " << area
                           << "; " << this->vertices.size() << " boundary points" 
+                          << "; " << this->points.rows() << " total points" 
                           << "; change in area: " << change << std::endl;
             }
-            if (change >= 0.0 && change < this->area_tol)
+            if (std::abs(change) < this->area_tol)
                 return true;
 
             // Obtain the outward vertex normals along the boundary and,
@@ -437,7 +487,7 @@ class BoundaryFinder
                 pulled(i, 1) = CGAL::to_double(v_pulled.y());
 
                 // Check that the pulled point is not subject to filtering
-                if (filter(pulled.row(i).template cast<DT>()))
+                if (filter(pulled.row(i).template cast<T>()))
                 {
                     // If so, simply don't pull that vertex
                     pulled(i, 0) = x[this->vertices[i]];
@@ -451,24 +501,24 @@ class BoundaryFinder
             unsigned nc = A.rows();
 
             // Define an SQPOptimizer instance to be utilized 
-            SQPOptimizer<DT>* optimizer = new SQPOptimizer<DT>(this->D, nc, A, b);
+            SQPOptimizer<T>* optimizer = new SQPOptimizer<T>(this->D, nc, A, b);
 
             // For each vertex in the boundary, minimize the distance to the
             // pulled vertex with a feasible parameter point
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
                 // Minimize the appropriate objective function
-                Matrix<DT, Dynamic, 1> target = pulled.row(i).cast<DT>();
-                auto obj = [func, target](const Ref<const Matrix<DT, Dynamic, 1> >& x)
+                Matrix<T, Dynamic, 1> target = pulled.row(i).cast<T>();
+                auto obj = [func, target](const Ref<const Matrix<T, Dynamic, 1> >& x)
                 {
                     return (target - func(x)).squaredNorm();
                 };
                 VectorXd x_init = this->params.row(this->vertices[i]);
                 VectorXd l_init = VectorXd::Ones(nc) - this->constraints->active(x_init).template cast<double>();
-                Matrix<DT, Dynamic, 1> xl_init(this->D + nc);
-                xl_init << x_init.cast<DT>(), l_init.cast<DT>();
+                Matrix<T, Dynamic, 1> xl_init(this->D + nc);
+                xl_init << x_init.cast<T>(), l_init.cast<T>();
                 VectorXd q = optimizer->run(obj, xl_init, max_iter, sqp_tol, BFGS, sqp_verbose);
-                Matrix<DT, Dynamic, 1> z = func(q.cast<DT>());
+                Matrix<T, Dynamic, 1> z = func(q.cast<T>());
                 
                 // Check that the mutation did not give rise to an already 
                 // computed point
@@ -485,12 +535,13 @@ class BoundaryFinder
             return false;
         }
 
-        void run(std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&)> func,
-                 std::function<Matrix<DT, Dynamic, 1>(const Ref<const Matrix<DT, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
-                 std::function<bool(const Ref<const Matrix<DT, Dynamic, 1> >&)> filter,
-                 const Ref<const MatrixXd>& params, const unsigned min_step_iter,
-                 const unsigned max_step_iter, const unsigned min_pull_iter,
-                 const unsigned max_pull_iter, const unsigned max_edges, const bool verbose,
+        void run(std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
+                 std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
+                 std::function<bool(const Ref<const Matrix<T, Dynamic, 1> >&)> filter,
+                 const unsigned n_within, const unsigned n_bound,
+                 const unsigned min_step_iter, const unsigned max_step_iter,
+                 const unsigned min_pull_iter, const unsigned max_pull_iter,
+                 const unsigned max_edges, const bool verbose,
                  const unsigned sqp_max_iter, const double sqp_tol,
                  const bool sqp_verbose, const std::string write_prefix = "")
         {
@@ -499,33 +550,26 @@ class BoundaryFinder
              * number of iterations. 
              */
             // Initialize the sampling run ...
-            this->initialize(func, params, filter);
+            this->initialize(func, filter, n_within, n_bound);
 
             // ... then take up to the maximum number of iterations 
             unsigned i = 0;
             bool terminate = false;
-            unsigned converged = 0;
             while (i < min_step_iter || (i < max_step_iter && !terminate))
             {
-                bool conv = this->step(func, mutate, filter, i, max_edges, verbose, write_prefix);
-                if (!conv) converged = 0;
-                else       converged += 1;
-                terminate = (converged >= 10);
+                terminate = this->step(func, mutate, filter, i, max_edges, verbose, write_prefix);
                 i++;
             }
 
             // Pull the boundary points outward
             unsigned j = 0;
-            converged = 0;
-            while (j < min_step_iter || (j < max_pull_iter && !terminate))
+            terminate = false;
+            while (j < min_pull_iter || (j < max_pull_iter && !terminate))
             {
-                bool conv = this->pull(
+                terminate = this->pull(
                     func, filter, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
                     i + j, max_edges, verbose, sqp_verbose, write_prefix
                 );
-                if (!conv) converged = 0;
-                else       converged += 1;
-                terminate = (converged >= 3);
                 j++;
             }
 
@@ -558,10 +602,11 @@ class BoundaryFinder
                 {
                     std::cout << "[FINAL] Iteration " << i + j
                               << "; enclosed area: " << area
-                              << "; " << this->vertices.size() << " boundary points" 
+                              << "; " << this->vertices.size() << " boundary points"
+                              << "; " << this->points.rows() << " total points" 
                               << "; change in area: " << change << std::endl;
                 }
-                if (change >= 0.0 && change < this->area_tol)
+                if (std::abs(change) < this->area_tol)
                     terminate = true;
             }
 
