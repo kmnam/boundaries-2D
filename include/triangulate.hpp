@@ -18,8 +18,8 @@
  *     1/14/2020
  */
 using namespace Eigen;
-typedef CGAL::Epick_d<CGAL::Dynamic_dimension_tag> K;
-typedef CGAL::Delaunay_triangulation<K>            Delaunay_triangulation;
+typedef CGAL::Epick_d<CGAL::Dynamic_dimension_tag> Kd;
+typedef CGAL::Delaunay_triangulation<Kd>           Delaunay_triangulation;
 typedef Delaunay_triangulation::Full_cell_handle   Full_cell_handle;
 typedef Delaunay_triangulation::Facet              Facet;
 typedef Delaunay_triangulation::Vertex_handle      Vertex_handle;
