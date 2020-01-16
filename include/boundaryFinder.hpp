@@ -294,7 +294,7 @@ class BoundaryFinder
                     
                     // Check that the point in the output space is not too 
                     // close to the others
-                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().norm().minCoeff() > 1e-30))
+                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().norm().minCoeff() > 1e-10))
                     {
                         this->N++;
                         this->params.conservativeResize(this->N, this->D);
@@ -319,7 +319,7 @@ class BoundaryFinder
                     
                     // Check that the point in the output space is not too 
                     // close to the others
-                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().norm().minCoeff() > 1e-30))
+                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().norm().minCoeff() > 1e-10))
                     {
                         this->N++;
                         this->params.conservativeResize(this->N, this->D);
@@ -395,7 +395,7 @@ class BoundaryFinder
                 double mindist = 0.0;
                 unsigned j = 0;
                 Matrix<T, Dynamic, 1> q, z;
-                while ((filtered || mindist < 1e-30) && j < 20)   // Attempt 20 mutations
+                while ((filtered || mindist < 1e-10) && j < 20)   // Attempt 20 mutations
                 {
                     // Evaluate the given function at a randomly generated 
                     // parameter point
@@ -410,7 +410,7 @@ class BoundaryFinder
 
                     j++;
                 }
-                if (!filtered && mindist > 1e-30)
+                if (!filtered && mindist > 1e-10)
                 {
                     this->N++;
                     this->params.conservativeResize(this->N, this->D);
@@ -519,8 +519,8 @@ class BoundaryFinder
                 
                 // Check that the mutation did not give rise to an already 
                 // computed point
-                double mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().squaredNorm().minCoeff();
-                if (mindist > 0)
+                double mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().norm().minCoeff();
+                if (!filter(z) && mindist > 1e-10)
                 {
                     this->N++;
                     this->params.conservativeResize(this->N, this->D);
