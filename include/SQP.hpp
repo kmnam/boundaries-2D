@@ -19,7 +19,7 @@
  * Authors: 
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     12/6/2019
+ *     1/30/2020
  */
 using namespace Eigen;
 typedef CGAL::Gmpzf ET;
@@ -68,7 +68,7 @@ MatrixXd modify(const Ref<const MatrixXd>& A)
      */
     // Check that A is positive definite with the Cholesky decomposition
     LLT<MatrixXd> dec(A);
-    bool posdef = (dec.info() == Success);
+    bool posdef = (dec.info() == Success && dec.matrixL().selfadjointView().diagonal().minCoeff() > 0);
 
     // TODO Make this customizable
     MatrixXd B(A);
@@ -82,7 +82,7 @@ MatrixXd modify(const Ref<const MatrixXd>& A)
             tau *= 2.0;
         B += tau * MatrixXd::Identity(B.rows(), B.cols());
         dec.compute(B);
-        posdef = (dec.info() == Success);
+        posdef = (dec.info() == Success && dec.matrixL().selfadjointView().diagonal().minCoeff() > 0);
     }
     return B;
 }
@@ -425,11 +425,11 @@ using boost::multiprecision::number;
 using boost::multiprecision::mpfr_float_backend;
 using boost::multiprecision::et_off;
 typedef number<mpfr_float_backend<30>, et_off> mpfr_30_noet;
-typedef number<mpfr_float_backend<50>, et_off> mpfr_50_noet;
+typedef number<mpfr_float_backend<200>, et_off> mpfr_200_noet;
 typedef Matrix<mpfr_30_noet, Dynamic, Dynamic> MatrixX30;
-typedef Matrix<mpfr_50_noet, Dynamic, Dynamic> MatrixX50;
+typedef Matrix<mpfr_200_noet, Dynamic, Dynamic> MatrixX200;
 typedef Matrix<mpfr_30_noet, Dynamic, 1> VectorX30;
-typedef Matrix<mpfr_50_noet, Dynamic, 1> VectorX50;
+typedef Matrix<mpfr_200_noet, Dynamic, 1> VectorX200;
 
 template <>
 std::pair<mpfr_30_noet, VectorXd>
@@ -649,71 +649,71 @@ StepData<mpfr_30_noet>
 }
 
 template <>
-std::pair<mpfr_50_noet, VectorXd>
-    SQPOptimizer<mpfr_50_noet>::func_with_gradient(std::function<mpfr_50_noet(const Ref<const VectorX50>&)> func,
-                                                   const Ref<const VectorX50>& x)
+std::pair<mpfr_200_noet, VectorXd>
+    SQPOptimizer<mpfr_200_noet>::func_with_gradient(std::function<mpfr_200_noet(const Ref<const VectorX200>&)> func,
+                                                   const Ref<const VectorX200>& x)
 {
     /*
      * Compute the given function and its gradient at the given vector,
      * with delta = 1e-7 for finite difference approximation. 
      */
-    const mpfr_50_noet delta = 1e-7;
+    const mpfr_200_noet delta = 1e-7;
     
     // Evaluate the function at 2 * D values, with each coordinate 
     // perturbed by +/- delta
     VectorXd grad(this->D);
     for (unsigned i = 0; i < this->D; ++i)
     {
-        VectorX50 y(x);
+        VectorX200 y(x);
         y(i) += delta;
-        mpfr_50_noet f1 = func(y);
+        mpfr_200_noet f1 = func(y);
         y(i) -= 2 * delta;
-        mpfr_50_noet f2 = func(y);
+        mpfr_200_noet f2 = func(y);
         grad(i) = static_cast<double>((f1 - f2) / (2 * delta));
     }
     return std::make_pair(func(x), grad);
 }
 
 template <>
-std::pair<mpfr_50_noet, VectorXd>
-    SQPOptimizer<mpfr_50_noet>::lagrangian_with_gradient(std::function<mpfr_50_noet(const Ref<const VectorX50>&)> func,
-                                                         const Ref<const VectorX50>& xl)
+std::pair<mpfr_200_noet, VectorXd>
+    SQPOptimizer<mpfr_200_noet>::lagrangian_with_gradient(std::function<mpfr_200_noet(const Ref<const VectorX200>&)> func,
+                                                         const Ref<const VectorX200>& xl)
 {
     /*
      * Compute the Lagrangian of the given function and its gradient at
      * the given vector, with delta = 1e-7 for finite difference
      * approximation.
      */
-    const mpfr_50_noet delta = 1e-7;
+    const mpfr_200_noet delta = 1e-7;
 
     VectorXd x = xl.head(this->D).template cast<double>();
     VectorXd l = xl.tail(this->N).template cast<double>();
     MatrixXd A = this->constraints->getA();
     VectorXd b = this->constraints->getb();
-    mpfr_50_noet L = func(xl.head(this->D)) - static_cast<mpfr_50_noet>(l.dot(A * x - b));
+    mpfr_200_noet L = func(xl.head(this->D)) - static_cast<mpfr_200_noet>(l.dot(A * x - b));
 
     // Evaluate the Lagrangian at 2 * D values, with each coordinate 
     // perturbed by +/- delta
     VectorXd dL(this->D + this->N);
     for (unsigned i = 0; i < this->D + this->N; ++i)
     {
-        VectorX50 y(xl);
+        VectorX200 y(xl);
         y(i) += delta;
-        mpfr_50_noet f1 = func(y.head(this->D))
-            - static_cast<mpfr_50_noet>(y.tail(this->N).template cast<double>().dot(A * y.head(this->D).template cast<double>() - b));
+        mpfr_200_noet f1 = func(y.head(this->D))
+            - static_cast<mpfr_200_noet>(y.tail(this->N).template cast<double>().dot(A * y.head(this->D).template cast<double>() - b));
         y(i) -= 2 * delta;
-        mpfr_50_noet f2 = func(y.head(this->D))
-            - static_cast<mpfr_50_noet>(y.tail(this->N).template cast<double>().dot(A * y.head(this->D).template cast<double>() - b));
+        mpfr_200_noet f2 = func(y.head(this->D))
+            - static_cast<mpfr_200_noet>(y.tail(this->N).template cast<double>().dot(A * y.head(this->D).template cast<double>() - b));
         dL(i) = static_cast<double>((f1 - f2) / (2 * delta));
     }
     return std::make_pair(L, dL);
 }
 
 template <>
-StepData<mpfr_50_noet>
-    SQPOptimizer<mpfr_50_noet>::step(std::function<mpfr_50_noet(const Ref<const VectorX50>&)> func,
+StepData<mpfr_200_noet>
+    SQPOptimizer<mpfr_200_noet>::step(std::function<mpfr_200_noet(const Ref<const VectorX200>&)> func,
                                      const unsigned iter, const QuasiNewtonMethod quasi_newton,
-                                     StepData<mpfr_50_noet> prev_data, const bool verbose)
+                                     StepData<mpfr_200_noet> prev_data, const bool verbose)
 {
     /*
      * Run one step of the SQP algorithm with double scalars.
@@ -733,8 +733,8 @@ StepData<mpfr_50_noet>
      *    satisfies the constraints of the original problem, and 
      *    output the new vector.
      */
-    VectorX50 xl = prev_data.xl;
-    VectorX50 x = xl.head(this->D);
+    VectorX200 xl = prev_data.xl;
+    VectorX200 x = xl.head(this->D);
     VectorXd df = prev_data.df;
     VectorXd dL = prev_data.dL;
     MatrixXd d2L = prev_data.d2L;
@@ -813,9 +813,9 @@ StepData<mpfr_50_noet>
     }
 
     // Increment the input vector and update the Lagrange multipliers
-    VectorX50 xl_new(this->D + this->N);
-    xl_new.head(this->D) = (xl.head(this->D) + sol).cast<mpfr_50_noet>();
-    xl_new.tail(this->N) = mult.cast<mpfr_50_noet>();
+    VectorX200 xl_new(this->D + this->N);
+    xl_new.head(this->D) = (xl.head(this->D) + sol).cast<mpfr_200_noet>();
+    xl_new.tail(this->N) = mult.cast<mpfr_200_noet>();
 
     // Print the new vector and value of the objective function
     if (verbose)
@@ -826,13 +826,13 @@ StepData<mpfr_50_noet>
 
     // Evaluate the Hessian of the Lagrangian (with respect to 
     // the input space)
-    VectorX50 x_new = xl_new.head(this->D);
+    VectorX200 x_new = xl_new.head(this->D);
     VectorXd df_new = this->func_with_gradient(func, x_new).second;
-    VectorX50 xl_mixed(xl);
+    VectorX200 xl_mixed(xl);
     xl_mixed.tail(this->N) = xl_new.tail(this->N);
-    std::pair<mpfr_50_noet, VectorXd> lagr_mixed = this->lagrangian_with_gradient(func, xl_mixed);
-    std::pair<mpfr_50_noet, VectorXd> lagr_new = this->lagrangian_with_gradient(func, xl_new);
-    mpfr_50_noet L_new = lagr_new.first;
+    std::pair<mpfr_200_noet, VectorXd> lagr_mixed = this->lagrangian_with_gradient(func, xl_mixed);
+    std::pair<mpfr_200_noet, VectorXd> lagr_new = this->lagrangian_with_gradient(func, xl_new);
+    mpfr_200_noet L_new = lagr_new.first;
     VectorXd dL_new = lagr_new.second.head(this->D);
     MatrixXd d2L_new;
     VectorXd s, y; 
@@ -857,7 +857,7 @@ StepData<mpfr_50_noet>
     } 
 
     // Return the new data
-    StepData<mpfr_50_noet> new_data;
+    StepData<mpfr_200_noet> new_data;
     new_data.xl = xl_new;
     new_data.df = df_new;
     new_data.dL = dL_new;
