@@ -68,7 +68,7 @@ MatrixXd modify(const Ref<const MatrixXd>& A)
      */
     // Check that A is positive definite with the Cholesky decomposition
     LLT<MatrixXd> dec(A);
-    bool posdef = (dec.info() == Success && dec.matrixL().selfadjointView().diagonal().minCoeff() > 0);
+    bool posdef = (dec.info() == Success);
 
     // TODO Make this customizable
     MatrixXd B(A);
@@ -82,7 +82,7 @@ MatrixXd modify(const Ref<const MatrixXd>& A)
             tau *= 2.0;
         B += tau * MatrixXd::Identity(B.rows(), B.cols());
         dec.compute(B);
-        posdef = (dec.info() == Success && dec.matrixL().selfadjointView().diagonal().minCoeff() > 0);
+        posdef = (dec.info() == Success);
     }
     return B;
 }
