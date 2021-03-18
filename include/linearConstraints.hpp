@@ -12,10 +12,12 @@
 #include <CGAL/Gmpzf.h>
 
 /*
+ * Helper class for representing linear constraints of the form A * x >= b.
+ *
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/24/2019
+ *     3/17/2021
  */
 using namespace Eigen;
 typedef CGAL::Gmpzf ET;
@@ -237,7 +239,7 @@ class LinearConstraints
         bool check(const Ref<const VectorXd>& x)
         {
             /* 
-             * Return true if no constraints were satisfied or, otherwise,
+             * Return true if the constraints were satisfied or, otherwise,
              * if this->A * x >= this->b.
              */
             if (x.size() != this->D)

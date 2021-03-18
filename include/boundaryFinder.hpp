@@ -17,6 +17,7 @@
 #include "SQP.hpp"
 #include "simplex.hpp"
 #include "triangulate.hpp"
+#include "sample.hpp"
 
 /*
  * An implementation of a "boundary-finding" algorithm in the plane. 
@@ -24,7 +25,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     1/15/2020
+ *     3/17/2021
  */
 using namespace Eigen;
 
@@ -175,7 +176,6 @@ class ParamFileCollection
         }
 };
 
-template <typename T>
 class BoundaryFinder 
 {
     /*
@@ -217,10 +217,44 @@ class BoundaryFinder
 
     public:
         BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
+                       const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
+        {
+            /*
+             * Constructor with input polytope constraints as Eigen::Matrix
+             * objects.
+             */
+            this->N = 0;
+            this->area_tol = area_tol;
+            this->curr_area = 0.0;
+            this->rng = rng;
+            this->constraints = new LinearConstraints(A, b);
+            this->D = A.cols();
+        }
+
+        BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
+                       std::string constraints_file)
+        {
+            /*
+             * Constructor with input polytope constraints to be parsed from
+             * a text file. 
+             */
+            this->N = 0;
+            this->area_tol = area_tol;
+            this->curr_area = 0.0;
+            this->rng = rng;
+            this->constraints = new LinearConstraints();
+            this->constraints->parse(constraints_file);
+            this->D = this->constraints->getA().cols();
+        }
+
+        BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
                        std::string constraints_file, std::string vertices_file)
         {
             /*
-             * Straightforward constructor.
+             * Constructor with input polytope constraints and vertices to 
+             * be parsed from text files.
+             *
+             * The enumerated vertices are used to triangulate the polytope.
              */
             this->N = 0;
             this->area_tol = area_tol;
@@ -229,19 +263,53 @@ class BoundaryFinder
             this->constraints = new LinearConstraints();
             this->constraints->parse(constraints_file);
 
-            // Parse the vertices from the given .vert file 
+            // Parse the vertices from the given .vert file
             std::vector<std::vector<double> > vertices = parseVertices(vertices_file);
 
-            // Triangulate the parsed polytope 
+            // Triangulate the parsed polytope
             std::pair<Delaunay_triangulation, unsigned> result = triangulate(vertices);
             Delaunay_triangulation dt = result.first;
             this->D = result.second;
 
             // Get the simplices of the triangulation
-            this->interior_simplices = getSimplices(dt, this->D);
+            this->interior_simplices = getInteriorSimplices(dt, this->D);
 
             // Get the facets of the convex hull
             this->boundary_simplices = getConvexHullFacets(dt, this->D);
+        }
+
+        BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
+                       std::string constraints_file, std::string vertices_file,
+                       std::string triangulation_file)
+        {
+            /*
+             * Constructor with input polytope constraints, vertices, and 
+             * pre-computed Delaunay triangulation all parsed from input 
+             * text files.
+             */
+            this->N = 0;
+            this->area_tol = area_tol;
+            this->curr_area = 0.0;
+            this->rng = rng;
+            this->constraints = new LinearConstraints();
+            this->constraints->parse(constraints_file);
+            this->D = this->constraints->getA().cols();
+
+            // Parse the vertices and triangulation from the given input files
+            std::vector<std::vector<double> > vertices = parseVertices(vertices_file);
+            auto triangulation = parseTriangulation(triangulation_file);
+            std::vector<Simplex> simplices = std::get<1>(triangulation);
+
+            /*
+            // Classify the simplices in the triangulation as either interior or boundary
+            auto classified = classifySimplices(simplices, *this->constraints, this->D, rng);
+            this->interior_simplices = classified.first; 
+            this->boundary_simplices = classified.second;
+            */
+
+            // Quick fix (classification is too slow in cases where there are 
+            // too many simplices): Treat every simplex as interior
+            this->interior_simplices = simplices;
         }
 
         ~BoundaryFinder()
@@ -269,38 +337,78 @@ class BoundaryFinder
             return this->params; 
         }
 
-        void initialize(std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
-                        std::function<bool(const Ref<const Matrix<T, Dynamic, 1> >&)> filter,
+        void initialize(std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&)> func,
+                        std::function<bool(const Ref<const Matrix<double, Dynamic, 1> >&)> filter,
+                        const Ref<const MatrixXd>& params)
+        {
+            /*
+             * Initialize the sampling run by evaluating the given function
+             * for a specified set of parameter values. 
+             */
+            this->N = 0;
+            this->params.resize(this->N, this->D);
+            this->points.resize(this->N, 2);
+                
+            // Evaluate the given function at a randomly generated 
+            // parameter point (if it satisfies the required constraints)
+            for (unsigned i = 0; i < params.rows(); ++i)
+            {
+                Matrix<double, Dynamic, 1> y = func(params.row(i));
+                
+                // Check that the point in the output space is not too 
+                // close to the others
+                if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.transpose()).rowwise().norm().minCoeff() > 1e-10))
+                {
+                    this->N++;
+                    this->params.conservativeResize(this->N, this->D);
+                    this->points.conservativeResize(this->N, 2);
+                    this->params.row(this->N-1) = params.row(i);
+                    this->points.row(this->N-1) = y;
+                }
+            }
+        }
+
+        void initialize(std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&)> func,
+                        std::function<bool(const Ref<const Matrix<double, Dynamic, 1> >&)> filter,
                         unsigned n_within, unsigned n_bound)
         {
             /*
              * Initialize the sampling run by evaluating the given function
-             * for a specified number of random parameter values in the
-             * given logarithmic range.
+             * for a specified number of random parameter values. 
              */
             this->N = 0;
+            this->params.resize(this->N, this->D);
+            this->points.resize(this->N, 2);
+
+            // Check that interior/boundary simplices have been labeled as 
+            // such if nonzero numbers of points are to be sampled from either 
+            if (n_within > 0 && this->interior_simplices.size() == 0)
+                throw std::invalid_argument("Interior simplices were not specified, cannot sample from interior"); 
+            else if (n_bound > 0 && this->boundary_simplices.size() == 0)
+                throw std::invalid_argument("Boundary simplices were not specified, cannot sample from boundary"); 
 
             // Sample until the given number of points have been sampled
             // from the interior of the polytope  
             while (this->N < n_within)
             {
                 MatrixXd params = sampleFromSimplices(this->interior_simplices, n_within - this->N, this->rng);
+                Map<MatrixXd> slice(params.data(), 5, this->D);
 
                 // Evaluate the given function at a randomly generated 
                 // parameter point (if it satisfies the required constraints)
                 for (unsigned i = 0; i < params.rows(); ++i)
                 {
-                    Matrix<T, Dynamic, 1> y = func(params.row(i).cast<T>());
+                    Matrix<double, Dynamic, 1> y = func(params.row(i));
                     
                     // Check that the point in the output space is not too 
                     // close to the others
-                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().norm().minCoeff() > 1e-10))
+                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.transpose()).rowwise().norm().minCoeff() > 1e-10))
                     {
                         this->N++;
                         this->params.conservativeResize(this->N, this->D);
                         this->points.conservativeResize(this->N, 2);
                         this->params.row(this->N-1) = params.row(i);
-                        this->points.row(this->N-1) = y.template cast<double>();
+                        this->points.row(this->N-1) = y;
                     }
                 }
             }
@@ -315,25 +423,25 @@ class BoundaryFinder
                 // parameter point (if it satisfies the required constraints)
                 for (unsigned i = 0; i < params.rows(); ++i)
                 {
-                    Matrix<T, Dynamic, 1> y = func(params.row(i).cast<T>());
+                    Matrix<double, Dynamic, 1> y = func(params.row(i));
                     
                     // Check that the point in the output space is not too 
                     // close to the others
-                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.template cast<double>().transpose()).rowwise().norm().minCoeff() > 1e-10))
+                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.transpose()).rowwise().norm().minCoeff() > 1e-10))
                     {
                         this->N++;
                         this->params.conservativeResize(this->N, this->D);
                         this->points.conservativeResize(this->N, 2);
                         this->params.row(this->N-1) = params.row(i);
-                        this->points.row(this->N-1) = y.template cast<double>();
+                        this->points.row(this->N-1) = y;
                     }
                 }
             }
         }
 
-        bool step(std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&)> func, 
-                  std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
-                  std::function<bool(const Ref<const Matrix<T, Dynamic, 1> >&)> filter,
+        bool step(std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&)> func, 
+                  std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
+                  std::function<bool(const Ref<const Matrix<double, Dynamic, 1> >&)> filter,
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const std::string write_prefix = "")
         {
@@ -360,9 +468,48 @@ class BoundaryFinder
             VectorXd::Map(&x[0], this->N) = this->points.col(0);
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
 
-            // Get boundary of the output points in 2-D space
+            // Get boundary of the output points in 2-D space (assume that 
+            // shape is simply connected)
             Boundary2D boundary(x, y);
-            AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, max_edges);
+            AlphaShape2DProperties bound_data;
+            try
+            {
+                // This line may throw:
+                // - CGAL::Precondition_exception (while attempting polygon instantiation)
+                // - std::runtime_error (if polygon is not simple)
+                bound_data = boundary.getBoundary<true>(true, true, max_edges);
+            }
+            catch (CGAL::Precondition_exception& e)
+            {
+                // Try with tag == false 
+                // This may throw a CGAL::Assertion_exception (while attempting alpha 
+                // shape instantiation)
+                try 
+                {
+                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+            catch (std::runtime_error& e)
+            {
+                // Try with tag == false 
+                // This may throw a CGAL::Assertion_exception (while attempting alpha 
+                // shape instantiation)
+                try 
+                {
+                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+
+            // Re-orient the points so that the boundary is traversed clockwise
+            bound_data.orient(CGAL::RIGHT_TURN);
             this->vertices = bound_data.vertices;
 
             // Write boundary information to file if desired
@@ -394,19 +541,19 @@ class BoundaryFinder
                 bool filtered = true;
                 double mindist = 0.0;
                 unsigned j = 0;
-                Matrix<T, Dynamic, 1> q, z;
+                Matrix<double, Dynamic, 1> q, z;
                 while ((filtered || mindist < 1e-10) && j < 20)   // Attempt 20 mutations
                 {
                     // Evaluate the given function at a randomly generated 
                     // parameter point
-                    Matrix<T, Dynamic, 1> p = this->params.row(this->vertices[i]).template cast<T>();
-                    q = this->constraints->nearestL2(mutate(p, this->rng).template cast<double>()).template cast<T>();
+                    Matrix<double, Dynamic, 1> p = this->params.row(this->vertices[i]);
+                    q = this->constraints->nearestL2(mutate(p, this->rng));
                     z = func(q);
                     filtered = filter(z);
                     
                     // Check that the mutation did not give rise to an already 
                     // computed point 
-                    mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().norm().minCoeff();
+                    mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
 
                     j++;
                 }
@@ -415,16 +562,16 @@ class BoundaryFinder
                     this->N++;
                     this->params.conservativeResize(this->N, this->D);
                     this->points.conservativeResize(this->N, 2);
-                    this->params.row(this->N-1) = q.template cast<double>();
-                    this->points.row(this->N-1) = z.template cast<double>();
+                    this->params.row(this->N-1) = q;
+                    this->points.row(this->N-1) = z;
                 }
             }
 
             return (std::abs(change) < this->area_tol * (area - change));
         }
 
-        bool pull(std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
-                  std::function<bool(const Ref<const Matrix<T, Dynamic, 1> >&)> filter,
+        bool pull(std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&)> func,
+                  std::function<bool(const Ref<const Matrix<double, Dynamic, 1> >&)> filter,
                   const double delta, const unsigned max_iter, const double sqp_tol,
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const bool sqp_verbose, const std::string write_prefix = "")
@@ -442,9 +589,44 @@ class BoundaryFinder
             VectorXd::Map(&x[0], this->N) = this->points.col(0);
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
 
-            // Get boundary of the points
+            // Get boundary of the points (assume that shape is simply connected)
             Boundary2D boundary(x, y);
-            AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, max_edges);
+            AlphaShape2DProperties bound_data;
+            try
+            {
+                // This line may throw:
+                // - CGAL::Precondition_exception (while attempting polygon instantiation)
+                // - std::runtime_error (if polygon is not simple)
+                bound_data = boundary.getBoundary<true>(true, true, max_edges);
+            }
+            catch (CGAL::Precondition_exception& e)
+            {
+                // Try with tag == false 
+                // This may throw a CGAL::Assertion_exception (while attempting alpha 
+                // shape instantiation)
+                try 
+                {
+                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+            catch (std::runtime_error& e)
+            {
+                // Try with tag == false 
+                // This may throw a CGAL::Assertion_exception (while attempting alpha 
+                // shape instantiation)
+                try 
+                {
+                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
 
             // Re-orient the points so that the boundary is traversed clockwise
             bound_data.orient(CGAL::RIGHT_TURN);
@@ -484,7 +666,7 @@ class BoundaryFinder
                 pulled(i, 1) = CGAL::to_double(v_pulled.y());
 
                 // Check that the pulled point is not subject to filtering
-                if (filter(pulled.row(i).template cast<T>()))
+                if (filter(pulled.row(i)))
                 {
                     // If so, simply don't pull that vertex
                     pulled(i, 0) = x[this->vertices[i]];
@@ -498,44 +680,180 @@ class BoundaryFinder
             unsigned nc = A.rows();
 
             // Define an SQPOptimizer instance to be utilized 
-            SQPOptimizer<T>* optimizer = new SQPOptimizer<T>(this->D, nc, A, b);
+            SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(this->D, nc, A, b);
 
             // For each vertex in the boundary, minimize the distance to the
             // pulled vertex with a feasible parameter point
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
                 // Minimize the appropriate objective function
-                Matrix<T, Dynamic, 1> target = pulled.row(i).cast<T>();
-                auto obj = [func, target](const Ref<const Matrix<T, Dynamic, 1> >& x)
+                Matrix<double, Dynamic, 1> target = pulled.row(i);
+                auto obj = [func, target](const Ref<const Matrix<double, Dynamic, 1> >& x)
                 {
                     return (target - func(x)).squaredNorm();
                 };
                 VectorXd x_init = this->params.row(this->vertices[i]);
-                VectorXd l_init = VectorXd::Ones(nc) - this->constraints->active(x_init).template cast<double>();
-                Matrix<T, Dynamic, 1> xl_init(this->D + nc);
-                xl_init << x_init.cast<T>(), l_init.cast<T>();
+                VectorXd l_init = VectorXd::Ones(nc) - this->constraints->active(x_init).cast<double>();
+                Matrix<double, Dynamic, 1> xl_init(this->D + nc);
+                xl_init << x_init, l_init;
                 VectorXd q = optimizer->run(obj, xl_init, max_iter, sqp_tol, BFGS, sqp_verbose);
-                Matrix<T, Dynamic, 1> z = func(q.cast<T>());
+                Matrix<double, Dynamic, 1> z = func(q);
                 
                 // Check that the mutation did not give rise to an already 
                 // computed point
-                double mindist = (this->points.rowwise() - z.template cast<double>().transpose()).rowwise().norm().minCoeff();
+                double mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
                 if (!filter(z) && mindist > 1e-10)
                 {
                     this->N++;
                     this->params.conservativeResize(this->N, this->D);
                     this->points.conservativeResize(this->N, 2);
                     this->params.row(this->N-1) = q;
-                    this->points.row(this->N-1) = z.template cast<double>();
+                    this->points.row(this->N-1) = z;
                 }
             }
 
+            delete optimizer;
             return (std::abs(change) < this->area_tol * (area - change));
         }
 
-        void run(std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
-                 std::function<Matrix<T, Dynamic, 1>(const Ref<const Matrix<T, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
-                 std::function<bool(const Ref<const Matrix<T, Dynamic, 1> >&)> filter,
+        void run(std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&)> func,
+                 std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
+                 std::function<bool(const Ref<const Matrix<double, Dynamic, 1> >&)> filter,
+                 const Ref<const MatrixXd>& init_params,
+                 const unsigned min_step_iter, const unsigned max_step_iter,
+                 const unsigned min_pull_iter, const unsigned max_pull_iter,
+                 const unsigned max_edges, const bool verbose,
+                 const unsigned sqp_max_iter, const double sqp_tol,
+                 const bool sqp_verbose, const std::string write_prefix = "")
+        {
+            /*
+             * Run the boundary sampling until convergence, up to the maximum
+             * number of iterations. 
+             */
+            // Initialize the sampling run ...
+            this->initialize(func, filter, init_params);
+
+            // ... then take up to the maximum number of iterations 
+            unsigned i = 0;
+            bool terminate = false;
+            unsigned n_converged = 0;
+            while (i < min_step_iter || (i < max_step_iter && !terminate))
+            {
+                bool result = this->step(func, mutate, filter, i, max_edges, verbose, write_prefix);
+                if (!result) n_converged = 0;
+                else         n_converged += 1;
+                terminate = (n_converged >= 5);
+                i++;
+            }
+
+            // Pull the boundary points outward
+            unsigned j = 0;
+            terminate = false;
+            n_converged = 0;
+            while (j < min_pull_iter || (j < max_pull_iter && !terminate))
+            {
+                bool result = this->pull(
+                    func, filter, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
+                    i + j, max_edges, verbose, sqp_verbose, write_prefix
+                );
+                if (!result) n_converged = 0;
+                else         n_converged += 1;
+                terminate = (n_converged >= 5);
+                j++;
+            }
+
+            // Compute the boundary one last time
+            std::vector<double> x, y;
+            x.resize(this->N);
+            y.resize(this->N);
+            VectorXd::Map(&x[0], this->N) = this->points.col(0);
+            VectorXd::Map(&y[0], this->N) = this->points.col(1);
+            Boundary2D boundary(x, y);
+            AlphaShape2DProperties bound_data;
+            try
+            {
+                // This line may throw:
+                // - CGAL::Precondition_exception (while attempting polygon instantiation)
+                // - std::runtime_error (if polygon is not simple)
+                bound_data = boundary.getBoundary<true>(true, true, max_edges);
+            }
+            catch (CGAL::Precondition_exception& e)
+            {
+                // Try with tag == false 
+                // This may throw a CGAL::Assertion_exception (while attempting alpha 
+                // shape instantiation)
+                try 
+                {
+                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+            catch (std::runtime_error& e)
+            {
+                // Try with tag == false 
+                // This may throw a CGAL::Assertion_exception (while attempting alpha 
+                // shape instantiation)
+                try 
+                {
+                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+
+            // Re-orient the points so that the boundary is traversed clockwise
+            bound_data.orient(CGAL::RIGHT_TURN);
+            this->vertices = bound_data.vertices;
+
+            // Write boundary information to file if desired
+            if (write_prefix.compare(""))
+            {
+                std::stringstream ss;
+                ss << write_prefix << "-final.txt";
+                bound_data.write(ss.str());
+            }
+
+            // Compute enclosed area and test for convergence if algorithm
+            // did not already terminate
+            if (!terminate)
+            {
+                double area = bound_data.area;
+                double change = area - this->curr_area;
+                this->curr_area = area;
+                if (verbose)
+                {
+                    std::cout << "[FINAL] Iteration " << i + j
+                              << "; enclosed area: " << area
+                              << "; " << this->vertices.size() << " boundary points"
+                              << "; " << this->points.rows() << " total points" 
+                              << "; change in area: " << change << std::endl;
+                }
+                if (std::abs(change) < this->area_tol)
+                    terminate = true;
+            }
+
+            // Did the loop terminate without achieving convergence?
+            if (!terminate)
+            {
+                std::cout << "Reached maximum number of iterations ("
+                          << max_step_iter + max_pull_iter
+                          << ") without convergence" << std::endl;
+            }
+            else
+            {
+                std::cout << "Reached convergence within " << i + j << " iterations"
+                          << std::endl;
+            }
+        }
+
+        void run(std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&)> func,
+                 std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
+                 std::function<bool(const Ref<const Matrix<double, Dynamic, 1> >&)> filter,
                  const unsigned n_within, const unsigned n_bound,
                  const unsigned min_step_iter, const unsigned max_step_iter,
                  const unsigned min_pull_iter, const unsigned max_pull_iter,
@@ -553,21 +871,55 @@ class BoundaryFinder
             // ... then take up to the maximum number of iterations 
             unsigned i = 0;
             bool terminate = false;
+            unsigned n_converged = 0;
             while (i < min_step_iter || (i < max_step_iter && !terminate))
             {
-                terminate = this->step(func, mutate, filter, i, max_edges, verbose, write_prefix);
+                // TODO Writing points to file PRIOR to boundary computation
+                // Delete this part later!!
+                std::stringstream ss; 
+                ss << write_prefix << "-pass" << i << "-points.tsv"; 
+                std::ofstream outfile(ss.str());
+                if (outfile.is_open())
+                {
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                    for (unsigned k = 0; k < this->points.rows(); ++k)
+                        outfile << this->points(k, 0) << "\t" << this->points(k, 1) << "\n";
+                }
+                outfile.close();
+
+                bool result = this->step(func, mutate, filter, i, max_edges, verbose, write_prefix);
+                if (!result) n_converged = 0;
+                else         n_converged += 1;
+                terminate = (n_converged >= 5);
                 i++;
             }
 
             // Pull the boundary points outward
             unsigned j = 0;
             terminate = false;
+            n_converged = 0;
             while (j < min_pull_iter || (j < max_pull_iter && !terminate))
             {
-                terminate = this->pull(
+                // TODO Writing points to file PRIOR to boundary computation
+                // Delete this part later!!
+                std::stringstream ss; 
+                ss << write_prefix << "-pass" << i + j << "-points.tsv"; 
+                std::ofstream outfile(ss.str());
+                if (outfile.is_open())
+                {
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                    for (unsigned k = 0; k < this->points.rows(); ++k)
+                        outfile << this->points(k, 0) << "\t" << this->points(k, 1) << "\n";
+                }
+                outfile.close();
+
+                bool result = this->pull(
                     func, filter, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
                     i + j, max_edges, verbose, sqp_verbose, write_prefix
                 );
+                if (!result) n_converged = 0;
+                else         n_converged += 1;
+                terminate = (n_converged >= 5);
                 j++;
             }
 
@@ -578,7 +930,45 @@ class BoundaryFinder
             VectorXd::Map(&x[0], this->N) = this->points.col(0);
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
             Boundary2D boundary(x, y);
-            AlphaShape2DProperties bound_data = boundary.getBoundary(true, true, max_edges);
+            AlphaShape2DProperties bound_data;
+            try
+            {
+                // This line may throw:
+                // - CGAL::Precondition_exception (while attempting polygon instantiation)
+                // - std::runtime_error (if polygon is not simple)
+                bound_data = boundary.getBoundary<true>(true, true, max_edges);
+            }
+            catch (CGAL::Precondition_exception& e)
+            {
+                // Try with tag == false 
+                // This may throw a CGAL::Assertion_exception (while attempting alpha 
+                // shape instantiation)
+                try 
+                {
+                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+            catch (std::runtime_error& e)
+            {
+                // Try with tag == false 
+                // This may throw a CGAL::Assertion_exception (while attempting alpha 
+                // shape instantiation)
+                try 
+                {
+                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+
+            // Re-orient the points so that the boundary is traversed clockwise
+            bound_data.orient(CGAL::RIGHT_TURN);
             this->vertices = bound_data.vertices;
 
             // Write boundary information to file if desired

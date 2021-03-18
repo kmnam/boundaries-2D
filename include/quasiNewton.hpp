@@ -8,7 +8,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     11/14/2019
+ *     3/15/2021
  */
 using namespace Eigen;
 
@@ -35,6 +35,24 @@ Matrix<T, Dynamic, Dynamic> updateBFGS(Matrix<T, Dynamic, Dynamic>& B,
      * Compute the BFGS update formula (Nocedal and Wright, Eqn. 6.19).
      */
     return B.template selfadjointView<Lower>().rankUpdate(B * s, -1.0 / s.dot(B * s)).rankUpdate(y, 1.0 / y.dot(s));
+}
+
+template <typename T>
+Matrix<T, Dynamic, Dynamic> updateBFGSDamped(Matrix<T, Dynamic, Dynamic>& B,
+                                             const Ref<const Matrix<T, Dynamic, 1> >& s,
+                                             const Ref<const Matrix<T, Dynamic, 1> >& y)
+{
+    /*
+     * Compute the damped BFGS update formula (Nocedal and Wright, Eqn. 18.16).
+     */
+    double theta;
+    if (s.dot(y) >= 0.2 * s.dot(B * s))
+        theta = 1.0;
+    else
+        theta = (0.8 * s.dot(B * s)) / (s.dot(B * s) - s.dot(y));
+
+    Matrix<T, Dynamic, 1> r = theta * y + (1 - theta) * B * s; 
+    return B.template selfadjointView<Lower>().rankUpdate(B * s, -1.0 / s.dot(B * s)).rankUpdate(r, 1.0 / s.dot(r)); 
 }
 
 template <typename T>

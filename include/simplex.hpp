@@ -10,10 +10,12 @@
 #include <Eigen/Dense>
 
 /*
+ * Helper class for representing n-dimensional simplices. 
+ *
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     1/14/2020
+ *     3/17/2021
  */
 using namespace Eigen;
 
@@ -52,6 +54,8 @@ class Simplex
         {
             /*
              * Initialize to the given simplex.
+             *
+             * Each row in the given matrix is a vertex in the simplex. 
              */
             this->d = points.cols();
             this->k = points.rows() - 1;
@@ -67,6 +71,21 @@ class Simplex
             /*
              * Trivial destructor.
              */
+        }
+
+        void setPoints(const Ref<const MatrixXd>& points)
+        {
+            /*
+             * Set the points in the simplex to the given coordinates.
+             * Identical to constructor. 
+             */
+            this->d = points.cols();
+            this->k = points.rows() - 1;
+             if (this->d < this->k)
+            {
+                throw std::invalid_argument("d is less than k");
+            }
+            this->points = points;
         }
 
         double faceVolume(std::vector<unsigned> idx)
@@ -128,9 +147,7 @@ class Simplex
             }
        
             // Convert from barycentric coordinates to Cartesian coordinates
-            MatrixXd sample(npoints, this->points.cols());
-            for (unsigned i = 0; i < npoints; ++i)
-                sample.row(i) = barycentric.row(i) * this->points;
+            MatrixXd sample = barycentric * this->points;
 
             return sample;
         }

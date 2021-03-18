@@ -19,7 +19,7 @@
  * Authors: 
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     1/30/2020
+ *     3/17/2021
  */
 using namespace Eigen;
 typedef CGAL::Gmpzf ET;
@@ -38,6 +38,7 @@ struct StepData
 {
     public:
         Matrix<T, Dynamic, 1> xl;
+        T f; 
         VectorXd df;
         VectorXd dL;
         MatrixXd d2L;
@@ -57,33 +58,42 @@ struct StepData
         }
 };
 
-MatrixXd modify(const Ref<const MatrixXd>& A)
+MatrixXd modify(const Ref<const MatrixXd>& A, unsigned max_iter, double beta = 1e-3)
 {
     /*
      * Following the prescription of Nocedal and Wright (Algorithm 3.3, p.51), 
      * add successive multiples of the identity until the given matrix is 
      * positive-definite.
      *
-     * The input matrix is assumed to be symmetric. 
+     * The input matrix is assumed to be symmetric.
+     *
+     * Note that this function is not necessary with the damped BFGS update 
+     * proposed in Procedure 18.2. 
      */
     // Check that A is positive definite with the Cholesky decomposition
     LLT<MatrixXd> dec(A);
     bool posdef = (dec.info() == Success);
+    if (posdef) return A; 
 
-    // TODO Make this customizable
+    // TODO: Make this customizable
     MatrixXd B(A);
     double tau = 0.0;
-    while (!posdef)
+    for (unsigned i = 0; i < max_iter; ++i)
     {
-        double beta = 1e-3;
+        // Add beta to the diagonal ...
         if (tau == 0.0)
             tau = B.cwiseAbs().diagonal().minCoeff() + beta;
         else
             tau *= 2.0;
         B += tau * MatrixXd::Identity(B.rows(), B.cols());
         dec.compute(B);
+
+        // ... until the matrix is positive definite
         posdef = (dec.info() == Success);
+
+        if (posdef) break;    // If so, then we are done 
     }
+
     return B;
 }
 
@@ -143,7 +153,8 @@ class SQPOptimizer
 
         StepData<T> step(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                                          const unsigned iter, const QuasiNewtonMethod quasi_newton,
-                                         const StepData<T> prev_data, const bool verbose);
+                                         const StepData<T> prev_data, const bool verbose,
+                                         const unsigned hessian_modify_max_iter);
 
         VectorXd run(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                      const Ref<const Matrix<T, Dynamic, 1> >& xl_init,
@@ -174,6 +185,7 @@ class SQPOptimizer
 
             // Collect current objective, gradient, and Hessian information
             StepData<T> curr_data;
+            curr_data.f = f; 
             curr_data.xl = xl_init;
             curr_data.df = df;
             curr_data.dL = dL;
@@ -181,11 +193,13 @@ class SQPOptimizer
 
             unsigned i = 0;
             double delta = 2 * tol;
+            unsigned hessian_modify_max_iter = max_iter; 
             while (i < max_iter && delta > tol)
             {
-                StepData<T> next_data = this->step(func, i, quasi_newton, curr_data, verbose); 
+                StepData<T> next_data = this->step(func, i, quasi_newton, curr_data, verbose, hessian_modify_max_iter); 
                 delta = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).template cast<double>().norm();
                 i++;
+                curr_data.f = next_data.f; 
                 curr_data.xl = next_data.xl;
                 curr_data.df = next_data.df;
                 curr_data.dL = next_data.dL;
@@ -263,7 +277,8 @@ StepData<double> SQPOptimizer<double>::step(std::function<double(const Ref<const
                                             const unsigned iter,
                                             const QuasiNewtonMethod quasi_newton,
                                             StepData<double> prev_data,
-                                            const bool verbose)
+                                            const bool verbose,
+                                            const unsigned hessian_modify_max_iter)
 {
     /*
      * Run one step of the SQP algorithm with double scalars.
@@ -283,11 +298,12 @@ StepData<double> SQPOptimizer<double>::step(std::function<double(const Ref<const
      *    satisfies the constraints of the original problem, and 
      *    output the new vector.
      */
+    double f = prev_data.f; 
     VectorXd xl = prev_data.xl;
     VectorXd x = xl.head(this->D);
     VectorXd df = prev_data.df;
     VectorXd dL = prev_data.dL;
-    MatrixXd d2L = prev_data.d2L;
+    MatrixXd d2L = modify(prev_data.d2L, hessian_modify_max_iter);
 
     // If any of the components have a non-finite coordinate, return as is
     if (!x.array().isFinite().all() || !df.array().isFinite().all() || !dL.array().isFinite().all() || !d2L.array().isFinite().all())
@@ -297,27 +313,66 @@ StepData<double> SQPOptimizer<double>::step(std::function<double(const Ref<const
     MatrixXd A = this->constraints->getA();
     VectorXd c = -(A * x.cast<double>() - this->constraints->getb());
 
-    // Set up the quadratic program 
+    // Set up the quadratic program:
+    //
+    // Minimize x.T D x + c.T x + c0 = fk + Dfk.T p + 0.5 * p.T D2Lk p
+    // subject to A p + (A xk - b) >= 0
+    //
+    // where:
+    //
+    // p = variable to be optimized -- vector to be added to current iterate
+    // xk = current iterate 
+    // fk = f(xk)
+    // Dfk = gradient of f at xk
+    // D2Lk = (approximation of) Hessian of Lagrangian at xk 
+    //
+    // Note that, with the damped BFGS update, the Hessian matrix approximation
+    // should be positive definite
     for (unsigned i = 0; i < this->D; ++i)
     {
         for (unsigned j = 0; j <= i; ++j)
         {
-            this->program->set_d(i, j, d2L(i,j)); 
+            this->program->set_d(i, j, d2L(i,j));    // Sets 2D_ij and 2D_ji (the quadratic part of objective)
         }
-        this->program->set_c(i, df(i));
+        this->program->set_c(i, df(i));              // Sets c_i (the linear part of objective)
     }
     for (unsigned i = 0; i < this->N; ++i)
     {
         for (unsigned j = 0; j < this->D; ++j)
         {
-            this->program->set_a(j, i, A(i,j));
+            this->program->set_a(j, i, A(i,j));      // Sets A_ij (j-th coefficient of i-th constraint)
         }
-        this->program->set_b(i, c(i));
+        this->program->set_b(i, c(i));               // Sets b_i (i-th coordinate of -(A xk - b))
     }
-    this->program->set_c0(0.0); // TODO Does this matter?
+    this->program->set_c0(f);                        // Sets constant part of objective (fk)
 
-    // Solve the quadratic program 
-    Solution solution = CGAL::solve_quadratic_program(*this->program, ET());
+    // Solve the quadratic program ...
+    Solution solution; 
+    try
+    {
+        solution = CGAL::solve_quadratic_program(*this->program, ET());
+    }
+    catch (CGAL::Assertion_exception& e) 
+    {
+        // ... if the program cannot be solved because the D matrix is not 
+        // positive semi-definite (this should never be the case), then replace
+        // D with the identity matrix
+        try
+        {
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                for (unsigned j = 0; j <= i; ++j)
+                {
+                    this->program->set_d(i, j, 2.0);    // Sets 2D_ij and 2D_ji
+                }
+            }
+            solution = CGAL::solve_quadratic_program(*this->program, ET());
+        }
+        catch (CGAL::Assertion_exception& e)
+        {
+            throw; 
+        }
+    }
 
     // The program should never be infeasible, since we assume that 
     // the constraint matrix has full rank
@@ -343,13 +398,6 @@ StepData<double> SQPOptimizer<double>::step(std::function<double(const Ref<const
     {
         sol(i) = CGAL::to_double(*it);
         i++;
-    }
-
-    // Check that the solution satisfies the original constraints
-    bool feasible = this->constraints->check(xl.head(this->D).cast<double>() + sol);
-    if (!feasible)
-    {
-        // TODO Figure out what to do here 
     }
 
     // Collect the values of the new Lagrange multipliers (i.e., the
@@ -392,14 +440,14 @@ StepData<double> SQPOptimizer<double>::step(std::function<double(const Ref<const
             s = x_new - x;
             dL = lagr_mixed.second.head(this->D);
             y = dL_new - dL; 
-            d2L_new = modify(updateBFGS<double>(d2L, s, y));
+            d2L_new = updateBFGSDamped<double>(d2L, s, y);
             break;
 
         case SR1:
             s = x_new - x;
             dL = lagr_mixed.second.head(this->D);
             y = dL_new - dL; 
-            d2L_new = modify(updateSR1<double>(d2L, s, y));
+            d2L_new = updateSR1<double>(d2L, s, y);
             break;
 
         default:
@@ -408,854 +456,6 @@ StepData<double> SQPOptimizer<double>::step(std::function<double(const Ref<const
 
     // Return the new data
     StepData<double> new_data;
-    new_data.xl = xl_new;
-    new_data.df = df_new;
-    new_data.dL = dL_new;
-    new_data.d2L = d2L_new;
-    return new_data;
-}
-
-// -------------------------------------------------------------- //
-//         CLASS TEMPLATE SPECIALIZATION FOR BOOST FLOATS         //
-//           WITH FINITE-DIFFERENCES GRADIENT ESTIMATION          //
-// -------------------------------------------------------------- //
-#include <boost/multiprecision/mpfr.hpp>
-#include <boost/multiprecision/eigen.hpp>
-using boost::multiprecision::number;
-using boost::multiprecision::mpfr_float_backend;
-using boost::multiprecision::et_off;
-typedef number<mpfr_float_backend<30>, et_off> mpfr_30_noet;
-typedef number<mpfr_float_backend<200>, et_off> mpfr_200_noet;
-typedef Matrix<mpfr_30_noet, Dynamic, Dynamic> MatrixX30;
-typedef Matrix<mpfr_200_noet, Dynamic, Dynamic> MatrixX200;
-typedef Matrix<mpfr_30_noet, Dynamic, 1> VectorX30;
-typedef Matrix<mpfr_200_noet, Dynamic, 1> VectorX200;
-
-template <>
-std::pair<mpfr_30_noet, VectorXd>
-    SQPOptimizer<mpfr_30_noet>::func_with_gradient(std::function<mpfr_30_noet(const Ref<const VectorX30>&)> func,
-                                                   const Ref<const VectorX30>& x)
-{
-    /*
-     * Compute the given function and its gradient at the given vector,
-     * with delta = 1e-7 for finite difference approximation. 
-     */
-    const mpfr_30_noet delta = 1e-7;
-    
-    // Evaluate the function at 2 * D values, with each coordinate 
-    // perturbed by +/- delta
-    VectorXd grad(this->D);
-    for (unsigned i = 0; i < this->D; ++i)
-    {
-        VectorX30 y(x);
-        y(i) += delta;
-        mpfr_30_noet f1 = func(y);
-        y(i) -= 2 * delta;
-        mpfr_30_noet f2 = func(y);
-        grad(i) = static_cast<double>((f1 - f2) / (2 * delta));
-    }
-    return std::make_pair(func(x), grad);
-}
-
-template <>
-std::pair<mpfr_30_noet, VectorXd>
-    SQPOptimizer<mpfr_30_noet>::lagrangian_with_gradient(std::function<mpfr_30_noet(const Ref<const VectorX30>&)> func,
-                                                         const Ref<const VectorX30>& xl)
-{
-    /*
-     * Compute the Lagrangian of the given function and its gradient at
-     * the given vector, with delta = 1e-7 for finite difference
-     * approximation.
-     */
-    const mpfr_30_noet delta = 1e-7;
-
-    VectorXd x = xl.head(this->D).template cast<double>();
-    VectorXd l = xl.tail(this->N).template cast<double>();
-    MatrixXd A = this->constraints->getA();
-    VectorXd b = this->constraints->getb();
-    mpfr_30_noet L = func(xl.head(this->D)) - static_cast<mpfr_30_noet>(l.dot(A * x - b));
-
-    // Evaluate the Lagrangian at 2 * D values, with each coordinate 
-    // perturbed by +/- delta
-    VectorXd dL(this->D + this->N);
-    for (unsigned i = 0; i < this->D + this->N; ++i)
-    {
-        VectorX30 y(xl);
-        y(i) += delta;
-        mpfr_30_noet f1 = func(y.head(this->D))
-            - static_cast<mpfr_30_noet>(y.tail(this->N).template cast<double>().dot(A * y.head(this->D).template cast<double>() - b));
-        y(i) -= 2 * delta;
-        mpfr_30_noet f2 = func(y.head(this->D))
-            - static_cast<mpfr_30_noet>(y.tail(this->N).template cast<double>().dot(A * y.head(this->D).template cast<double>() - b));
-        dL(i) = static_cast<double>((f1 - f2) / (2 * delta));
-    }
-    return std::make_pair(L, dL);
-}
-
-template <>
-StepData<mpfr_30_noet>
-    SQPOptimizer<mpfr_30_noet>::step(std::function<mpfr_30_noet(const Ref<const VectorX30>&)> func,
-                                     const unsigned iter, const QuasiNewtonMethod quasi_newton,
-                                     StepData<mpfr_30_noet> prev_data, const bool verbose)
-{
-    /*
-     * Run one step of the SQP algorithm with double scalars.
-     *
-     * 1) Given an input vector xl = (x,l) with this->D + this->N
-     *    coordinates, compute f(x) and df(x)/dx. 
-     * 2) Compute the Lagrangian, L(x,l) = f(x) - l.T * A * x, where
-     *    A is the constraint matrix, and its Hessian matrix of 
-     *    second derivatives w.r.t. x.
-     *    - Use a quasi-Newton method to compute the Hessian if desired.
-     *    - If the Hessian is not positive definite, perturb by 
-     *      a small multiple of the identity until it is positive
-     *      definite. 
-     * 3) Define the quadratic subproblem according to the above
-     *    quantities and the constraints (see below). 
-     * 4) Solve the quadratic subproblem, check that the new vector
-     *    satisfies the constraints of the original problem, and 
-     *    output the new vector.
-     */
-    VectorX30 xl = prev_data.xl;
-    VectorX30 x = xl.head(this->D);
-    VectorXd df = prev_data.df;
-    VectorXd dL = prev_data.dL;
-    MatrixXd d2L = prev_data.d2L;
-
-    // If any of the components have a non-finite coordinate, return as is
-    if (!x.array().isFinite().all() || !df.array().isFinite().all() || !dL.array().isFinite().all() || !d2L.array().isFinite().all())
-        return prev_data;
-
-    // Evaluate the constraints and their gradients
-    MatrixXd A = this->constraints->getA();
-    VectorXd c = -(A * x.template cast<double>() - this->constraints->getb());
-
-    // Set up the quadratic program 
-    for (unsigned i = 0; i < this->D; ++i)
-    {
-        for (unsigned j = 0; j <= i; ++j)
-        {
-            this->program->set_d(i, j, d2L(i,j)); 
-        }
-        this->program->set_c(i, df(i));
-    }
-    for (unsigned i = 0; i < this->N; ++i)
-    {
-        for (unsigned j = 0; j < this->D; ++j)
-        {
-            this->program->set_a(j, i, A(i,j));
-        }
-        this->program->set_b(i, c(i));
-    }
-    this->program->set_c0(0.0); // TODO Does this matter?
-
-    // Solve the quadratic program 
-    Solution solution = CGAL::solve_quadratic_program(*this->program, ET());
-
-    // The program should never be infeasible, since we assume that 
-    // the constraint matrix has full rank
-    std::stringstream ss; 
-    if (solution.is_infeasible())
-    {
-        ss << "Quadratic program is infeasible; check constraint matrix:\n" << A;
-        throw std::runtime_error(ss.str());
-    }
-    // The program should also never yield an unbounded solution, 
-    // since we assume that the constraint matrix specifies a 
-    // bounded polytope 
-    else if (solution.is_unbounded())
-    {
-        ss << "Quadratic program yielded unbounded solution; check constraint matrix:\n" << A;
-        throw std::runtime_error(ss.str());
-    }
-
-    // Collect the values of the solution into a VectorXd
-    VectorXd sol(this->D);
-    unsigned i = 0;
-    for (auto it = solution.variable_values_begin(); it != solution.variable_values_end(); ++it)
-    {
-        sol(i) = CGAL::to_double(*it);
-        i++;
-    }
-
-    // Check that the solution satisfies the original constraints
-    bool feasible = this->constraints->check(xl.head(this->D).cast<double>() + sol);
-    if (!feasible)
-    {
-        // TODO Figure out what to do here 
-    }
-
-    // Collect the values of the new Lagrange multipliers (i.e., the
-    // "optimality certificate")
-    VectorXd mult(this->N);
-    i = 0;
-    for (auto it = solution.optimality_certificate_begin(); it != solution.optimality_certificate_end(); ++it)
-    {
-        mult(i) = CGAL::to_double(*it);
-        i++;
-    }
-
-    // Increment the input vector and update the Lagrange multipliers
-    VectorX30 xl_new(this->D + this->N);
-    xl_new.head(this->D) = (xl.head(this->D) + sol).cast<mpfr_30_noet>();
-    xl_new.tail(this->N) = mult.cast<mpfr_30_noet>();
-
-    // Print the new vector and value of the objective function
-    if (verbose)
-    {
-        std::cout << "Iteration " << iter << ": x = " << xl_new.head(this->D).transpose()
-                  << "; " << "f(x) = " << func(xl_new.head(this->D)) << std::endl; 
-    }
-
-    // Evaluate the Hessian of the Lagrangian (with respect to 
-    // the input space)
-    VectorX30 x_new = xl_new.head(this->D);
-    VectorXd df_new = this->func_with_gradient(func, x_new).second;
-    VectorX30 xl_mixed(xl);
-    xl_mixed.tail(this->N) = xl_new.tail(this->N);
-    std::pair<mpfr_30_noet, VectorXd> lagr_mixed = this->lagrangian_with_gradient(func, xl_mixed);
-    std::pair<mpfr_30_noet, VectorXd> lagr_new = this->lagrangian_with_gradient(func, xl_new);
-    mpfr_30_noet L_new = lagr_new.first;
-    VectorXd dL_new = lagr_new.second.head(this->D);
-    MatrixXd d2L_new;
-    VectorXd s, y; 
-    switch (quasi_newton)
-    {
-        case BFGS:
-            s = (x_new - x).template cast<double>();
-            dL = lagr_mixed.second.head(this->D);
-            y = dL_new - dL; 
-            d2L_new = modify(updateBFGS<double>(d2L, s, y));
-            break;
-
-        case SR1:
-            s = (x_new - x).template cast<double>();
-            dL = lagr_mixed.second.head(this->D);
-            y = dL_new - dL; 
-            d2L_new = modify(updateSR1<double>(d2L, s, y));
-            break;
-
-        default:
-            break;
-    } 
-
-    // Return the new data
-    StepData<mpfr_30_noet> new_data;
-    new_data.xl = xl_new;
-    new_data.df = df_new;
-    new_data.dL = dL_new;
-    new_data.d2L = d2L_new;
-    return new_data;
-}
-
-template <>
-std::pair<mpfr_200_noet, VectorXd>
-    SQPOptimizer<mpfr_200_noet>::func_with_gradient(std::function<mpfr_200_noet(const Ref<const VectorX200>&)> func,
-                                                   const Ref<const VectorX200>& x)
-{
-    /*
-     * Compute the given function and its gradient at the given vector,
-     * with delta = 1e-7 for finite difference approximation. 
-     */
-    const mpfr_200_noet delta = 1e-7;
-    
-    // Evaluate the function at 2 * D values, with each coordinate 
-    // perturbed by +/- delta
-    VectorXd grad(this->D);
-    for (unsigned i = 0; i < this->D; ++i)
-    {
-        VectorX200 y(x);
-        y(i) += delta;
-        mpfr_200_noet f1 = func(y);
-        y(i) -= 2 * delta;
-        mpfr_200_noet f2 = func(y);
-        grad(i) = static_cast<double>((f1 - f2) / (2 * delta));
-    }
-    return std::make_pair(func(x), grad);
-}
-
-template <>
-std::pair<mpfr_200_noet, VectorXd>
-    SQPOptimizer<mpfr_200_noet>::lagrangian_with_gradient(std::function<mpfr_200_noet(const Ref<const VectorX200>&)> func,
-                                                         const Ref<const VectorX200>& xl)
-{
-    /*
-     * Compute the Lagrangian of the given function and its gradient at
-     * the given vector, with delta = 1e-7 for finite difference
-     * approximation.
-     */
-    const mpfr_200_noet delta = 1e-7;
-
-    VectorXd x = xl.head(this->D).template cast<double>();
-    VectorXd l = xl.tail(this->N).template cast<double>();
-    MatrixXd A = this->constraints->getA();
-    VectorXd b = this->constraints->getb();
-    mpfr_200_noet L = func(xl.head(this->D)) - static_cast<mpfr_200_noet>(l.dot(A * x - b));
-
-    // Evaluate the Lagrangian at 2 * D values, with each coordinate 
-    // perturbed by +/- delta
-    VectorXd dL(this->D + this->N);
-    for (unsigned i = 0; i < this->D + this->N; ++i)
-    {
-        VectorX200 y(xl);
-        y(i) += delta;
-        mpfr_200_noet f1 = func(y.head(this->D))
-            - static_cast<mpfr_200_noet>(y.tail(this->N).template cast<double>().dot(A * y.head(this->D).template cast<double>() - b));
-        y(i) -= 2 * delta;
-        mpfr_200_noet f2 = func(y.head(this->D))
-            - static_cast<mpfr_200_noet>(y.tail(this->N).template cast<double>().dot(A * y.head(this->D).template cast<double>() - b));
-        dL(i) = static_cast<double>((f1 - f2) / (2 * delta));
-    }
-    return std::make_pair(L, dL);
-}
-
-template <>
-StepData<mpfr_200_noet>
-    SQPOptimizer<mpfr_200_noet>::step(std::function<mpfr_200_noet(const Ref<const VectorX200>&)> func,
-                                     const unsigned iter, const QuasiNewtonMethod quasi_newton,
-                                     StepData<mpfr_200_noet> prev_data, const bool verbose)
-{
-    /*
-     * Run one step of the SQP algorithm with double scalars.
-     *
-     * 1) Given an input vector xl = (x,l) with this->D + this->N
-     *    coordinates, compute f(x) and df(x)/dx. 
-     * 2) Compute the Lagrangian, L(x,l) = f(x) - l.T * A * x, where
-     *    A is the constraint matrix, and its Hessian matrix of 
-     *    second derivatives w.r.t. x.
-     *    - Use a quasi-Newton method to compute the Hessian if desired.
-     *    - If the Hessian is not positive definite, perturb by 
-     *      a small multiple of the identity until it is positive
-     *      definite. 
-     * 3) Define the quadratic subproblem according to the above
-     *    quantities and the constraints (see below). 
-     * 4) Solve the quadratic subproblem, check that the new vector
-     *    satisfies the constraints of the original problem, and 
-     *    output the new vector.
-     */
-    VectorX200 xl = prev_data.xl;
-    VectorX200 x = xl.head(this->D);
-    VectorXd df = prev_data.df;
-    VectorXd dL = prev_data.dL;
-    MatrixXd d2L = prev_data.d2L;
-
-    // If any of the components have a non-finite coordinate, return as is
-    if (!x.array().isFinite().all() || !df.array().isFinite().all() || !dL.array().isFinite().all() || !d2L.array().isFinite().all())
-        return prev_data;
-
-    // Evaluate the constraints and their gradients
-    MatrixXd A = this->constraints->getA();
-    VectorXd c = -(A * x.template cast<double>() - this->constraints->getb());
-
-    // Set up the quadratic program 
-    for (unsigned i = 0; i < this->D; ++i)
-    {
-        for (unsigned j = 0; j <= i; ++j)
-        {
-            this->program->set_d(i, j, d2L(i,j)); 
-        }
-        this->program->set_c(i, df(i));
-    }
-    for (unsigned i = 0; i < this->N; ++i)
-    {
-        for (unsigned j = 0; j < this->D; ++j)
-        {
-            this->program->set_a(j, i, A(i,j));
-        }
-        this->program->set_b(i, c(i));
-    }
-    this->program->set_c0(0.0); // TODO Does this matter?
-
-    // Solve the quadratic program 
-    Solution solution = CGAL::solve_quadratic_program(*this->program, ET());
-
-    // The program should never be infeasible, since we assume that 
-    // the constraint matrix has full rank
-    std::stringstream ss; 
-    if (solution.is_infeasible())
-    {
-        ss << "Quadratic program is infeasible; check constraint matrix:\n" << A;
-        throw std::runtime_error(ss.str());
-    }
-    // The program should also never yield an unbounded solution, 
-    // since we assume that the constraint matrix specifies a 
-    // bounded polytope 
-    else if (solution.is_unbounded())
-    {
-        ss << "Quadratic program yielded unbounded solution; check constraint matrix:\n" << A;
-        throw std::runtime_error(ss.str());
-    }
-
-    // Collect the values of the solution into a VectorXd
-    VectorXd sol(this->D);
-    unsigned i = 0;
-    for (auto it = solution.variable_values_begin(); it != solution.variable_values_end(); ++it)
-    {
-        sol(i) = CGAL::to_double(*it);
-        i++;
-    }
-
-    // Check that the solution satisfies the original constraints
-    bool feasible = this->constraints->check(xl.head(this->D).cast<double>() + sol);
-    if (!feasible)
-    {
-        // TODO Figure out what to do here 
-    }
-
-    // Collect the values of the new Lagrange multipliers (i.e., the
-    // "optimality certificate")
-    VectorXd mult(this->N);
-    i = 0;
-    for (auto it = solution.optimality_certificate_begin(); it != solution.optimality_certificate_end(); ++it)
-    {
-        mult(i) = CGAL::to_double(*it);
-        i++;
-    }
-
-    // Increment the input vector and update the Lagrange multipliers
-    VectorX200 xl_new(this->D + this->N);
-    xl_new.head(this->D) = (xl.head(this->D) + sol).cast<mpfr_200_noet>();
-    xl_new.tail(this->N) = mult.cast<mpfr_200_noet>();
-
-    // Print the new vector and value of the objective function
-    if (verbose)
-    {
-        std::cout << "Iteration " << iter << ": x = " << xl_new.head(this->D).transpose()
-                  << "; " << "f(x) = " << func(xl_new.head(this->D)) << std::endl; 
-    }
-
-    // Evaluate the Hessian of the Lagrangian (with respect to 
-    // the input space)
-    VectorX200 x_new = xl_new.head(this->D);
-    VectorXd df_new = this->func_with_gradient(func, x_new).second;
-    VectorX200 xl_mixed(xl);
-    xl_mixed.tail(this->N) = xl_new.tail(this->N);
-    std::pair<mpfr_200_noet, VectorXd> lagr_mixed = this->lagrangian_with_gradient(func, xl_mixed);
-    std::pair<mpfr_200_noet, VectorXd> lagr_new = this->lagrangian_with_gradient(func, xl_new);
-    mpfr_200_noet L_new = lagr_new.first;
-    VectorXd dL_new = lagr_new.second.head(this->D);
-    MatrixXd d2L_new;
-    VectorXd s, y; 
-    switch (quasi_newton)
-    {
-        case BFGS:
-            s = (x_new - x).template cast<double>();
-            dL = lagr_mixed.second.head(this->D);
-            y = dL_new - dL; 
-            d2L_new = modify(updateBFGS<double>(d2L, s, y));
-            break;
-
-        case SR1:
-            s = (x_new - x).template cast<double>();
-            dL = lagr_mixed.second.head(this->D);
-            y = dL_new - dL; 
-            d2L_new = modify(updateSR1<double>(d2L, s, y));
-            break;
-
-        default:
-            break;
-    } 
-
-    // Return the new data
-    StepData<mpfr_200_noet> new_data;
-    new_data.xl = xl_new;
-    new_data.df = df_new;
-    new_data.dL = dL_new;
-    new_data.d2L = d2L_new;
-    return new_data;
-}
-
-// -------------------------------------------------------------- //
-//    CLASS TEMPLATE SPECIALIZATION FOR REVERSE-MODE VARIABLES    //
-// -------------------------------------------------------------- //
-#include <autodiff/reverse/reverse.hpp>
-#include <autodiff/reverse/eigen.hpp>
-
-template <>
-std::pair<autodiff::var, VectorXd>
-    SQPOptimizer<autodiff::var>::func_with_gradient(std::function<autodiff::var(const Ref<const VectorXvar>&)> func,
-                                                    const Ref<const VectorXvar>& x)
-{
-    /*
-     * Compute the given function and its gradient at the given vector.
-     */
-    autodiff::var f = func(x);
-    VectorXd df = autodiff::gradient(f, x);
-    return std::make_pair(f, df);
-}
-
-template <>
-std::pair<autodiff::var, VectorXd>
-    SQPOptimizer<autodiff::var>::lagrangian_with_gradient(std::function<autodiff::var(const Ref<const VectorXvar>&)> func,
-                                                          const Ref<const VectorXvar>& xl)
-{
-    /*
-     * Compute the Lagrangian of the given function and its gradient at
-     * the given vector.
-     */
-    VectorXvar x = xl.head(this->D);
-    VectorXvar l = xl.tail(this->N);
-    MatrixXvar A = this->constraints->getA().cast<autodiff::var>();
-    VectorXvar b = this->constraints->getb().cast<autodiff::var>();
-    autodiff::var L = func(x) - l.dot(A * x - b);
-    VectorXd dL = autodiff::gradient(L, xl);
-    return std::make_pair(L, dL);
-} 
-
-template <>
-StepData<autodiff::var> SQPOptimizer<autodiff::var>::step(std::function<autodiff::var(const Ref<const VectorXvar>&)> func,
-                                                          const unsigned iter,
-                                                          const QuasiNewtonMethod quasi_newton,
-                                                          StepData<autodiff::var> prev_data,
-                                                          const bool verbose)
-{
-    /*
-     * Run one step of the SQP algorithm with autodiff::var scalars.
-     *
-     * 1) Given an input vector xl = (x,l) with this->D + this->N
-     *    coordinates, compute f(x) and df(x)/dx. 
-     * 2) Compute the Lagrangian, L(x,l) = f(x) - l.T * A * x, where
-     *    A is the constraint matrix, and its Hessian matrix of 
-     *    second derivatives w.r.t. x.
-     *    - Use a quasi-Newton method to compute the Hessian if desired.
-     *    - If the Hessian is not positive definite, perturb by 
-     *      a small multiple of the identity until it is positive
-     *      definite. 
-     * 3) Define the quadratic subproblem according to the above
-     *    quantities and the constraints (see below). 
-     * 4) Solve the quadratic subproblem, check that the new vector
-     *    satisfies the constraints of the original problem, and 
-     *    output the new vector.
-     */
-    VectorXvar xl = prev_data.xl;
-    VectorXvar x = xl.head(this->D);
-    VectorXd df = prev_data.df;
-    VectorXd dL = prev_data.dL;
-    MatrixXd d2L = prev_data.d2L;
-
-    // If any of the components have a non-finite coordinate, return as is
-    if (!x.cast<double>().array().isFinite().all() || !df.array().isFinite().all() || !dL.array().isFinite().all() || !d2L.array().isFinite().all())
-        return prev_data;
-
-    // Evaluate the constraints and their gradients
-    MatrixXd A = this->constraints->getA();
-    VectorXd c = -(A * x.cast<double>() - this->constraints->getb());
-
-    // Set up the quadratic program 
-    for (unsigned i = 0; i < this->D; ++i)
-    {
-        for (unsigned j = 0; j <= i; ++j)
-        {
-            this->program->set_d(i, j, d2L(i,j)); 
-        }
-        this->program->set_c(i, df(i));
-    }
-    for (unsigned i = 0; i < this->N; ++i)
-    {
-        for (unsigned j = 0; j < this->D; ++j)
-        {
-            this->program->set_a(j, i, A(i,j));
-        }
-        this->program->set_b(i, c(i));
-    }
-    this->program->set_c0(0.0); // TODO Does this matter?
-
-    // Solve the quadratic program 
-    Solution solution = CGAL::solve_quadratic_program(*this->program, ET());
-
-    // The program should never be infeasible, since we assume that 
-    // the constraint matrix has full rank
-    std::stringstream ss; 
-    if (solution.is_infeasible())
-    {
-        ss << "Quadratic program is infeasible; check constraint matrix:\n" << A;
-        throw std::runtime_error(ss.str());
-    }
-    // The program should also never yield an unbounded solution, 
-    // since we assume that the constraint matrix specifies a 
-    // bounded polytope 
-    else if (solution.is_unbounded())
-    {
-        ss << "Quadratic program yielded unbounded solution; check constraint matrix:\n" << A;
-        throw std::runtime_error(ss.str());
-    }
-
-    // Collect the values of the solution into a VectorXd
-    VectorXd sol(this->D);
-    unsigned i = 0;
-    for (auto it = solution.variable_values_begin(); it != solution.variable_values_end(); ++it)
-    {
-        sol(i) = CGAL::to_double(*it);
-        i++;
-    }
-
-    // Check that the solution satisfies the original constraints
-    bool feasible = this->constraints->check(xl.head(this->D).cast<double>() + sol);
-    if (!feasible)
-    {
-        // TODO Figure out what to do here 
-    }
-
-    // Collect the values of the new Lagrange multipliers (i.e., the
-    // "optimality certificate")
-    VectorXd mult(this->N);
-    i = 0;
-    for (auto it = solution.optimality_certificate_begin(); it != solution.optimality_certificate_end(); ++it)
-    {
-        mult(i) = CGAL::to_double(*it);
-        i++;
-    }
-
-    // Increment the input vector and update the Lagrange multipliers
-    VectorXvar xl_new(this->D + this->N);
-    xl_new.head(this->D) = xl.head(this->D) + sol.cast<autodiff::var>();
-    xl_new.tail(this->N) = mult.cast<autodiff::var>();
-
-    // Print the new vector and value of the objective function
-    if (verbose)
-    {
-        std::cout << "Iteration " << iter << ": x = " << xl_new.head(this->D).transpose()
-                  << "; " << "f(x) = " << func(xl_new.head(this->D)) << std::endl; 
-    }
-
-    // Evaluate the Hessian of the Lagrangian (with respect to 
-    // the input space)
-    VectorXvar x_new = xl_new.head(this->D);
-    VectorXd df_new = this->func_with_gradient(func, x_new).second;
-    VectorXvar xl_mixed(xl);
-    xl_mixed.tail(this->N) = xl_new.tail(this->N);
-    std::pair<autodiff::var, VectorXd> lagr_mixed = this->lagrangian_with_gradient(func, xl_mixed);
-    std::pair<autodiff::var, VectorXd> lagr_new = this->lagrangian_with_gradient(func, xl_new);
-    autodiff::var L_new = lagr_new.first;
-    VectorXd dL_new = lagr_new.second.head(this->D);
-    MatrixXd d2L_new;
-    VectorXd s, y; 
-    switch (quasi_newton)
-    {
-        case NONE:
-            d2L_new = modify(autodiff::hessian(L_new, xl_new).block(0, 0, this->D, this->D));
-            break;
-
-        case BFGS:
-            s = (x_new - x).cast<double>();
-            dL = lagr_mixed.second.head(this->D);
-            y = dL_new - dL; 
-            d2L_new = modify(updateBFGS<double>(d2L, s, y));
-            break;
-
-        case SR1:
-            s = (x_new - x).cast<double>();
-            dL = lagr_mixed.second.head(this->D);
-            y = dL_new - dL; 
-            d2L_new = modify(updateSR1<double>(d2L, s, y));
-            break;
-
-        default:
-            break;
-    } 
-
-    // Return the new data
-    StepData<autodiff::var> new_data;
-    new_data.xl = xl_new;
-    new_data.df = df_new;
-    new_data.dL = dL_new;
-    new_data.d2L = d2L_new;
-    return new_data;
-}
-
-// -------------------------------------------------------------- //
-//    CLASS TEMPLATE SPECIALIZATION FOR FORWARD-MODE VARIABLES    //
-// -------------------------------------------------------------- //
-#include <duals/duals.hpp>
-#include <duals/eigen.hpp>
-
-using Duals::DualNumber;
-
-template <>
-std::pair<DualNumber, VectorXd>
-    SQPOptimizer<DualNumber>::func_with_gradient(std::function<DualNumber(const Ref<const VectorXDual>&)> func,
-                                                 const Ref<const VectorXDual>& x)
-{
-    /*
-     * Compute the given function and its gradient at the given vector.
-     */
-    DualNumber f;
-    VectorXd df = Duals::gradient(func, x, f);
-    return std::make_pair(f, df);
-}
-
-template <>
-std::pair<DualNumber, VectorXd>
-    SQPOptimizer<DualNumber>::lagrangian_with_gradient(std::function<DualNumber(const Ref<const VectorXDual>&)> func,
-                                                       const Ref<const VectorXDual>& xl)
-{
-    /*
-     * Compute the Lagrangian of the given function and its gradient at
-     * the given vector.
-     */
-    unsigned D = this->D;
-    unsigned N = this->N;
-    MatrixXDual A = this->constraints->getA().cast<DualNumber>();
-    VectorXDual b = this->constraints->getb().cast<DualNumber>();
-    DualNumber L;
-    std::function<DualNumber(const Ref<const VectorXDual>&)> lagr = [func, D, N, A, b](const Ref<const VectorXDual>& a)
-    {
-        return func(a.head(D)) - a.tail(N).dot(A * a.head(D) - b);
-    };
-    VectorXd dL = Duals::gradient(lagr, xl, L);
-    return std::make_pair(L, dL);
-} 
-
-template <>
-StepData<DualNumber> SQPOptimizer<DualNumber>::step(std::function<DualNumber(const Ref<const VectorXDual>&)> func,
-                                                    const unsigned iter,
-                                                    const QuasiNewtonMethod quasi_newton,
-                                                    StepData<DualNumber> prev_data,
-                                                    const bool verbose)
-{
-    /*
-     * Run one step of the SQP algorithm with Duals::DualNumber scalars.
-     *
-     * 1) Given an input vector xl = (x,l) with this->D + this->N
-     *    coordinates, compute f(x) and df(x)/dx. 
-     * 2) Compute the Lagrangian, L(x,l) = f(x) - l.T * A * x, where
-     *    A is the constraint matrix, and its Hessian matrix of 
-     *    second derivatives w.r.t. x.
-     *    - Use a quasi-Newton method to compute the Hessian if desired.
-     *    - If the Hessian is not positive definite, perturb by 
-     *      a small multiple of the identity until it is positive
-     *      definite. 
-     * 3) Define the quadratic subproblem according to the above
-     *    quantities and the constraints (see below). 
-     * 4) Solve the quadratic subproblem, check that the new vector
-     *    satisfies the constraints of the original problem, and 
-     *    output the new vector.
-     */
-    VectorXDual xl = prev_data.xl;
-    VectorXDual x = xl.head(this->D);
-    VectorXd df = prev_data.df;
-    VectorXd dL = prev_data.dL;
-    MatrixXd d2L = prev_data.d2L;
-
-    // If any of the components have a non-finite coordinate, return as is
-    if (!x.cast<double>().array().isFinite().all() || !df.array().isFinite().all() || !dL.array().isFinite().all() || !d2L.array().isFinite().all())
-        return prev_data;
-
-    // Evaluate the constraints and their gradients
-    MatrixXd A = this->constraints->getA();
-    VectorXd c = -(A * x.cast<double>() - this->constraints->getb());
-
-    // Set up the quadratic program 
-    for (unsigned i = 0; i < this->D; ++i)
-    {
-        for (unsigned j = 0; j <= i; ++j)
-        {
-            this->program->set_d(i, j, d2L(i,j)); 
-        }
-        this->program->set_c(i, df(i));
-    }
-    for (unsigned i = 0; i < this->N; ++i)
-    {
-        for (unsigned j = 0; j < this->D; ++j)
-        {
-            this->program->set_a(j, i, A(i,j));
-        }
-        this->program->set_b(i, c(i));
-    }
-    this->program->set_c0(0.0); // TODO Does this matter?
-
-    // Solve the quadratic program 
-    Solution solution = CGAL::solve_quadratic_program(*this->program, ET());
-
-    // The program should never be infeasible, since we assume that 
-    // the constraint matrix has full rank
-    std::stringstream ss; 
-    if (solution.is_infeasible())
-    {
-        ss << "Quadratic program is infeasible; check constraint matrix:\n" << A;
-        throw std::runtime_error(ss.str());
-    }
-    // The program should also never yield an unbounded solution, 
-    // since we assume that the constraint matrix specifies a 
-    // bounded polytope 
-    else if (solution.is_unbounded())
-    {
-        ss << "Quadratic program yielded unbounded solution; check constraint matrix:\n" << A;
-        throw std::runtime_error(ss.str());
-    }
-
-    // Collect the values of the solution into a VectorXd
-    VectorXd sol(this->D);
-    unsigned i = 0;
-    for (auto it = solution.variable_values_begin(); it != solution.variable_values_end(); ++it)
-    {
-        sol(i) = CGAL::to_double(*it);
-        i++;
-    }
-
-    // Check that the solution satisfies the original constraints
-    bool feasible = this->constraints->check(xl.head(this->D).cast<double>() + sol);
-    if (!feasible)
-    {
-        // TODO Figure out what to do here 
-    }
-
-    // Collect the values of the new Lagrange multipliers (i.e., the
-    // "optimality certificate")
-    VectorXd mult(this->N);
-    i = 0;
-    for (auto it = solution.optimality_certificate_begin(); it != solution.optimality_certificate_end(); ++it)
-    {
-        mult(i) = CGAL::to_double(*it);
-        i++;
-    }
-
-    // Increment the input vector and update the Lagrange multipliers
-    VectorXDual xl_new(this->D + this->N);
-    xl_new.head(this->D) = xl.head(this->D) + sol.cast<DualNumber>();
-    xl_new.tail(this->N) = mult.cast<DualNumber>();
-
-    // Print the new vector and value of the objective function
-    if (verbose)
-    {
-        std::cout << "Iteration " << iter << ": x = " << xl_new.head(this->D).transpose()
-                  << "; " << "f(x) = " << func(xl_new.head(this->D)) << std::endl; 
-    }
-
-    // Evaluate the Hessian of the Lagrangian (with respect to 
-    // the input space)
-    VectorXDual x_new = xl_new.head(this->D);
-    VectorXd df_new = this->func_with_gradient(func, x_new).second;
-    VectorXDual xl_mixed(xl);
-    xl_mixed.tail(this->N) = xl_new.tail(this->N);
-    std::pair<DualNumber, VectorXd> lagr_mixed = this->lagrangian_with_gradient(func, xl_mixed);
-    std::pair<DualNumber, VectorXd> lagr_new = this->lagrangian_with_gradient(func, xl_new);
-    DualNumber L_new = lagr_new.first;
-    VectorXd dL_new = lagr_new.second.head(this->D);
-    MatrixXd d2L_new;
-    VectorXd s, y; 
-    switch (quasi_newton)
-    {
-        case BFGS:
-            s = (x_new - x).cast<double>();
-            dL = lagr_mixed.second.head(this->D);
-            y = dL_new - dL; 
-            d2L_new = modify(updateBFGS<double>(d2L, s, y));
-            break;
-
-        case SR1:
-            s = (x_new - x).cast<double>();
-            dL = lagr_mixed.second.head(this->D);
-            y = dL_new - dL; 
-            d2L_new = modify(updateSR1<double>(d2L, s, y));
-            break;
-
-        default:
-            break;
-    } 
-
-    // Return the new data
-    StepData<DualNumber> new_data;
     new_data.xl = xl_new;
     new_data.df = df_new;
     new_data.dL = dL_new;
