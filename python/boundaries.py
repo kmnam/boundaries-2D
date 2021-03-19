@@ -38,6 +38,8 @@ class Boundary2D(object):
         self.points = []
         self.vertices = []
         self.edges = []
+        self.alpha = None
+        self.area = None
 
     #######################################################
     @classmethod
@@ -57,7 +59,11 @@ class Boundary2D(object):
         b = Boundary2D()
         with open(path) as f:
             for line in f:
-                if line.startswith('POINT'):      # Line specifies a point
+                if line.startswith('ALPHA'):      # Line specifies alpha value 
+                    b.alpha = float(line.strip().split('\t')[1])
+                elif line.startswith('AREA'):     # Line specifies enclosed area 
+                    b.area = float(line.strip().split('\t')[1])
+                elif line.startswith('POINT'):    # Line specifies a point
                     xs, ys = line.replace('POINT', '').strip().split('\t')
                     b.points.append([float(xs), float(ys)])
                 elif line.startswith('VERTEX'):   # Line specifies a vertex
@@ -98,14 +104,14 @@ class Boundary2D(object):
         # Plot the interior points if desired
         if plot_interior:
             ax.scatter(
-                self.points[:,0], self.points[:,1], c=interior_color, s=interior_size,
+                self.points[:,0], self.points[:,1], c=[interior_color], s=interior_size,
                 alpha=interior_alpha, zorder=0, rasterized=rasterized
             )
         
         # Plot the boundary points
         ax.scatter(
             self.points[self.vertices,0], self.points[self.vertices,1],
-            c=boundary_color, s=boundary_size, zorder=2
+            c=[boundary_color], s=boundary_size, zorder=2
         )
 
         # Plot each boundary edge
