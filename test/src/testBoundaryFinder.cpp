@@ -13,7 +13,7 @@
  * Authors:
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * Last updated:
- *     1/11/2020
+ *     3/19/2021
  */
 using namespace Eigen;
 
@@ -35,12 +35,25 @@ VectorXd project(const Ref<const VectorXd>& x)
     return x.head(2);
 }
 
+VectorXd func1(const Ref<const VectorXd>& x)
+{
+    /*
+     * (x, y) ---> (x^2 + y^2, x^2 - y^2).
+     */
+    VectorXd y(x.size());
+    y << x(0) * x(0) + x(1) * x(1), x(0) * x(0) - x(1) * x(1);
+    return y;
+}
+
 // -------------------------------------------------------- //
 //                     MUTATION FUNCTIONS                   //
 // -------------------------------------------------------- //
-template <double delta = 0.1>
 VectorXd add_delta(const Ref<const VectorXd>& x, boost::random::mt19937& rng)
 {
+    /*
+     * Perturb each coordinate up or down by 0.1. 
+     */
+    const double delta = 0.1;
     VectorXd y(x.size());
     for (unsigned i = 0; i < x.size(); ++i)
     {
@@ -53,8 +66,9 @@ VectorXd add_delta(const Ref<const VectorXd>& x, boost::random::mt19937& rng)
 // -------------------------------------------------------- //
 //                 BOUNDARY FINDER FUNCTIONS                //
 // -------------------------------------------------------- //
-void testBoundaryFinderProject(std::string poly_filename, std::string vert_filename,
-                               std::string output_prefix)
+void testBoundaryFinder(std::string poly_filename, std::string vert_filename,
+                        std::string output_prefix, std::function<VectorXd(const Ref<const VectorXd>&)> func,
+                        std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate)
 {
     /*
      * Run BoundaryFinder on the projection of the given polytope onto the 
@@ -63,10 +77,10 @@ void testBoundaryFinderProject(std::string poly_filename, std::string vert_filen
     boost::random::mt19937 rng(1234567890);
     const double tol = 1e-5;         // Tolerance for convergence
 
-    BoundaryFinder<double> finder(tol, rng, poly_filename, vert_filename);
+    BoundaryFinder finder(tol, rng, poly_filename, vert_filename);
     finder.run(
-        project, add_delta<0.1>,
-        [](const Ref<const VectorXd>&){ return false; },    // No filtering 
+        func, mutate,
+        [](const Ref<const VectorXd>& v){ return false; },    // No filtering 
         20, 20,    // 20 points within the cube, 20 points from the boundary
         10,        // Minimum of 10 mutation iterations
         100,       // Maximum of 100 mutation iterations
@@ -85,29 +99,41 @@ int main(int argc, char** argv)
 {
     std::string polytope_dir = argv[1];
 
+    // Function for writing paths to input files 
+    std::function<void(std::stringstream&, std::string, std::string)> joinPath =
+        [](std::stringstream& ss, std::string dir, std::string filename)
+    {
+        ss.clear(); 
+        ss.str(std::string());
+        if (dir.compare(dir.length() - 1, 1, "/") == 0)
+            ss << dir << filename;  
+        else
+            ss << dir << "/" << filename; 
+    };
+
+    // Square of length 2 in 2-D
+    std::stringstream square_poly, square_vert;
+    joinPath(square_poly, polytope_dir, "square-2.poly");
+    joinPath(square_vert, polytope_dir, "square-2.vert"); 
+
     // Cube of length 2 in 4-D
-    std::stringstream ss1_poly, ss1_vert; 
-    if (polytope_dir.compare(polytope_dir.length() - 1, 1, "/") == 0)
-    {
-        ss1_poly << polytope_dir << "cube-4.poly";
-        ss1_vert << polytope_dir << "cube-4.vert";
-    }
-    else
-    {
-        ss1_poly << polytope_dir << "/cube-4.poly";
-        ss1_vert << polytope_dir << "/cube-4.vert";
-    }
+    std::stringstream cube_poly, cube_vert;
+    joinPath(cube_poly, polytope_dir, "cube-4.poly");
+    joinPath(cube_vert, polytope_dir, "cube-4.vert"); 
 
     // Output directory 
     std::string output_dir = argv[2];
-    std::stringstream ss1_prefix; 
-    if (output_dir.compare(output_dir.length() - 1, 1, "/") == 0)
-        ss1_prefix << output_dir << "cube-4-project";
-    else 
-        ss1_prefix << output_dir << "/cube-4-project"; 
     
-    // Run boundary-finding algorithm  
-    testBoundaryFinderProject(ss1_poly.str(), ss1_vert.str(), ss1_prefix.str());
+    // Run boundary-finding algorithm
+    std::stringstream ss_out;
+    joinPath(ss_out, output_dir, "square-2-func1");
+    testBoundaryFinder(
+        square_poly.str(), square_vert.str(), ss_out.str(), func1, add_delta
+    );
+    joinPath(ss_out, output_dir, "cube-4-project"); 
+    testBoundaryFinder(
+        cube_poly.str(), cube_vert.str(), ss_out.str(), project, add_delta
+    );
 
     return 0;
 }
