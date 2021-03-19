@@ -17,7 +17,7 @@ Example usage:
 Authors:
     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
 Last updated:
-    12/5/2019
+    3/19/2021
 
 """
 import sys
@@ -105,10 +105,10 @@ class Boundary2D(object):
         # Plot the boundary points
         ax.scatter(
             self.points[self.vertices,0], self.points[self.vertices,1],
-            c=boundary_color, s=boundary_size, zorder=2, rasterized=rasterized
+            c=boundary_color, s=boundary_size, zorder=2
         )
 
         # Plot each boundary edge
         for edge in self.edges:
-            ax.plot(self.points[edge,0], self.points[edge,1], c='black', zorder=1)
+            ax.plot(self.points[edge,0], self.points[edge,1], c=boundary_color, zorder=1)
 
