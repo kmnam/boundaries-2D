@@ -117,7 +117,7 @@ class Boundary2D(object):
         # Shade in the interior if desired
         if shade_interior:
             polygon = patches.Polygon(
-                self.points[self.vertices,:], closed=True, facecolor=boundary_color,
+                self.points[self.vertices,:], closed=True, facecolor=interior_color,
                 edgecolor=boundary_color, alpha=patch_alpha
             )
             ax.add_patch(polygon)
