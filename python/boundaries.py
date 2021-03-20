@@ -79,7 +79,8 @@ class Boundary2D(object):
     def plot(self, ax, plot_interior=False, shade_interior=False,
              interior_color=sns.xkcd_rgb['denim blue'],
              boundary_color=sns.xkcd_rgb['pale red'], interior_size=20,
-             boundary_size=30, interior_alpha=0.1, rasterized=True):
+             boundary_size=30, patch_alpha=0.3, interior_alpha=0.1,
+             boundary_alpha=1.0, rasterized=True):
         """
         Plot the stored points, with the boundary points emphasized and 
         connected by their edges.
@@ -88,6 +89,26 @@ class Boundary2D(object):
         ----------
         ax : matplotlib.pyplot.Axes
             Axes onto which the points are to be plotted.
+        plot_interior : bool
+            Whether to plot the interior points. 
+        shade_interior : bool
+            Whether to shade in the interior.
+        interior_color : RGB tuple or color string
+            Color for interior points. 
+        boundary_color : RGB tuple or color string
+            Color for boundary. 
+        interior_size : int
+            Size of interior points.
+        boundary_size : int
+            Size of boundary points.
+        patch_alpha : float
+            Alpha-value for interior shading.
+        interior_alpha : float
+            Alpha-value for interior scatter.
+        boundary_alpha : float
+            Alpha-value for boundary scatter.
+        rasterized : bool
+            Whether to rasterize the plot. 
         
         Returns
         -------
@@ -97,7 +118,7 @@ class Boundary2D(object):
         if shade_interior:
             polygon = patches.Polygon(
                 self.points[self.vertices,:], closed=True, facecolor=boundary_color,
-                edgecolor=boundary_color, alpha=0.3
+                edgecolor=boundary_color, alpha=patch_alpha
             )
             ax.add_patch(polygon)
 
@@ -116,5 +137,8 @@ class Boundary2D(object):
 
         # Plot each boundary edge
         for edge in self.edges:
-            ax.plot(self.points[edge,0], self.points[edge,1], c=boundary_color, zorder=1)
+            ax.plot(
+                self.points[edge,0], self.points[edge,1], c=boundary_color, zorder=1,
+                alpha=boundary_alpha
+            )
 
