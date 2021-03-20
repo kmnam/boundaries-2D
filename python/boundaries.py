@@ -77,10 +77,10 @@ class Boundary2D(object):
 
     #######################################################
     def plot(self, ax, plot_interior=False, shade_interior=False,
-             interior_color=sns.xkcd_rgb['denim blue'],
-             boundary_color=sns.xkcd_rgb['pale red'], interior_size=20,
-             boundary_size=30, patch_alpha=0.3, interior_alpha=0.1,
-             boundary_alpha=1.0, rasterized=True):
+             plot_boundary_scatter=False, interior_color=sns.xkcd_rgb['denim blue'],
+             boundary_color=sns.xkcd_rgb['pale red'], interior_pointsize=20,
+             boundary_pointsize=30, boundary_linewidth=None, shade_alpha=0.3,
+             interior_alpha=0.1, boundary_alpha=1.0, rasterized=True):
         """
         Plot the stored points, with the boundary points emphasized and 
         connected by their edges.
@@ -93,15 +93,19 @@ class Boundary2D(object):
             Whether to plot the interior points. 
         shade_interior : bool
             Whether to shade in the interior.
+        plot_boundary_scatter : bool
+            Whether to plot the individual boundary vertices. 
         interior_color : RGB tuple or color string
             Color for interior points. 
         boundary_color : RGB tuple or color string
             Color for boundary. 
-        interior_size : int
+        interior_pointsize : int
             Size of interior points.
-        boundary_size : int
+        boundary_pointsize : int
             Size of boundary points.
-        patch_alpha : float
+        boundary_linewidth : float
+            Thickness of boundary edges. 
+        shade_alpha : float
             Alpha-value for interior shading.
         interior_alpha : float
             Alpha-value for interior scatter.
@@ -118,27 +122,35 @@ class Boundary2D(object):
         if shade_interior:
             polygon = patches.Polygon(
                 self.points[self.vertices,:], closed=True, facecolor=interior_color,
-                edgecolor=boundary_color, alpha=patch_alpha
+                edgecolor=boundary_color, alpha=shade_alpha,
+                linewidth=boundary_linewidth
             )
             ax.add_patch(polygon)
+        # Otherwise, simply plot the edges 
+        else:
+            for edge in self.edges:
+                ax.plot(
+                    self.points[edge,0], self.points[edge,1], c=boundary_color,
+                    zorder=1, alpha=boundary_alpha, linewidth=boundary_linewidth
+                )
 
         # Plot the interior points if desired
         if plot_interior:
             ax.scatter(
-                self.points[:,0], self.points[:,1], c=[interior_color], s=interior_size,
-                alpha=interior_alpha, zorder=0, rasterized=rasterized
+                self.points[:,0], self.points[:,1], c=[interior_color],
+                s=interior_pointsize, alpha=interior_alpha, zorder=0,
+                rasterized=rasterized
             )
         
-        # Plot the boundary points
-        ax.scatter(
-            self.points[self.vertices,0], self.points[self.vertices,1],
-            c=[boundary_color], s=boundary_size, zorder=2
-        )
-
-        # Plot each boundary edge
-        for edge in self.edges:
-            ax.plot(
-                self.points[edge,0], self.points[edge,1], c=boundary_color, zorder=1,
+        # Plot the boundary points if desired
+        if plot_boundary_scatter:
+            ax.scatter(
+                self.points[self.vertices,0], self.points[self.vertices,1],
+                c=[boundary_color], s=boundary_pointsize, zorder=2,
                 alpha=boundary_alpha
             )
+
+        # Auto-scale the axes limits
+        ax.autoscale_view()
+
 
