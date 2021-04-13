@@ -39,6 +39,15 @@ class Polytope
 {
     /* 
      * Simple wrapper class for a Euclidean convex polytope. 
+     *
+     * Encodes the polytope only in terms of its half-planes, as a 
+     * Eigen::MatrixXd `constraints`, in which each row:
+     *
+     * a0 a1 a2 ... aN
+     *
+     * encodes the constraint
+     *
+     * a0 + a1*x1 + a2*x2 + ... + aN*xN >= 0.
      */
     public:
         MatrixXd constraints;    // Half-plane inequality matrix
