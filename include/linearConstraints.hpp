@@ -148,13 +148,24 @@ class LinearConstraints
             {
                 while (std::getline(infile, line))
                 {
+                    // Accumulate the entries in each line ...
                     std::stringstream ss(line);
                     std::string token;
                     std::vector<double> row;
                     N++;
                     while (std::getline(ss, token, ' '))
                         row.push_back(std::stod(token));
+
+                    // If this is the first row being parsed, get the number 
+                    // of columns in constraint matrix 
                     if (D == 0) D = row.size() - 1;
+
+                    // Add the new constraint, with column 0 specifying the 
+                    // constant term and the remaining columns specifying the
+                    // linear coefficients:
+                    //
+                    // a0 + a1*x1 + a2*x2 + ... + aN*xN >= 0
+                    //
                     A.conservativeResize(N, D);
                     b.conservativeResize(N);
                     for (unsigned i = 1; i < row.size(); ++i)
