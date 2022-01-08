@@ -193,7 +193,7 @@ class BoundaryFinder
 
     public:
         BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
-                       const MatrixXd& A, const VectorXd& b)
+                       const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
         {
             /*
              * Constructor with input polytope constraints as Eigen::Matrix
@@ -296,7 +296,7 @@ class BoundaryFinder
             delete this->constraints;
         }
 
-        void setConstraints(const MatrixXd& A, const VectorXd& b)
+        void setConstraints(const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
         {
             /*
              * Instantiate and store a new LinearConstraints instance from
@@ -313,8 +313,8 @@ class BoundaryFinder
             return this->params; 
         }
 
-        void initialize(std::function<VectorXd(const VectorXd&)> func, 
-                        std::function<bool(const VectorXd&)> filter, 
+        void initialize(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
+                        std::function<bool(const Ref<const VectorXd>&)> filter, 
                         const Ref<const MatrixXd>& params)
         {
             /*
@@ -329,7 +329,7 @@ class BoundaryFinder
             // parameter point (if it satisfies the required constraints)
             for (unsigned i = 0; i < params.rows(); ++i)
             {
-                Matrix<double, Dynamic, 1> y = func(params.row(i));
+                VectorXd y = func(params.row(i));
                 
                 // Check that the point in the output space is not too 
                 // close to the others
@@ -344,8 +344,8 @@ class BoundaryFinder
             }
         }
 
-        void initialize(std::function<VectorXd(const VectorXd&)> func, 
-                        std::function<bool(const VectorXd&)> filter, 
+        void initialize(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
+                        std::function<bool(const Ref<const VectorXd>&)> filter, 
                         unsigned n_within, unsigned n_bound)
         {
             /*
@@ -374,7 +374,7 @@ class BoundaryFinder
                 // parameter point (if it satisfies the required constraints)
                 for (unsigned i = 0; i < params.rows(); ++i)
                 {
-                    Matrix<double, Dynamic, 1> y = func(params.row(i));
+                    VectorXd y = func(params.row(i));
                     
                     // Check that the point in the output space is not too 
                     // close to the others
@@ -399,7 +399,7 @@ class BoundaryFinder
                 // parameter point (if it satisfies the required constraints)
                 for (unsigned i = 0; i < params.rows(); ++i)
                 {
-                    Matrix<double, Dynamic, 1> y = func(params.row(i));
+                    VectorXd y = func(params.row(i));
                     
                     // Check that the point in the output space is not too 
                     // close to the others
@@ -415,9 +415,9 @@ class BoundaryFinder
             }
         }
 
-        bool step(std::function<VectorXd(const VectorXd&)> func, 
-                  std::function<VectorXd(const VectorXd&, boost::random::mt19937&)> mutate, 
-                  std::function<bool(const VectorXd&)> filter, 
+        bool step(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
+                  std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
+                  std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const std::string write_prefix = "")
         {
@@ -535,12 +535,12 @@ class BoundaryFinder
                 bool filtered = true;
                 double mindist = 0.0;
                 unsigned j = 0;
-                Matrix<double, Dynamic, 1> q, z;
+                VectorXd q, z; 
                 while ((filtered || mindist < 1e-10) && j < 20)   // Attempt 20 mutations
                 {
                     // Evaluate the given function at a randomly generated 
                     // parameter point
-                    Matrix<double, Dynamic, 1> p = this->params.row(this->vertices[i]);
+                    VectorXd p = this->params.row(this->vertices[i]); 
                     q = this->constraints->nearestL2(mutate(p, this->rng));
                     z = func(q);
                     filtered = filter(z);
@@ -564,8 +564,8 @@ class BoundaryFinder
             return (std::abs(change) < this->area_tol * (area - change));
         }
 
-        bool pull(std::function<VectorXd(const VectorXd&)> func, 
-                  std::function<bool(const VectorXd&)> filter, 
+        bool pull(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
+                  std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const double delta, const unsigned max_iter, const double sqp_tol,
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const bool sqp_verbose, const std::string write_prefix = "")
@@ -699,17 +699,17 @@ class BoundaryFinder
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
                 // Minimize the appropriate objective function
-                Matrix<double, Dynamic, 1> target = pulled.row(i);
-                auto obj = [func, target](const Ref<const Matrix<double, Dynamic, 1> >& x)
+                VectorXd target = pulled.row(i); 
+                auto obj = [func, target](const Ref<const VectorXd>& x)
                 {
                     return (target - func(x)).squaredNorm();
                 };
                 VectorXd x_init = this->params.row(this->vertices[i]);
                 VectorXd l_init = VectorXd::Ones(nc) - this->constraints->active(x_init).cast<double>();
-                Matrix<double, Dynamic, 1> xl_init(this->D + nc);
+                VectorXd xl_init(this->D + nc); 
                 xl_init << x_init, l_init;
                 VectorXd q = optimizer->run(obj, xl_init, max_iter, sqp_tol, BFGS, sqp_verbose);
-                Matrix<double, Dynamic, 1> z = func(q);
+                VectorXd z = func(q); 
                 
                 // Check that the mutation did not give rise to an already 
                 // computed point
@@ -728,10 +728,10 @@ class BoundaryFinder
             return (std::abs(change) < this->area_tol * (area - change));
         }
 
-        void run(std::function<VectorXd(const VectorXd&)> func, 
-                 std::function<VectorXd(const VectorXd&, boost::random::mt19937&)> mutate, 
-                 std::function<bool(const VectorXd&)> filter, 
-                 const MatrixXd& init_params, 
+        void run(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
+                 std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
+                 std::function<bool(const Ref<const VectorXd>&)> filter, 
+                 const Ref<const MatrixXd>& init_params, 
                  const unsigned min_step_iter, const unsigned max_step_iter,
                  const unsigned min_pull_iter, const unsigned max_pull_iter,
                  const unsigned max_edges, const bool verbose,
@@ -881,9 +881,9 @@ class BoundaryFinder
             }
         }
 
-        void run(std::function<VectorXd(const VectorXd&)> func, 
-                 std::function<VectorXd(const VectorXd&, boost::random::mt19937&)> mutate, 
-                 std::function<bool(const VectorXd&)> filter, 
+        void run(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
+                 std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
+                 std::function<bool(const Ref<const VectorXd>&)> filter, 
                  const unsigned n_within, const unsigned n_bound,
                  const unsigned min_step_iter, const unsigned max_step_iter,
                  const unsigned min_pull_iter, const unsigned max_pull_iter,
