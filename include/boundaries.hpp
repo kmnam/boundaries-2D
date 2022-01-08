@@ -1,3 +1,13 @@
+/**
+ * An implementation of boundary-finding algorithms in the plane. 
+ *
+ * **Authors:**
+ *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
+ * 
+ * **Last updated:**
+ *     1/8/2022
+ */
+
 #ifndef BOUNDARIES_HPP
 #define BOUNDARIES_HPP
 
@@ -20,15 +30,6 @@
 #include <CGAL/algorithm.h>
 #include <CGAL/exceptions.h>
 #include <CGAL/tags.h>
-
-/*
- * An implementation of boundary-finding algorithms in the plane. 
- *
- * Authors:
- *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
- * Last updated:
- *     3/17/2021
- */
 
 // CGAL convenience typedefs, adapted from the CGAL docs
 typedef CGAL::Exact_predicates_inexact_constructions_kernel               K;
@@ -70,7 +71,7 @@ struct Grid2DProperties
              */
         }
 
-        void write(std::vector<double> x, std::vector<double> y, std::string outfile)
+        void write(std::vector<double> x, std::vector<double> y, std::string filename)
         {
             /*
              * Write the boundary information in tab-delimited format, as follows:
@@ -81,15 +82,15 @@ struct Grid2DProperties
              * - The next block of lines contains the indices of the vertices
              *   in the boundary.
              */
-            std::ofstream of;
-            of.open(outfile);
-            of << std::setprecision(std::numeric_limits<double>::max_digits10);
-            of << "MESHSIZE\t" << this->meshsize << std::endl;
+            std::ofstream outfile;
+            outfile.open(filename);
+            outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+            outfile << "MESHSIZE\t" << this->meshsize << std::endl;
             for (unsigned i = 0; i < x.size(); i++)
-                of << "POINT\t" << x[i] << "\t" << y[i] << std::endl;
+                outfile << "POINT\t" << x[i] << "\t" << y[i] << std::endl;
             for (auto&& v : this->vertices)
-                of << "VERTEX\t" << v << std::endl;
-            of.close();
+                outfile << "VERTEX\t" << v << std::endl;
+            outfile.close();
         }
 };
 
@@ -344,7 +345,7 @@ struct AlphaShape2DProperties
             return normals;
         }
 
-        void write(std::string outfile)
+        void write(std::string filename)
         {
             /*
              * Write the boundary information in tab-delimited format, as follows:
@@ -358,18 +359,18 @@ struct AlphaShape2DProperties
              * - The final block of lines contains the indices of the endpoints
              *   of the edges in the alpha shape.
              */
-            std::ofstream of;
-            of.open(outfile);
-            of << std::setprecision(std::numeric_limits<double>::max_digits10);
-            of << "ALPHA\t" << this->alpha << std::endl;
-            of << "AREA\t" << this->area << std::endl;
+            std::ofstream outfile;
+            outfile.open(filename);
+            outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+            outfile << "ALPHA\t" << this->alpha << std::endl;
+            outfile << "AREA\t" << this->area << std::endl;
             for (unsigned i = 0; i < this->np; ++i)
-                of << "POINT\t" << this->x[i] << "\t" << this->y[i] << std::endl;
+                outfile << "POINT\t" << this->x[i] << "\t" << this->y[i] << std::endl;
             for (auto&& v : this->vertices)
-                of << "VERTEX\t" << v << std::endl;
+                outfile << "VERTEX\t" << v << std::endl;
             for (auto&& e : this->edges)
-                of << "EDGE\t" << e.first << "\t" << e.second << std::endl;
-            of.close();
+                outfile << "EDGE\t" << e.first << "\t" << e.second << std::endl;
+            outfile.close();
         }
 };
 

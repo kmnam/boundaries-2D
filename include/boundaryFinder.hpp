@@ -1,3 +1,13 @@
+/**
+ * An implementation of a "boundary-finding" algorithm in the plane. 
+ *
+ * **Authors:**
+ *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
+ *
+ * **Last updated:**
+ *     1/8/2022
+ */
+
 #ifndef BOUNDARY_FINDER_HPP
 #define BOUNDARY_FINDER_HPP
 #include <stdio.h>
@@ -19,14 +29,6 @@
 #include "triangulate.hpp"
 #include "sample.hpp"
 
-/*
- * An implementation of a "boundary-finding" algorithm in the plane. 
- *
- * Authors:
- *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
- * Last updated:
- *     3/17/2021
- */
 using namespace Eigen;
 
 typedef CGAL::Exact_predicates_inexact_constructions_kernel    K;
@@ -56,32 +58,6 @@ class ParamFileCollection
             /*
              * Empty destructor.
              */
-        }
-
-        void dump(const Ref<const MatrixXd>& params)
-        {
-            /*
-             * Dump parameter values to a new tab-delimited file.
-             */
-            std::stringstream ss;
-            ss << this->prefix << "-" << this->nfiles << ".tsv";
-            std::string path = ss.str();
-            std::ofstream outfile(path);
-            if (outfile.is_open())
-            {
-                outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
-                for (unsigned i = 0; i < params.rows(); ++i)
-                {
-                    for (unsigned j = 0; j < params.cols() - 1; ++j)
-                    {
-                        outfile << params(i,j) << "\t";
-                    }
-                    outfile << params(i,params.cols()-1) << "\n";
-                }
-            }
-            outfile.close();
-            this->nfiles++;
-            this->paths.push_back(path);
         }
 
         MatrixXd read(unsigned i)
@@ -217,7 +193,7 @@ class BoundaryFinder
 
     public:
         BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
-                       const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
+                       const MatrixXd& A, const VectorXd& b)
         {
             /*
              * Constructor with input polytope constraints as Eigen::Matrix
@@ -320,7 +296,7 @@ class BoundaryFinder
             delete this->constraints;
         }
 
-        void setConstraints(const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
+        void setConstraints(const MatrixXd& A, const VectorXd& b)
         {
             /*
              * Instantiate and store a new LinearConstraints instance from
@@ -337,8 +313,8 @@ class BoundaryFinder
             return this->params; 
         }
 
-        void initialize(std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&)> func,
-                        std::function<bool(const Ref<const Matrix<double, Dynamic, 1> >&)> filter,
+        void initialize(std::function<VectorXd(const VectorXd&)> func, 
+                        std::function<bool(const VectorXd&)> filter, 
                         const Ref<const MatrixXd>& params)
         {
             /*
@@ -368,8 +344,8 @@ class BoundaryFinder
             }
         }
 
-        void initialize(std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&)> func,
-                        std::function<bool(const Ref<const Matrix<double, Dynamic, 1> >&)> filter,
+        void initialize(std::function<VectorXd(const VectorXd&)> func, 
+                        std::function<bool(const VectorXd&)> filter, 
                         unsigned n_within, unsigned n_bound)
         {
             /*
@@ -439,9 +415,9 @@ class BoundaryFinder
             }
         }
 
-        bool step(std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&)> func, 
-                  std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
-                  std::function<bool(const Ref<const Matrix<double, Dynamic, 1> >&)> filter,
+        bool step(std::function<VectorXd(const VectorXd&)> func, 
+                  std::function<VectorXd(const VectorXd&, boost::random::mt19937&)> mutate, 
+                  std::function<bool(const VectorXd&)> filter, 
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const std::string write_prefix = "")
         {
@@ -515,9 +491,27 @@ class BoundaryFinder
             // Write boundary information to file if desired
             if (write_prefix.compare(""))
             {
+                // Write the boundary points, vertices, and edges 
                 std::stringstream ss;
                 ss << write_prefix << "-pass" << iter << ".txt";
                 bound_data.write(ss.str());
+
+                // Write the input vectors passed into the given function to
+                // yield the boundary points
+                std::ofstream outfile;
+                outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
+                if (outfile.is_open())
+                {
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                    for (unsigned i = 0; i < this->params.rows(); ++i)
+                    {
+                        outfile << "INPUT\t"; 
+                        for (unsigned j = 0; j < this->params.cols() - 1; ++j)
+                            outfile << this->params(i, j) << '\t'; 
+                        outfile << this->params(i, this->params.cols()-1) << std::endl;
+                    }
+                }
+                outfile.close(); 
             }
 
             // Compute enclosed area and test for convergence
@@ -570,8 +564,8 @@ class BoundaryFinder
             return (std::abs(change) < this->area_tol * (area - change));
         }
 
-        bool pull(std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&)> func,
-                  std::function<bool(const Ref<const Matrix<double, Dynamic, 1> >&)> filter,
+        bool pull(std::function<VectorXd(const VectorXd&)> func, 
+                  std::function<bool(const VectorXd&)> filter, 
                   const double delta, const unsigned max_iter, const double sqp_tol,
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const bool sqp_verbose, const std::string write_prefix = "")
@@ -635,9 +629,27 @@ class BoundaryFinder
             // Write boundary information to file if desired
             if (write_prefix.compare(""))
             {
+                // Write the boundary points, vertices, and edges 
                 std::stringstream ss;
                 ss << write_prefix << "-pass" << iter << ".txt";
                 bound_data.write(ss.str());
+
+                // Write the input vectors passed into the given function to
+                // yield the boundary points
+                std::ofstream outfile;
+                outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
+                if (outfile.is_open())
+                {
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                    for (unsigned i = 0; i < this->params.rows(); ++i)
+                    {
+                        outfile << "INPUT\t"; 
+                        for (unsigned j = 0; j < this->params.cols() - 1; ++j)
+                            outfile << this->params(i, j) << '\t'; 
+                        outfile << this->params(i, this->params.cols()-1) << std::endl;
+                    }
+                }
+                outfile.close(); 
             }
 
             // Compute enclosed area and test for convergence
@@ -716,10 +728,10 @@ class BoundaryFinder
             return (std::abs(change) < this->area_tol * (area - change));
         }
 
-        void run(std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&)> func,
-                 std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
-                 std::function<bool(const Ref<const Matrix<double, Dynamic, 1> >&)> filter,
-                 const Ref<const MatrixXd>& init_params,
+        void run(std::function<VectorXd(const VectorXd&)> func, 
+                 std::function<VectorXd(const VectorXd&, boost::random::mt19937&)> mutate, 
+                 std::function<bool(const VectorXd&)> filter, 
+                 const MatrixXd& init_params, 
                  const unsigned min_step_iter, const unsigned max_step_iter,
                  const unsigned min_pull_iter, const unsigned max_pull_iter,
                  const unsigned max_edges, const bool verbose,
@@ -813,9 +825,27 @@ class BoundaryFinder
             // Write boundary information to file if desired
             if (write_prefix.compare(""))
             {
+                // Write the boundary points, vertices, and edges 
                 std::stringstream ss;
                 ss << write_prefix << "-final.txt";
                 bound_data.write(ss.str());
+
+                // Write the input vectors passed into the given function to
+                // yield the boundary points
+                std::ofstream outfile;
+                outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
+                if (outfile.is_open())
+                {
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                    for (unsigned i = 0; i < this->params.rows(); ++i)
+                    {
+                        outfile << "INPUT\t"; 
+                        for (unsigned j = 0; j < this->params.cols() - 1; ++j)
+                            outfile << this->params(i, j) << '\t'; 
+                        outfile << this->params(i, this->params.cols()-1) << std::endl;
+                    }
+                }
+                outfile.close(); 
             }
 
             // Compute enclosed area and test for convergence if algorithm
@@ -851,9 +881,9 @@ class BoundaryFinder
             }
         }
 
-        void run(std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&)> func,
-                 std::function<Matrix<double, Dynamic, 1>(const Ref<const Matrix<double, Dynamic, 1> >&, boost::random::mt19937&)> mutate,
-                 std::function<bool(const Ref<const Matrix<double, Dynamic, 1> >&)> filter,
+        void run(std::function<VectorXd(const VectorXd&)> func, 
+                 std::function<VectorXd(const VectorXd&, boost::random::mt19937&)> mutate, 
+                 std::function<bool(const VectorXd&)> filter, 
                  const unsigned n_within, const unsigned n_bound,
                  const unsigned min_step_iter, const unsigned max_step_iter,
                  const unsigned min_pull_iter, const unsigned max_pull_iter,
@@ -874,19 +904,6 @@ class BoundaryFinder
             unsigned n_converged = 0;
             while (i < min_step_iter || (i < max_step_iter && !terminate))
             {
-                // TODO Writing points to file PRIOR to boundary computation
-                // Delete this part later!!
-                std::stringstream ss; 
-                ss << write_prefix << "-pass" << i << "-points.tsv"; 
-                std::ofstream outfile(ss.str());
-                if (outfile.is_open())
-                {
-                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
-                    for (unsigned k = 0; k < this->points.rows(); ++k)
-                        outfile << this->points(k, 0) << "\t" << this->points(k, 1) << "\n";
-                }
-                outfile.close();
-
                 bool result = this->step(func, mutate, filter, i, max_edges, verbose, write_prefix);
                 if (!result) n_converged = 0;
                 else         n_converged += 1;
@@ -900,19 +917,6 @@ class BoundaryFinder
             n_converged = 0;
             while (j < min_pull_iter || (j < max_pull_iter && !terminate))
             {
-                // TODO Writing points to file PRIOR to boundary computation
-                // Delete this part later!!
-                std::stringstream ss; 
-                ss << write_prefix << "-pass" << i + j << "-points.tsv"; 
-                std::ofstream outfile(ss.str());
-                if (outfile.is_open())
-                {
-                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
-                    for (unsigned k = 0; k < this->points.rows(); ++k)
-                        outfile << this->points(k, 0) << "\t" << this->points(k, 1) << "\n";
-                }
-                outfile.close();
-
                 bool result = this->pull(
                     func, filter, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
                     i + j, max_edges, verbose, sqp_verbose, write_prefix
@@ -974,9 +978,27 @@ class BoundaryFinder
             // Write boundary information to file if desired
             if (write_prefix.compare(""))
             {
+                // Write the boundary points, vertices, and edges 
                 std::stringstream ss;
                 ss << write_prefix << "-final.txt";
                 bound_data.write(ss.str());
+
+                // Write the input vectors passed into the given function to
+                // yield the boundary points
+                std::ofstream outfile;
+                outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
+                if (outfile.is_open())
+                {
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                    for (unsigned i = 0; i < this->params.rows(); ++i)
+                    {
+                        outfile << "INPUT\t"; 
+                        for (unsigned j = 0; j < this->params.cols() - 1; ++j)
+                            outfile << this->params(i, j) << '\t'; 
+                        outfile << this->params(i, this->params.cols()-1) << std::endl;
+                    }
+                }
+                outfile.close(); 
             }
 
             // Compute enclosed area and test for convergence if algorithm
