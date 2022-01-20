@@ -1,7 +1,7 @@
 """
 A simple class for plotting a point cloud and its boundary by parsing 
-text files in the format output by the functions Grid2DProperties::write() 
-and AlphaShape2DProperties::write().
+text files in the format output by the functions `Grid2DProperties::write()`
+and `AlphaShape2DProperties::write()`.
 
 Example usage:
 
@@ -16,9 +16,9 @@ Example usage:
 
 Authors:
     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
-Last updated:
-    3/19/2021
 
+Last updated:
+    1/8/2022
 """
 import sys
 import numpy as np
@@ -27,6 +27,7 @@ from matplotlib.colors import to_rgba
 import matplotlib.patches as patches
 import seaborn as sns
 
+######################################################################
 class Boundary2D(object):
     """
     A simple wrapper class that stores boundary information.
@@ -35,13 +36,14 @@ class Boundary2D(object):
         """
         Empty constructor.
         """
-        self.points = []
+        self.points = np.array([], dtype=np.float64)
         self.vertices = []
         self.edges = []
+        self.input = np.array([], dtype=np.float64)
         self.alpha = None
         self.area = None
 
-    #######################################################
+    ##################################################################
     @classmethod
     def from_file(cls, path):
         """
@@ -57,6 +59,8 @@ class Boundary2D(object):
         None
         """
         b = Boundary2D()
+        points = []
+        inputs = []
         with open(path) as f:
             for line in f:
                 if line.startswith('ALPHA'):      # Line specifies alpha value 
@@ -64,23 +68,73 @@ class Boundary2D(object):
                 elif line.startswith('AREA'):     # Line specifies enclosed area 
                     b.area = float(line.strip().split('\t')[1])
                 elif line.startswith('POINT'):    # Line specifies a point
-                    xs, ys = line.replace('POINT', '').strip().split('\t')
-                    b.points.append([float(xs), float(ys)])
+                    xs, ys = line.replace('POINT\t', '').strip().split('\t')
+                    points.append([float(xs), float(ys)])
                 elif line.startswith('VERTEX'):   # Line specifies a vertex
-                    b.vertices.append(int(line.replace('VERTEX', '').strip()))
+                    b.vertices.append(int(line.replace('VERTEX\t', '').strip()))
                 elif line.startswith('EDGE'):     # Line specifies an edge
-                    ss, ts = line.replace('EDGE', '').strip().split('\t')
+                    ss, ts = line.replace('EDGE\t', '').strip().split('\t')
                     b.edges.append([int(ss), int(ts)])
-        b.points = np.array(b.points)
+                elif line.startswith('INPUT'):    # Line specifies an input point
+                    inputs.append([
+                        float(x) for x in line.replace('INPUT\t', '').strip().split('\t')
+                    ])
+        b.points = np.array(points, dtype=np.float64)
+        b.input = np.array(inputs, dtype=np.float64)
+
+        # If there are input points present in the file but their number
+        # doesn't match the number of output points in the file, then raise 
+        # an exception
+        if b.input.shape[0] > 0 and b.points.shape[0] != b.input.shape[0]:
+            raise RuntimeError('Input and output dimensions do not match')
 
         return b
 
-    #######################################################
-    def plot(self, ax, plot_interior=False, shade_interior=False,
-             plot_boundary_scatter=False, interior_color=sns.xkcd_rgb['denim blue'],
-             boundary_color=sns.xkcd_rgb['pale red'], interior_pointsize=20,
-             boundary_pointsize=30, boundary_linewidth=None, shade_alpha=0.3,
-             interior_alpha=0.1, boundary_alpha=1.0, rasterized=True):
+    ##################################################################
+    def get_boundary_points(self):
+        """
+        Return the coordinates of the vertices in the stored boundary.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        `numpy.ndarray`
+            Array of coordinates of the vertices in the stored boundary,  
+            with each row corresponding to a vertex. 
+        """
+        return self.points[self.vertices, :]
+
+    ##################################################################
+    def get_boundary_inputs(self):
+        """
+        Return the input points whose images correspond to the vertices 
+        in the stored boundary. 
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        `numpy.ndarray`
+            Array of coordinates of the input points whose images
+            correspond to the vertices in the stored boundary, with
+            each row corresponding to an input point. Returns an empty
+            array if the input points are not stored.
+        """
+        if self.input.shape[0] == 0:
+            return self.input
+        else:
+            return self.input[self.vertices, :]
+
+    ##################################################################
+    def plot(self, ax, color=None, linewidth=None, scatter=False,
+             scatter_color=None, pointsize=None, shade_interior=False,
+             interior_color=None, scatter_alpha=None, shade_alpha=None,
+             autoscale=True, boundary_kws={}, scatter_kws={}):
         """
         Plot the stored points, with the boundary points emphasized and 
         connected by their edges.
@@ -89,68 +143,59 @@ class Boundary2D(object):
         ----------
         ax : matplotlib.pyplot.Axes
             Axes onto which the points are to be plotted.
-        plot_interior : bool
-            Whether to plot the interior points. 
+        color : RGB tuple or string
+            Color of the polygonal edges along the boundary.
+        linewidth : float
+            Width of the polygonal edges along the boundary. 
+        scatter : bool
+            Whether to plot the polygonal vertices along the boundary.
+        scatter_color : RGB tuple or string
+            Color of the polygonal vertices along the boundary, if the 
+            vertices are to be plotted.
+        pointsize : float
+            Size of the polygonal vertices along the boundary, if the 
+            vertices are to be plotted. 
         shade_interior : bool
             Whether to shade in the interior.
-        plot_boundary_scatter : bool
-            Whether to plot the individual boundary vertices. 
-        interior_color : RGB tuple or color string
-            Color for interior points. 
-        boundary_color : RGB tuple or color string
-            Color for boundary. 
-        interior_pointsize : int
-            Size of interior points.
-        boundary_pointsize : int
-            Size of boundary points.
-        boundary_linewidth : float
-            Thickness of boundary edges. 
+        interior_color : RGB tuple or string
+            Color for the interior shading, if the interior is to be 
+            shaded. 
+        scatter_alpha : float
+            Alpha transparency value for boundary scatter-plotted points.
         shade_alpha : float
-            Alpha-value for interior shading.
-        interior_alpha : float
-            Alpha-value for interior scatter.
-        boundary_alpha : float
-            Alpha-value for boundary scatter.
-        rasterized : bool
-            Whether to rasterize the plot. 
+            Alpha transparency value for interior shading.
+        autoscale : bool
+            If True, auto-scale the axes limits. 
+        boundary_kws : dict
+            Dict of keywords to be passed to `matplotlib.patches.Polygon()`
+            when instantiating the boundary polygon.
+        scatter_kws : dict
+            Dict of keywords to be passed to `matplotlib.pyplot.scatter()` 
+            when plotting the boundary vertices. 
         
         Returns
         -------
         None
         """
-        # Shade in the interior if desired
-        if shade_interior:
-            polygon = patches.Polygon(
-                self.points[self.vertices,:], closed=True, facecolor=interior_color,
-                edgecolor=boundary_color, alpha=shade_alpha,
-                linewidth=boundary_linewidth
-            )
-            ax.add_patch(polygon)
-        # Otherwise, simply plot the edges 
-        else:
-            for edge in self.edges:
-                ax.plot(
-                    self.points[edge,0], self.points[edge,1], c=boundary_color,
-                    zorder=1, alpha=boundary_alpha, linewidth=boundary_linewidth
-                )
+        # Instantiate the Polygon object to be plotted 
+        polygon = patches.Polygon(
+            self.points[self.vertices, :], closed=True,
+            facecolor=(None if not shade_interior else interior_color),
+            edgecolor=color, alpha=(None if not shade_interior else shade_alpha),
+            linewidth=linewidth, **boundary_kws
+        )
+        ax.add_patch(polygon)
 
-        # Plot the interior points if desired
-        if plot_interior:
+        # Plot the individual vertices along the boundary if desired 
+        if scatter:
             ax.scatter(
-                self.points[:,0], self.points[:,1], c=[interior_color],
-                s=interior_pointsize, alpha=interior_alpha, zorder=0,
-                rasterized=rasterized
-            )
-        
-        # Plot the boundary points if desired
-        if plot_boundary_scatter:
-            ax.scatter(
-                self.points[self.vertices,0], self.points[self.vertices,1],
-                c=[boundary_color], s=boundary_pointsize, zorder=2,
-                alpha=boundary_alpha
+                self.points[self.vertices, 0],
+                self.points[self.vertices, 1],
+                c=scatter_color, s=pointsize, alpha=scatter_alpha,
+                **scatter_kws
             )
 
-        # Auto-scale the axes limits
-        ax.autoscale_view()
-
+        # Auto-scale the axes limits if desired.
+        if autoscale:
+            ax.autoscale_view()
 
