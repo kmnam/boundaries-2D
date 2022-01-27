@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     1/8/2022
+ *     1/27/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -30,6 +30,9 @@
 #include <CGAL/algorithm.h>
 #include <CGAL/exceptions.h>
 #include <CGAL/tags.h>
+#include <Eigen/Sparse>
+
+using namespace Eigen; 
 
 // CGAL convenience typedefs, adapted from the CGAL docs
 typedef CGAL::Exact_predicates_inexact_constructions_kernel               K;
@@ -49,17 +52,17 @@ struct Grid2DProperties
      * boundary, along with the grid's meshsize.
      */
     public:
-        unsigned npoints;
+        unsigned n;
         std::vector<unsigned> vertices;
         double meshsize;
 
-        Grid2DProperties(unsigned npoints, std::vector<unsigned> vertices, 
+        Grid2DProperties(unsigned n, std::vector<unsigned> vertices, 
                          double meshsize)
         {
             /* 
              * Trivial constructor.
              */
-            this->npoints = npoints;
+            this->n = n; 
             this->vertices = vertices;
             this->meshsize = meshsize;
         }
@@ -188,15 +191,14 @@ struct AlphaShape2DProperties
         unsigned nv;
         double alpha;
         double area;
-        bool connected;
-        bool simply_connected;
+        bool is_simple_cycle;
         unsigned max_edges;
         unsigned min;               // Index of point with minimum y-coordinate
         Orientation orientation;    // Orientation of edges
 
         AlphaShape2DProperties()
         {
-            /*
+            /**
              * Trivial constructor. 
              */
         }
@@ -204,22 +206,29 @@ struct AlphaShape2DProperties
         AlphaShape2DProperties(std::vector<double> x, std::vector<double> y,
                                std::vector<unsigned> vertices,
                                std::vector<std::pair<unsigned, unsigned> > edges,
-                               double alpha, double area, bool connected, 
-                               bool simply_connected, unsigned max_edges,
-                               bool check_order = false)
+                               double alpha, double area, bool is_simple_cycle,
+                               unsigned max_edges, bool check_order = false)
         {
-            /*
+            /**
              * Constructor with input alpha shape. 
              *
-             * check_order == true enforces an explicit check that the vertices
-             * and edges are specified "in order," as in edges[0] lies between
-             * vertices[0] and vertices[1], edges[1] between vertices[1] and 
-             * vertices[2], and so on. If check_order == false, then this 
-             * ordering is assumed. 
+             * Setting `check_order = true` enforces an explicit check that
+             * the boundary is a simple cycle and the vertices and edges are
+             * specified "in order," as in `edges[0]` lies between `vertices[0]`
+             * and `vertices[1]`, `edges[1]` between `vertices[1]` and 
+             * `vertices[2]`, and so on.
              */
-            if (!(x.size() == y.size() && y.size() >= vertices.size() && vertices.size() == edges.size()))
-                throw std::invalid_argument("Invalid dimensions for input arguments");
+            // The number of x- and y-coordinates should be the same  
+            if (!(x.size() == y.size() && y.size() >= vertices.size()))
+                throw std::invalid_argument("Invalid dimensions for input points");
 
+            // If the boundary is assumed to be a simple cycle, then the 
+            // number of vertices and edges should be the same
+            if (is_simple_cycle && vertices.size() != edges.size())
+                throw std::invalid_argument(
+                    "Simple-cycle boundary should have the same number of vertices and edges"
+                ); 
+             
             this->x = x;
             this->y = y;
             this->vertices = vertices;
@@ -228,8 +237,7 @@ struct AlphaShape2DProperties
             this->nv = vertices.size();
             this->alpha = alpha;
             this->area = area;
-            this->connected = connected;
-            this->simply_connected = simply_connected;
+            this->is_simple_cycle = is_simple_cycle; 
             this->max_edges = max_edges;
 
             // Find the vertex with minimum y-coordinate, breaking any 
@@ -254,7 +262,8 @@ struct AlphaShape2DProperties
             }
 
             // Check that the edges and vertices were specified in order
-            if (check_order)
+            // *given that the boundary is a simple cycle*
+            if (this->is_simple_cycle && check_order)
             {
                 unsigned i = 0;
                 // Check the first vertex first 
@@ -265,7 +274,9 @@ struct AlphaShape2DProperties
                     ordered = (vertices[i] == edges[i-1].second && vertices[i] == edges[i].first);
                 }
                 if (!ordered)
-                    throw std::invalid_argument("Vertices and edges were not specified in order");
+                    throw std::invalid_argument(
+                        "Vertices and edges were not specified in order in given simple-cycle boundary"
+                    );
             }
 
             // Find the orientation of the edges
@@ -279,9 +290,18 @@ struct AlphaShape2DProperties
             }
             else
             {
-                p = Point_2(this->x[this->vertices[(this->min-1) % this->nv]], this->y[this->vertices[(this->min-1) % this->nv]]);
-                q = Point_2(this->x[this->vertices[this->min]], this->y[this->vertices[this->min]]);
-                r = Point_2(this->x[this->vertices[(this->min+1) % this->nv]], this->y[this->vertices[(this->min+1) % this->nv]]);
+                p = Point_2(
+                    this->x[this->vertices[(this->min-1) % this->nv]],
+                    this->y[this->vertices[(this->min-1) % this->nv]]
+                );
+                q = Point_2(
+                    this->x[this->vertices[this->min]],
+                    this->y[this->vertices[this->min]]
+                );
+                r = Point_2(
+                    this->x[this->vertices[(this->min+1) % this->nv]],
+                    this->y[this->vertices[(this->min+1) % this->nv]]
+                );
             }
             this->orientation = CGAL::orientation(p, q, r);
         }
@@ -383,6 +403,7 @@ class Boundary2D
     private:
         std::vector<double> x;    // x-coordinates
         std::vector<double> y;    // y-coordinates
+        int n;                    // Number of stored points
 
     public:
         Boundary2D()
@@ -398,9 +419,9 @@ class Boundary2D
              * Constructor with input points specified in vectors.
              */
             // Check that x and y have the same number of coordinates
-            if (x_.size() != y_.size())
+            this->n = x_.size(); 
+            if (this->n != y_.size())
                 throw std::invalid_argument("Invalid input vectors");
-
             this->x = x_;
             this->y = y_;
         }
@@ -450,6 +471,8 @@ class Boundary2D
              */
             using std::ceil;
             using std::floor;
+            const int X_INVALID_INDEX = this->x.size();
+            const int Y_INVALID_INDEX = this->y.size();  
 
             // Divide the two axes into meshes of the given meshsize
             double epsilon = 1e-5;
@@ -478,24 +501,23 @@ class Boundary2D
             }
             mesh_y.push_back(max_y);
 
-            // Keep track of maximum and minimum values of x and y within
-            // each row and column of the grid
-            std::vector<unsigned> min_per_col, max_per_col, min_per_row, max_per_row;
+            // Keep track of the indices of the maximum and minimum values of
+            // x and y within each row and column of the grid
+            std::vector<int> ymin_per_col, ymax_per_col, xmin_per_row, xmax_per_row;
             for (unsigned i = 0; i < nmesh_x - 1; i++)
             {
-                min_per_col.push_back(-1);
-                max_per_col.push_back(-1);
+                ymin_per_col.push_back(Y_INVALID_INDEX);
+                ymax_per_col.push_back(Y_INVALID_INDEX);
             }
             for (unsigned i = 0; i < nmesh_y - 1; i++)
             {
-                min_per_row.push_back(-1);
-                max_per_row.push_back(-1);
+                xmin_per_row.push_back(X_INVALID_INDEX);
+                xmax_per_row.push_back(X_INVALID_INDEX);
             }
             
             // For each of the stored points, find the row/column in the
             // grid that contains it and update its max/min value accordingly
-            unsigned npoints = this->x.size();
-            for (unsigned i = 0; i < npoints; i++)
+            for (unsigned i = 0; i < this->n; i++)
             {
                 double xval = this->x[i], yval = this->y[i];
                 
@@ -530,64 +552,71 @@ class Boundary2D
                 unsigned row = mid;
 
                 // Update max/min values per column and row
-                if (min_per_col[col] == -1 || this->y[min_per_col[col]] > yval)
-                    min_per_col[col] = i;
-                if (max_per_col[col] == -1 || this->y[max_per_col[col]] < yval)
-                    max_per_col[col] = i;
-                if (min_per_row[row] == -1 || this->x[min_per_row[row]] > xval)
-                    min_per_row[row] = i;
-                if (max_per_row[row] == -1 || this->x[max_per_row[row]] < xval)
-                    max_per_row[row] = i;
+                if (ymin_per_col[col] == Y_INVALID_INDEX || this->y[ymin_per_col[col]] > yval)
+                    ymin_per_col[col] = i;
+                if (ymax_per_col[col] == Y_INVALID_INDEX || this->y[ymax_per_col[col]] < yval)
+                    ymax_per_col[col] = i;
+                if (xmin_per_row[row] == X_INVALID_INDEX || this->x[xmin_per_row[row]] > xval)
+                    xmin_per_row[row] = i;
+                if (xmax_per_row[row] == X_INVALID_INDEX || this->x[xmax_per_row[row]] < xval)
+                    xmax_per_row[row] = i;
             }
             for (unsigned i = 0; i < nmesh_x - 1; i++)
-                assert((min_per_col[i] == -1 && max_per_col[i] == -1) || (min_per_col[i] != -1 && max_per_col[i] != -1));
+                assert(
+                    (ymin_per_col[i] == Y_INVALID_INDEX && ymax_per_col[i] == Y_INVALID_INDEX) ||
+                    (ymin_per_col[i] != Y_INVALID_INDEX && ymax_per_col[i] != Y_INVALID_INDEX)
+                );
             for (unsigned i = 0; i < nmesh_y - 1; i++)
-                assert((min_per_row[i] == -1 && max_per_row[i] == -1) || (min_per_row[i] != -1 && max_per_row[i] != -1));
+                assert(
+                    (xmin_per_row[i] == X_INVALID_INDEX && xmax_per_row[i] == X_INVALID_INDEX) ||
+                    (xmin_per_row[i] != X_INVALID_INDEX && xmax_per_row[i] != X_INVALID_INDEX)
+                );
 
             // Run through the max/min values per column and row and remove 
-            // all occurrences of -1 (which indicate empty columns/rows)
-            auto empty_col = std::find(min_per_col.begin(), min_per_col.end(), -1);
-            while (empty_col != min_per_col.end())
+            // all invalid indices (which indicate empty columns/rows)
+            auto empty_col = std::find(ymin_per_col.begin(), ymin_per_col.end(), Y_INVALID_INDEX);
+            while (empty_col != ymin_per_col.end())
             {
-                min_per_col.erase(empty_col);
+                ymin_per_col.erase(empty_col);
                 nmesh_x--;
-                empty_col = std::find(min_per_col.begin(), min_per_col.end(), -1);
+                empty_col = std::find(ymin_per_col.begin(), ymin_per_col.end(), Y_INVALID_INDEX);
             }
-            empty_col = std::find(max_per_col.begin(), max_per_col.end(), -1);
-            while (empty_col != max_per_col.end())
+            empty_col = std::find(ymax_per_col.begin(), ymax_per_col.end(), Y_INVALID_INDEX);
+            while (empty_col != ymax_per_col.end())
             {
-                max_per_col.erase(empty_col);
-                empty_col = std::find(max_per_col.begin(), max_per_col.end(), -1);
+                ymax_per_col.erase(empty_col);
+                empty_col = std::find(ymax_per_col.begin(), ymax_per_col.end(), Y_INVALID_INDEX);
             }
-            auto empty_row = std::find(min_per_row.begin(), min_per_row.end(), -1);
-            while (empty_row != min_per_row.end())
+            auto empty_row = std::find(xmin_per_row.begin(), xmin_per_row.end(), X_INVALID_INDEX);
+            while (empty_row != xmin_per_row.end())
             {
-                min_per_row.erase(empty_row);
+                xmin_per_row.erase(empty_row);
                 nmesh_y--;
-                empty_row = std::find(min_per_row.begin(), min_per_row.end(), -1);
+                empty_row = std::find(xmin_per_row.begin(), xmin_per_row.end(), X_INVALID_INDEX);
             }
-            empty_row = std::find(max_per_row.begin(), max_per_row.end(), -1);
-            while (empty_row != max_per_row.end())
+            empty_row = std::find(xmax_per_row.begin(), xmax_per_row.end(), X_INVALID_INDEX);
+            while (empty_row != xmax_per_row.end())
             {
-                max_per_row.erase(empty_row);
-                empty_row = std::find(max_per_row.begin(), max_per_row.end(), -1);
+                xmax_per_row.erase(empty_row);
+                empty_row = std::find(xmax_per_row.begin(), xmax_per_row.end(), X_INVALID_INDEX);
             }
 
-            // Collect the boundary vertices and edges in order
+            // Collect the boundary vertices and edges in order (removing 
+            // duplicate vertices)
             std::unordered_set<unsigned> vertex_set;
-            for (auto&& v : min_per_row) vertex_set.insert(v);
-            for (auto&& v : min_per_col) vertex_set.insert(v);
-            for (auto&& v : max_per_row) vertex_set.insert(v);
-            for (auto&& v : max_per_col) vertex_set.insert(v);
+            for (auto&& v : xmin_per_row) vertex_set.insert(v);
+            for (auto&& v : ymin_per_col) vertex_set.insert(v);
+            for (auto&& v : xmax_per_row) vertex_set.insert(v);
+            for (auto&& v : ymax_per_col) vertex_set.insert(v);
             std::vector<unsigned> vertices;
             for (auto&& v : vertex_set) vertices.push_back(v);
             
-            return Grid2DProperties(npoints, vertices, meshsize);
+            return Grid2DProperties(this->n, vertices, meshsize);
         }
 
         template <bool tag = true>
         AlphaShape2DProperties getBoundary(bool connected = true, bool simply_connected = false,
-                                           unsigned max_edges = -1)
+                                           unsigned max_edges = 0)
         {
             /*
              * Return an AlphaShape2DProperties object containing the indices 
@@ -610,11 +639,24 @@ class Boundary2D
             if (!tag)
                 std::cout << "[WARN] Computing alpha shape with tag == false\n";
 
-            // Instantiate a vector of Point objects
+            // Instantiate a vector of Point objects, keeping track of the 
+            // smallest and largest x- and y-coordinate values 
             std::vector<Point_2> points;
-            unsigned npoints = this->x.size();
-            for (unsigned i = 0; i < npoints; ++i)
-                points.emplace_back(Point_2(this->x[i], this->y[i]));
+            double xmin = std::numeric_limits<double>::infinity(); 
+            double ymin = std::numeric_limits<double>::infinity();
+            double xmax = -std::numeric_limits<double>::infinity();
+            double ymax = -std::numeric_limits<double>::infinity();
+            for (unsigned i = 0; i < this->n; ++i)
+            {
+                double xi = this->x[i]; 
+                double yi = this->y[i]; 
+                points.emplace_back(Point_2(xi, yi)); 
+                if (xmin > xi) xmin = xi; 
+                if (xmax < xi) xmax = xi; 
+                if (ymin > yi) ymin = yi; 
+                if (ymax < yi) ymax = yi;
+            }
+            double maxdist = std::sqrt(std::pow(xmax - xmin, 2) + std::pow(ymax - ymin, 2));
 
             // Compute the alpha shape from the Delaunay triangulation
             Alpha_shape shape; 
@@ -627,6 +669,21 @@ class Boundary2D
                 throw; 
             }
             shape.set_mode(Alpha_shape::REGULARIZED); 
+
+            // Establish an ordering of the vertices in the alpha shape 
+            // (this varies as we change alpha) 
+            std::unordered_map<Vertex_handle_2, int> vertices_to_indices;
+            std::vector<Vertex_handle_2> indices_to_vertices;
+            unsigned nvertices = 0;
+
+            // Set up a sparse adjacency matrix for the alpha shape 
+            // (this varies as we change alpha) 
+            SparseMatrix<int, RowMajor> adj;
+            unsigned nedges = 0;
+
+            // Set up a dictionary that maps each vertex in the alpha shape 
+            // to the corresponding point in the stored input set 
+            std::unordered_map<Vertex_handle_2, std::pair<unsigned, double> > vertices_to_points;
 
             /* ------------------------------------------------------------------ //
              * Determine the optimal value of alpha that satisfies the following 
@@ -641,24 +698,50 @@ class Boundary2D
              *   cycle of vertices). 
              * ------------------------------------------------------------------ */
             double opt_alpha = 0.0;
-            unsigned opt_alpha_index = 0;  
+            unsigned opt_alpha_index = 0;
+            const unsigned INVALID_ALPHA_INDEX = shape.number_of_alphas(); 
             if (simply_connected)
             {
-                // Begin with the value of alpha for which the region is connected
-                unsigned low, high, last_valid;
+                // -------------------------------------------------------------- // 
+                //         IF A SIMPLY CONNECTED BOUNDARY IS DESIRED ...          //
+                // -------------------------------------------------------------- //
+                
+                // Set the lower value of alpha for which the region is connected
+                unsigned low = 0; 
+                unsigned high; 
+                unsigned last_valid = INVALID_ALPHA_INDEX;
+                unsigned mid = INVALID_ALPHA_INDEX; 
+
+                // Find the least value of alpha that is greater than the lower bound 
+                // on the inter-point distance found through the minimum and maximum
+                // x- and y-coordinate values 
+                high = std::distance(shape.alpha_begin(), shape.alpha_lower_bound(maxdist));
+                std::cout << "- searching between alpha = "
+                          << CGAL::to_double(shape.get_nth_alpha(low))
+                          << " and "
+                          << CGAL::to_double(shape.get_nth_alpha(high)) << std::endl;
+
+                // Try to find a value of alpha for which the boundary consists of
+                // more than one connected component
+                //
+                // Alpha_shape_2::find_optimal_alpha() can throw an Assertion_exception
+                // if there are collinear points within the alpha shape
                 try
                 {
-                    // Alpha_shape_2::find_optimal_alpha() can throw an Assertion_exception
-                    // if there are collinear points within the alpha shape
-                    low = static_cast<unsigned>(shape.find_optimal_alpha(1) - shape.alpha_begin());
-                }
+                    low = std::distance(shape.alpha_begin(), shape.find_optimal_alpha(2));
+                } 
                 catch (CGAL::Assertion_exception& e)
                 {
                     low = 0;
                 }
-                high = static_cast<unsigned>(shape.alpha_end() - shape.alpha_begin() - 1);
-                std::cout << "- searching between alpha = " << CGAL::to_double(shape.get_nth_alpha(low))
-                          << " and " << CGAL::to_double(shape.get_nth_alpha(high)) << std::endl; 
+
+                // If low >= high, decrease low to high - 1
+                if (low >= high) 
+                    low = high - 1; 
+
+                // Also keep track of the vertices and edges in the order in which 
+                // they are traversed 
+                std::vector<int> traversal;
 
                 // For each larger value of alpha, test that the boundary is 
                 // a simple cycle (every vertex has only two incident edges,
@@ -666,101 +749,477 @@ class Boundary2D
                 // back to the starting point)
                 while (low <= high)
                 {
-                    unsigned mid = static_cast<unsigned>(floor((low + high) / 2.0));
-                    shape.set_alpha(shape.get_nth_alpha(mid));
-                    std::cout << "- setting alpha = " << CGAL::to_double(shape.get_nth_alpha(mid)) << std::endl; 
+                    mid = (low + high) / 2;
+                    auto alpha = shape.get_nth_alpha(mid);  
+                    shape.set_alpha(alpha);
+                    std::cout << "- setting alpha = " << CGAL::to_double(alpha) << std::endl; 
 
-                    // Get the number of vertices in the alpha shape
-                    unsigned nvertices = 0;
-                    for (auto itv = shape.alpha_shape_vertices_begin(); itv != shape.alpha_shape_vertices_end(); ++itv)
+                    // Establish an ordering for the vertices in the alpha shape
+                    vertices_to_indices.clear();
+                    indices_to_vertices.clear();  
+                    nvertices = 0; 
+                    for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
+                    {
+                        vertices_to_indices[*it] = nvertices;
+                        indices_to_vertices.push_back(*it);
                         nvertices++;
-                    
-                    // Starting from an arbitrary vertex, travel along the edges
-                    // spanning the alpha shape, checking that:
-                    // 1) Each vertex has exactly two incident edges
-                    // 2) Iteratively choosing the unvisited neighbor (traveling
-                    //    along the cycle in one direction) at each vertex returns
-                    //    us to the starting vertex after visiting every vertex
-                    //    in the alpha shape
-                    std::unordered_set<Vertex_handle_2> bound;
-                    Vertex_handle_2 curr = *(shape.alpha_shape_vertices_begin());
-                    bool traversed_boundary = false;
-                    bool found_singleton = false;
-                    bool found_endpoint = false; 
-                    bool found_branchpoint = false; 
-                    while (!traversed_boundary && !found_singleton && !found_endpoint && !found_branchpoint)
-                    {
-                        bound.insert(curr);
-                        std::vector<Vertex_handle_2> neighbors;
-                        for (auto ite = shape.alpha_shape_edges_begin(); ite != shape.alpha_shape_edges_end(); ite++)
-                        {
-                            Face_handle_2 f = ite->first;
-                            auto type = shape.classify(f);
-                            if (type != Alpha_shape::REGULAR && type != Alpha_shape::INTERIOR)
-                                throw std::runtime_error(
-                                    "Regular triangulation should not have any singular/exterior faces"
-                                );
-                            int i = ite->second;
-                            Vertex_handle_2 source = f->vertex(f->cw(i));
-                            Vertex_handle_2 target = f->vertex(f->ccw(i));
-                            if (source == curr || target == curr)
-                            {
-                                Vertex_handle_2 next = (source == curr ? target : source);
-                                neighbors.push_back(next);
-                            }
-                        }
-                        if (neighbors.size() == 2)
-                        {
-                            // Find which of the two neighbor vertices have not been visited 
-                            if (bound.find(neighbors[0]) == bound.end() && bound.find(neighbors[1]) != bound.end())
-                                curr = neighbors[0];
-                            else if (bound.find(neighbors[0]) != bound.end() && bound.find(neighbors[1]) == bound.end())
-                                curr = neighbors[1];
-                            else if (bound.find(neighbors[0]) != bound.end() && bound.find(neighbors[1]) != bound.end())
-                                traversed_boundary = true;    // If both neighbors have been visited
-                            else 
-                                curr = neighbors[0];          // If neither neighbor has been visited 
-                        }
-                        else if (neighbors.size() == 0)
-                        {
-                            // If there were no neighbors (somehow?), then we've found a singleton point
-                            found_singleton = true;
-                            break;
-                        }
-                        else if (neighbors.size() == 1)
-                        {
-                            // If we've reached an endpoint in a path of vertices
-                            found_endpoint = true;
-                            break;
-                        }
-                        else 
-                        {
-                            // If we've found a multi-branch-point
-                            found_branchpoint = true; 
-                            break;
-                        }
                     }
 
-                    std::cout << "- ... traversed " << bound.size() << " boundary vertices out of "
-                              << nvertices << std::endl;
-                    // If the boundary has been traversed completely and consists of one cycle ...
-                    if (traversed_boundary && bound.size() == nvertices && !found_singleton && !found_endpoint && !found_branchpoint)
+                    // Iterate through the edges in the alpha shape and fill in
+                    // the adjacency matrix 
+                    adj.resize(nvertices, nvertices); 
+                    std::vector<Triplet<int> > triplets;
+                    for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
                     {
-                        last_valid = mid;
-                        high = mid - 1;
+                        // Add the two corresponding entries to the adjacency 
+                        // matrix 
+                        int j = it->second; 
+                        Vertex_handle_2 source = (it->first)->vertex(Delaunay_triangulation_2::cw(j));
+                        Vertex_handle_2 target = (it->first)->vertex(Delaunay_triangulation_2::ccw(j));
+                        int source_i = vertices_to_indices[source]; 
+                        int target_i = vertices_to_indices[target]; 
+                        triplets.emplace_back(Triplet<int>(source_i, target_i, 1)); 
+                        triplets.emplace_back(Triplet<int>(target_i, source_i, 1)); 
                     }
-                    else    // Otherwise (boundary vertex missing from cycle, or somehow visited branchpoint/endpoint/singleton)
+                    adj.setFromTriplets(triplets.begin(), triplets.end());
+                    VectorXi ones = VectorXi::Ones(nvertices); 
+                    nedges = (adj.triangularView<Upper>() * ones).sum(); 
+
+                    // Starting from an arbitrary vertex, identify the incident 
+                    // edges on the vertex and "travel" along the boundary,
+                    // checking that:
+                    // 1) Each vertex has exactly two incident edges
+                    // 2) Each vertex has one unvisited neighbor and one visited 
+                    //    neighbor (except at the start and end of the traversal)
+                    // 3) Iteratively choosing the visited neighbor returns us 
+                    //    to the starting vertex after *every* vertex has been 
+                    //    visited
+                    // 
+                    // Start from the zeroth vertex ...
+                    traversal.clear(); 
+                    int curr = 0;
+                    Matrix<int, Dynamic, 1> visited = Matrix<int, Dynamic, 1>::Zero(nvertices);
+                    bool returned = false;  
+                    
+                    while (!returned)
                     {
-                        low = mid + 1;
+                        // Mark the current vertex as having been visited
+                        traversal.push_back(curr); 
+                        visited(curr) = 1; 
+
+                        // Iterate over the nonzero entries in the current
+                        // vertex's row
+                        SparseMatrix<int, RowMajor>::InnerIterator row_it(adj, curr);
+                        
+                        if (!row_it) break;    // If the vertex has no neighbor, then break 
+                        int first = row_it.col();
+                        ++row_it; 
+                        if (!row_it) break;    // If the vertex has no second neighbor, then break 
+                        int second = row_it.col();
+                        ++row_it;  
+                        if (row_it)  break;    // If the vertex has more than two neighbors, then break
+
+                        // If both vertices have been visited *and* one of them 
+                        // is the zeroth vertex, then we have returned
+                        if (visited(first) == 1 && visited(second) == 1 && (first == 0 || second == 0))
+                            returned = true;  
+                        // Otherwise, if both vertices have been visited, then 
+                        // the alpha shape contains a more complicated structure
+                        else if (visited(first) == 1 && visited(second) == 1)
+                            break; 
+                        // Otherwise, if only the first vertex has been visited, 
+                        // then jump to the second vertex
+                        else if (visited(first) == 1 && visited(second) == 0)
+                            curr = second;
+                        // Otherwise, if only the second vertex has been visited, 
+                        // then jump to the first vertex
+                        else if (visited(second) == 1 && visited(first) == 0)
+                            curr = first;
+                        // Otherwise, if we are at the zeroth vertex (we are just
+                        // starting our traversal), then choose either vertex
+                        else if (visited(first) == 0 && visited(second) == 0 && curr == 0)
+                            curr = first; 
+                        // Otherwise, if neither vertex has been visited, then 
+                        // there is something wrong (this is supposed to be 
+                        // impossible)
+                        else 
+                            throw std::runtime_error("This is not supposed to happen!");  
+                    }
+
+                    // Have we traversed the entire alpha shape and returned to 
+                    // the starting vertex? 
+                    int nvisited = visited.sum(); 
+                    if (nvisited == nvertices && returned)
+                    {
+                        std::cout << "- ... traversed " << nvisited << "/" << nvertices
+                                  << " boundary vertices in a simple cycle" << std::endl;
+                        last_valid = mid;
+                        high = mid - 1;  
+                    }
+                    // Otherwise, if the number of edges is *greater than* the 
+                    // number of vertices, then the alpha shape is too detailed
+                    // and so we need to lower the value of alpha 
+                    else if (nedges > nvertices)
+                    {
+                        std::cout << "- ... traversed " << nvisited << "/" << nvertices 
+                                  << " boundary vertices; boundary contains "
+                                  << nedges << " edges" << std::endl; 
+                        high = mid - 1; 
+                    }
+                    // Otherwise, if the number of edges is *lower than* the 
+                    // number of vertices, then the alpha shape is not detailed 
+                    // enough and so we need to increase the value of alpha
+                    else 
+                    {
+                        std::cout << "- ... traversed " << nvisited << "/" << nvertices
+                                  << " boundary vertices; boundary contains "
+                                  << nedges << " edges" << std::endl; 
+                        low = mid + 1; 
                     }
                 }
-                opt_alpha = CGAL::to_double(shape.get_nth_alpha(last_valid));
+                bool is_simple_cycle = (last_valid != INVALID_ALPHA_INDEX); 
                 opt_alpha_index = last_valid; 
+                opt_alpha = CGAL::to_double(shape.get_nth_alpha(last_valid));
+                shape.set_alpha(shape.get_nth_alpha(opt_alpha_index));
+
+                // Re-compute the alpha shape for the last value of alpha for 
+                // which the alpha shape is a simple cycle, if necessary  
+                if (mid != last_valid)
+                {
+                    // Establish an ordering for the vertices in the alpha shape
+                    vertices_to_indices.clear();
+                    indices_to_vertices.clear();  
+                    nvertices = 0; 
+                    for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
+                    {
+                        vertices_to_indices[*it] = nvertices;
+                        indices_to_vertices.push_back(*it);
+                        nvertices++;
+                    }
+
+                    // Iterate through the edges in the alpha shape and fill in
+                    // the adjacency matrix 
+                    adj.resize(nvertices, nvertices); 
+                    std::vector<Triplet<int> > triplets;
+                    for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
+                    {
+                        // Add the two corresponding entries to the adjacency 
+                        // matrix 
+                        int j = it->second; 
+                        Vertex_handle_2 source = (it->first)->vertex(Delaunay_triangulation_2::cw(j));
+                        Vertex_handle_2 target = (it->first)->vertex(Delaunay_triangulation_2::ccw(j));
+                        int source_i = vertices_to_indices[source]; 
+                        int target_i = vertices_to_indices[target]; 
+                        triplets.emplace_back(Triplet<int>(source_i, target_i, 1)); 
+                        triplets.emplace_back(Triplet<int>(target_i, source_i, 1)); 
+                    }
+                    adj.setFromTriplets(triplets.begin(), triplets.end());
+                    VectorXi ones = VectorXi::Ones(nvertices); 
+                    nedges = (adj.triangularView<Upper>() * ones).sum(); 
+
+                    // Starting from an arbitrary vertex, identify the incident 
+                    // edges on the vertex and "travel" along the boundary,
+                    // checking that:
+                    // 1) Each vertex has exactly two incident edges
+                    // 2) Each vertex has one unvisited neighbor and one visited 
+                    //    neighbor (except at the start and end of the traversal)
+                    // 3) Iteratively choosing the visited neighbor returns us 
+                    //    to the starting vertex after *every* vertex has been 
+                    //    visited
+                    // 
+                    // Start from the zeroth vertex ...
+                    traversal.clear(); 
+                    int curr = 0;
+                    Matrix<int, Dynamic, 1> visited = Matrix<int, Dynamic, 1>::Zero(nvertices);
+                    bool returned = false;  
+                    
+                    while (!returned)
+                    {
+                        // Mark the current vertex as having been visited
+                        traversal.push_back(curr); 
+                        visited(curr) = 1; 
+
+                        // Iterate over the nonzero entries in the current
+                        // vertex's row
+                        SparseMatrix<int, RowMajor>::InnerIterator row_it(adj, curr);
+                        
+                        if (!row_it) break;    // If the vertex has no neighbor, then break 
+                        int first = row_it.col();
+                        ++row_it; 
+                        if (!row_it) break;    // If the vertex has no second neighbor, then break 
+                        int second = row_it.col();
+                        ++row_it;  
+                        if (row_it)  break;    // If the vertex has more than two neighbors, then break
+
+                        // If both vertices have been visited *and* one of them 
+                        // is the zeroth vertex, then we have returned
+                        if (visited(first) == 1 && visited(second) == 1 && (first == 0 || second == 0))
+                            returned = true;  
+                        // Otherwise, if only the first vertex has been visited, 
+                        // then jump to the second vertex
+                        else if (visited(first) == 1 && visited(second) == 0)
+                            curr = second;
+                        // Otherwise, if only the second vertex has been visited, 
+                        // then jump to the first vertex
+                        else if (visited(second) == 1 && visited(first) == 0)
+                            curr = first;
+                        // Otherwise, if we are at the zeroth vertex (we are just
+                        // starting our traversal), then choose either vertex
+                        else if (visited(first) == 0 && visited(second) == 0 && curr == 0)
+                            curr = first; 
+                        // Otherwise, if neither vertex has been visited or both 
+                        // vertices have been visited, then the alpha shape contains
+                        // a more complicated structure (this is supposed to be
+                        // impossible)
+                        else
+                            throw std::runtime_error("This is not supposed to happen!");  
+                    }
+                }
+
+                // Identify, for each vertex in the alpha shape, the point corresponding to it 
+                for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
+                {
+                    // Find the point being pointed to by the boundary vertex 
+                    Point_2 point = (*it)->point();
+                    double x = point.x(); 
+                    double y = point.y(); 
+                    
+                    // Find the nearest input point to this point
+                    double nearest_sqdist = std::numeric_limits<double>::infinity(); 
+                    int nearest_index = 0; 
+                    for (unsigned i = 0; i < this->n; ++i)
+                    {
+                        double sqdist = std::pow(this->x[i] - x, 2) + std::pow(this->y[i] - y, 2);
+                        if (sqdist < nearest_sqdist)
+                        {
+                            nearest_sqdist = sqdist;
+                            nearest_index = i; 
+                        }
+                    }
+                    vertices_to_points[*it] = std::make_pair(nearest_index, nearest_sqdist);
+                }
+
+                // Count the edges in the alpha shape
+                VectorXi ones = VectorXi::Ones(nvertices); 
+                nedges = (adj.triangularView<Upper>() * ones).sum();
+
+                // Define vectors that specify the boundary vertices in the 
+                // order in which they were traversed, *in terms of their 
+                // indices in the stored input set*, as well as the edges 
+                // in the order in which they were traversed   
+                std::vector<unsigned> vertex_indices_in_order; 
+                std::vector<std::pair<unsigned, unsigned> > edge_indices_in_order; 
+
+                /* ------------------------------------------------------------------ //
+                 * If the detected boundary is a simple cycle and simplification is desired, 
+                 * simplify the alpha shape using Dyken et al.'s polyline simplification
+                 * algorithm:
+                 * - The cost of decimating a vertex is measured using maximum distance
+                 *   between the remaining vertices and the new line segment formed
+                 * - The simplification is terminated once the total cost of decimation
+                 *   exceeds 1e-5
+                 * ------------------------------------------------------------------ */
+                if (is_simple_cycle && max_edges != 0 && nedges > max_edges)
+                {
+                    std::cout << "- ... simplifying" << std::endl; 
+                    
+                    // Instantiate a Polygon object with the given vertex order
+                    std::vector<Point_2> traversed_points;
+                    for (auto it = traversal.begin(); it != traversal.end(); ++it)
+                    {
+                        int nearest_index = vertices_to_points[indices_to_vertices[*it]].first;  
+                        traversed_points.push_back(points[nearest_index]);
+                    } 
+                    Polygon_2 polygon(traversed_points.begin(), traversed_points.end()); 
+                    if (!polygon.is_simple())
+                        throw std::runtime_error("Polygon is not simple");
+
+                    // Simplify the Polygon object
+                    polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
+
+                    // Collect the vertices and edges of the simplified Polygon object
+                    for (auto it = polygon.vertices_begin(); it != polygon.vertices_end(); ++it)
+                    {
+                        // Find the vertex in the alpha shape
+                        Point_2 p = *it;
+                        auto p_it = std::find_if(
+                            vertices_to_points.begin(), vertices_to_points.end(),
+                            [p, points](std::pair<Vertex_handle_2, std::pair<unsigned, double> > v)
+                            {
+                                unsigned i = v.second.first;
+                                double sqnorm = v.second.second;
+                                return (CGAL::to_double((p - points[i]).squared_length()) <= sqnorm); 
+                            }
+                        );
+                        vertex_indices_in_order.push_back(p_it->second.first);
+                    }
+                    for (auto it = polygon.edges_begin(); it != polygon.edges_end(); ++it)
+                    {
+                        // Find the source and target vertices in the alpha shape
+                        Point_2 source = it->source();
+                        Point_2 target = it->target();
+                        auto source_it = std::find_if(
+                            vertices_to_points.begin(), vertices_to_points.end(),
+                            [source, points](std::pair<Vertex_handle_2, std::pair<unsigned, double> > v)
+                            {
+                                unsigned i = v.second.first;
+                                double sqnorm = v.second.second;
+                                return (CGAL::to_double((source - points[i]).squared_length()) <= sqnorm);
+                            }
+                        );
+                        auto target_it = std::find_if(
+                            vertices_to_points.begin(), vertices_to_points.end(),
+                            [target, points](std::pair<Vertex_handle_2, std::pair<unsigned, double> > v)
+                            {
+                                unsigned i = v.second.first;
+                                double sqnorm = v.second.second;
+                                return (CGAL::to_double((target - points[i]).squared_length()) <= sqnorm);
+                            }
+                        );
+                        edge_indices_in_order.push_back(
+                            std::make_pair(source_it->second.first, target_it->second.first)
+                        );
+                    }
+                    nvertices = vertex_indices_in_order.size(); 
+                    nedges = edge_indices_in_order.size(); 
+
+                    // Compute the area of the simplified Polygon
+                    double total_area = abs(CGAL::to_double(polygon.area()));
+                    std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
+                    std::cout << "- enclosed area = " << total_area << std::endl;  
+                    std::cout << "- number of vertices = " << nvertices << std::endl; 
+                    std::cout << "- number of edges = " << nedges << std::endl; 
+                    
+                    return AlphaShape2DProperties(
+                        x, y, vertex_indices_in_order, edge_indices_in_order,  
+                        opt_alpha, total_area, is_simple_cycle, max_edges
+                    );
+                }
+                // If the boundary is a simple cycle but was *not* simplified,
+                // then accumulate the indices of the boundary vertices in the
+                // order in which they were traversed
+                else if (is_simple_cycle)
+                {
+                    auto it = traversal.begin();
+                    unsigned curr = vertices_to_points[indices_to_vertices[*it]].first; 
+                    vertex_indices_in_order.push_back(curr);
+                    ++it;
+                    while (it != traversal.end())
+                    {
+                        unsigned next = vertices_to_points[indices_to_vertices[*it]].first;
+                        edge_indices_in_order.emplace_back(std::make_pair(curr, next));
+                        curr = next;  
+                        vertex_indices_in_order.push_back(curr);
+                        ++it;  
+                    }
+                    edge_indices_in_order.emplace_back(
+                        std::make_pair(curr, vertices_to_points[indices_to_vertices[*(traversal.begin())]].first)
+                    );
+                }
+                // Otherwise, accumulate the indices of the boundary vertices 
+                // in arbitrary order 
+                else
+                {
+                    for (unsigned i = 0; i < nvertices; ++i) 
+                    {
+                        Vertex_handle_2 v = indices_to_vertices[i];
+                        unsigned curr = vertices_to_points[v].first;  // Index of vertex *among all stored input points*
+                        vertex_indices_in_order.push_back(curr); 
+                        for (SparseMatrix<int, RowMajor>::InnerIterator row_it(adj, i); row_it; ++row_it)
+                        {
+                            unsigned j = row_it.col();
+                            Vertex_handle_2 w = indices_to_vertices[j];  
+                            unsigned target = vertices_to_points[w].first; 
+                            if (curr < target)
+                                edge_indices_in_order.emplace_back(std::make_pair(curr, target));
+                        } 
+                    }
+                }
+
+                // Get the area of the region enclosed by the alpha shape 
+                // with the optimum value of alpha
+                double total_area = 0.0;
+                for (auto it = shape.finite_faces_begin(); it != shape.finite_faces_end(); ++it)
+                {
+                    Face_handle_2 face = Tds::Face_range::s_iterator_to(*it);
+                    auto type = shape.classify(face);
+                    if (type == Alpha_shape::REGULAR || type == Alpha_shape::INTERIOR)
+                    {
+                        Point_2 p = it->vertex(0)->point();
+                        Point_2 q = it->vertex(1)->point();
+                        Point_2 r = it->vertex(2)->point();
+                        total_area += CGAL::area(p, q, r);
+                    }
+                }
+                std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
+                std::cout << "- number of vertices = " << nvertices << std::endl; 
+                std::cout << "- number of edges = " << nedges << std::endl;
+                std::cout << "- enclosed area = " << total_area << std::endl;  
+
+                return AlphaShape2DProperties(
+                    x, y, vertex_indices_in_order, edge_indices_in_order,  
+                    opt_alpha, total_area, is_simple_cycle, max_edges
+                );
             }
             else if (connected)
             {
                 opt_alpha_index = static_cast<unsigned>(shape.find_optimal_alpha(1) - shape.alpha_begin());
                 opt_alpha = CGAL::to_double(shape.get_nth_alpha(opt_alpha_index));
+                shape.set_alpha(shape.get_nth_alpha(opt_alpha_index));
+
+                // Establish an ordering for the vertices in the alpha shape
+                nvertices = 0; 
+                for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
+                {
+                    vertices_to_indices[*it] = nvertices;
+                    indices_to_vertices.push_back(*it); 
+                    nvertices++;
+                }
+
+                // Iterate through the edges in the alpha shape and fill in
+                // the adjacency matrix 
+                adj.resize(nvertices, nvertices); 
+                std::vector<Triplet<int> > triplets;
+                for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
+                {
+                    // Add the two corresponding entries to the adjacency 
+                    // matrix 
+                    int j = it->second; 
+                    Vertex_handle_2 source = (it->first)->vertex(Delaunay_triangulation_2::cw(j));
+                    Vertex_handle_2 target = (it->first)->vertex(Delaunay_triangulation_2::ccw(j));
+                    int source_i = vertices_to_indices[source]; 
+                    int target_i = vertices_to_indices[target]; 
+                    triplets.emplace_back(Triplet<int>(source_i, target_i, 1)); 
+                    triplets.emplace_back(Triplet<int>(target_i, source_i, 1)); 
+                }
+                adj.setFromTriplets(triplets.begin(), triplets.end());
+
+                // Identify, for each vertex in the alpha shape, the point corresponding to it 
+                for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
+                {
+                    // Find the point being pointed to by the boundary vertex 
+                    Point_2 point = (*it)->point();
+                    double x = point.x(); 
+                    double y = point.y(); 
+                    
+                    // Find the nearest input point to this point
+                    double nearest_sqdist = std::numeric_limits<double>::infinity(); 
+                    int nearest_index = 0; 
+                    for (unsigned i = 0; i < this->n; ++i)
+                    {
+                        double sqdist = std::pow(this->x[i] - x, 2) + std::pow(this->y[i] - y, 2);
+                        if (sqdist < nearest_sqdist)
+                        {
+                            nearest_sqdist = sqdist;
+                            nearest_index = i; 
+                        }
+                    }
+                    vertices_to_points[*it] = std::make_pair(nearest_index, nearest_sqdist);
+                }
+
+                // Count the edges in the alpha shape
+                VectorXi ones = VectorXi::Ones(nvertices); 
+                nedges = (adj.triangularView<Upper>() * ones).sum(); 
             }
             else
             {
@@ -798,11 +1257,65 @@ class Boundary2D
 
                     i++; 
                 }
+                shape.set_alpha(shape.get_nth_alpha(opt_alpha_index));
+
+                // Establish an ordering for the vertices in the alpha shape
+                nvertices = 0; 
+                for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
+                {
+                    vertices_to_indices[*it] = nvertices;
+                    indices_to_vertices.push_back(*it); 
+                    nvertices++;
+                }
+
+                // Iterate through the edges in the alpha shape and fill in
+                // the adjacency matrix 
+                adj.resize(nvertices, nvertices); 
+                std::vector<Triplet<int> > triplets;
+                for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
+                {
+                    // Add the two corresponding entries to the adjacency 
+                    // matrix 
+                    int j = it->second; 
+                    Vertex_handle_2 source = (it->first)->vertex(Delaunay_triangulation_2::cw(j));
+                    Vertex_handle_2 target = (it->first)->vertex(Delaunay_triangulation_2::ccw(j));
+                    int source_i = vertices_to_indices[source]; 
+                    int target_i = vertices_to_indices[target]; 
+                    triplets.emplace_back(Triplet<int>(source_i, target_i, 1)); 
+                    triplets.emplace_back(Triplet<int>(target_i, source_i, 1)); 
+                }
+                adj.setFromTriplets(triplets.begin(), triplets.end());
+
+                // Identify, for each vertex in the alpha shape, the point corresponding to it 
+                for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
+                {
+                    // Find the point being pointed to by the boundary vertex 
+                    Point_2 point = (*it)->point();
+                    double x = point.x(); 
+                    double y = point.y(); 
+                    
+                    // Find the nearest input point to this point
+                    double nearest_sqdist = std::numeric_limits<double>::infinity(); 
+                    int nearest_index = 0; 
+                    for (unsigned i = 0; i < this->n; ++i)
+                    {
+                        double sqdist = std::pow(this->x[i] - x, 2) + std::pow(this->y[i] - y, 2);
+                        if (sqdist < nearest_sqdist)
+                        {
+                            nearest_sqdist = sqdist;
+                            nearest_index = i; 
+                        }
+                    }
+                    vertices_to_points[*it] = std::make_pair(nearest_index, nearest_sqdist);
+                }
+
+                // Count the edges in the alpha shape
+                VectorXi ones = VectorXi::Ones(nvertices); 
+                nedges = (adj.triangularView<Upper>() * ones).sum(); 
             }
 
             // Get the area of the region enclosed by the alpha shape 
             // with the optimum value of alpha
-            shape.set_alpha(shape.get_nth_alpha(opt_alpha_index));
             double total_area = 0.0;
             for (auto it = shape.finite_faces_begin(); it != shape.finite_faces_end(); ++it)
             {
@@ -816,189 +1329,12 @@ class Boundary2D
                     total_area += CGAL::area(p, q, r);
                 }
             }
-            std::cout << "- optimal value of alpha = " << opt_alpha << std::endl; 
+            std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
+            std::cout << "- enclosed area = " << total_area << std::endl;  
+            std::cout << "- number of vertices = " << nvertices << std::endl; 
+            std::cout << "- number of edges = " << nedges << std::endl; 
 
-            // Identify, for each vertex in the alpha shape, the point corresponding to it 
-            std::unordered_map<Vertex_handle_2, std::pair<unsigned, double> > vertices_to_points;
-            for (unsigned i = 0; i < points.size(); ++i)
-            {
-                // Find the nearest vertex to each point 
-                Vertex_handle_2 nearest = shape.nearest_vertex(points[i]);
-
-                // Look for whether the vertex was identified as the nearest 
-                // to any previous point
-                auto found = vertices_to_points.find(nearest);
-
-                // Update the vertex's nearest point if the point is indeed
-                // nearer to the vertex than any previously considered point
-                double sqnorm = CGAL::to_double((nearest->point() - points[i]).squared_length());
-                if (found == vertices_to_points.end() || sqnorm < (found->second).second)
-                {
-                    vertices_to_points[nearest] = std::make_pair(i, sqnorm);
-                }
-            }
-
-            // Count the number of vertices and edges in the alpha shape
-            std::unordered_set<unsigned> vertex_set;
-            unsigned nvertices = 0;
-            unsigned nedges = 0;
-            for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
-            {
-                vertex_set.insert(vertices_to_points[*it].first);
-                nvertices++;
-            }
-            for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
-            {
-                nedges++;
-            }
-
-            // If the alpha shape is simply connected, organize the vertices 
-            // and edges so that they are given in order
-            if (simply_connected)
-            {
-                // Run through the edges of the alpha shape in order from an arbitrary
-                // vertex, keeping track of their squared lengths
-                std::vector<unsigned> vertices_in_order;
-                std::vector<std::pair<unsigned, unsigned> > edges_in_order;
-                std::vector<Point_2> points_in_order;
-                std::vector<double> edge_lengths;
-                std::unordered_set<unsigned> visited_vertices; 
-
-                // Add the first vertex and point
-                unsigned source = *(vertex_set.begin());
-                vertices_in_order.push_back(source);
-                points_in_order.push_back(points[source]);
-                visited_vertices.insert(source); 
-
-                while (points_in_order.size() < nvertices)    // Accumulate vertices ...
-                {
-                    // Find the next vertex/point in the polygon 
-                    auto next = std::find_if(
-                        shape.alpha_shape_edges_begin(),
-                        shape.alpha_shape_edges_end(),
-                        [source, vertices_to_points, visited_vertices](std::pair<Face_handle_2, int> e)
-                        {
-                            // Find the source and target vertices of each edge
-                            Face_handle_2 f = e.first;
-                            int i = e.second;
-                            Vertex_handle_2 s = f->vertex(f->cw(i));
-                            Vertex_handle_2 t = f->vertex(f->ccw(i));
-                            unsigned si = (vertices_to_points.find(s)->second).first;
-                            unsigned ti = (vertices_to_points.find(t)->second).first;
-                            bool s_visited = visited_vertices.count(si);
-                            bool t_visited = visited_vertices.count(ti); 
-                            return ((si == source && !t_visited) || (ti == source && !s_visited));
-                        }
-                    );
-
-                    // If an unvisited vertex has been found ...
-                    if (next != shape.alpha_shape_edges_end())
-                    {
-                        Face_handle_2 f = next->first;
-                        int i = next->second;
-                        Vertex_handle_2 s = f->vertex(f->cw(i));
-                        Vertex_handle_2 t = f->vertex(f->ccw(i));
-                        unsigned si = vertices_to_points[s].first;
-                        unsigned ti = vertices_to_points[t].first;
-
-                        // Update the current vertex and mark it as visited 
-                        if (source == si)
-                        {
-                            edges_in_order.push_back(std::make_pair(si, ti));
-                            source = ti;
-                        }
-                        else
-                        {
-                            edges_in_order.push_back(std::make_pair(ti, si));
-                            source = si;
-                        }
-                        vertices_in_order.push_back(source);
-                        points_in_order.push_back(points[source]);
-                        visited_vertices.insert(source);
-                        edge_lengths.push_back((points[si] - points[ti]).squared_length());
-                    }
-                }
-                // Add the final edge 
-                edges_in_order.push_back(std::make_pair(source, vertices_in_order[0])); 
-
-                // Instantiate a Polygon object with the given vertex order
-                Polygon_2 polygon(points_in_order.begin(), points_in_order.end());
-                if (!polygon.is_simple())
-                {
-                    throw std::runtime_error("Polygon is not simple");
-                }
-
-                /* ------------------------------------------------------------------ //
-                 * Simplify the alpha shape using Dyken et al.'s polyline simplification
-                 * algorithm:
-                 * - The cost of decimating a vertex is measured using maximum distance
-                 *   between the remaining vertices and the new line segment formed
-                 * - The simplification is terminated once the total cost of decimation
-                 *   exceeds 1e-5
-                 * ------------------------------------------------------------------ */
-                if (max_edges == -1) max_edges = nedges;
-                if (nedges > max_edges)
-                {
-                    // Simplify the Polygon object
-                    polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
-
-                    // Collect the vertices and edges of the simplified Polygon object
-                    vertices_in_order.clear();
-                    edges_in_order.clear();
-                    for (auto it = polygon.vertices_begin(); it != polygon.vertices_end(); ++it)
-                    {
-                        // Find the vertex in the alpha shape
-                        Point_2 p = *it;
-                        auto p_it = std::find_if(
-                            vertices_to_points.begin(), vertices_to_points.end(),
-                            [p, points](std::pair<Vertex_handle_2, std::pair<unsigned, double> > v)
-                            {
-                                unsigned i = v.second.first;
-                                double sqnorm = v.second.second;
-                                return (CGAL::to_double((p - points[i]).squared_length()) <= sqnorm); 
-                            }
-                        );
-                        vertices_in_order.push_back(p_it->second.first);
-                    }
-                    for (auto it = polygon.edges_begin(); it != polygon.edges_end(); ++it)
-                    {
-                        // Find the source and target vertices in the alpha shape
-                        Point_2 source = it->source();
-                        Point_2 target = it->target();
-                        auto source_it = std::find_if(
-                            vertices_to_points.begin(), vertices_to_points.end(),
-                            [source, points](std::pair<Vertex_handle_2, std::pair<unsigned, double> > v)
-                            {
-                                unsigned i = v.second.first;
-                                double sqnorm = v.second.second;
-                                return (CGAL::to_double((source - points[i]).squared_length()) <= sqnorm);
-                            }
-                        );
-                        auto target_it = std::find_if(
-                            vertices_to_points.begin(), vertices_to_points.end(),
-                            [target, points](std::pair<Vertex_handle_2, std::pair<unsigned, double> > v)
-                            {
-                                unsigned i = v.second.first;
-                                double sqnorm = v.second.second;
-                                return (CGAL::to_double((target - points[i]).squared_length()) <= sqnorm);
-                            }
-                        );
-                        edges_in_order.push_back(
-                            std::make_pair(source_it->second.first, target_it->second.first)
-                        );
-                    }
-
-                    // Compute the area of the simplified Polygon
-                    total_area = abs(CGAL::to_double(polygon.area()));
-                }
-
-                return AlphaShape2DProperties(
-                    x, y, vertices_in_order, edges_in_order, opt_alpha, total_area,
-                    connected, simply_connected, max_edges
-                );
-            }
-
-            // Otherwise, simply collect the vertices and edges in arbitrary order
+            // Finally collect the boundary vertices and edges in arbitrary order 
             std::vector<std::pair<unsigned, unsigned> > edges;
             for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
             {
@@ -1006,14 +1342,14 @@ class Boundary2D
                 int i = it->second;
                 Vertex_handle_2 s = f->vertex(f->cw(i));
                 Vertex_handle_2 t = f->vertex(f->ccw(i));
-                edges.push_back(std::make_pair(vertices_to_points[s].first, vertices_to_points[t].first));
+                edges.emplace_back(std::make_pair(vertices_to_points[s].first, vertices_to_points[t].first));
             }
             std::vector<unsigned> vertices;
-            for (auto&& v : vertex_set) vertices.push_back(v);
+            for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
+                vertices.push_back(vertices_to_points[*it].first);
 
             return AlphaShape2DProperties(
-                x, y, vertices, edges, opt_alpha, total_area, connected,
-                simply_connected, max_edges
+                x, y, vertices, edges, opt_alpha, total_area, false, max_edges
             );
         }
 };
