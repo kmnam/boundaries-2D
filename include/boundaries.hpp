@@ -877,14 +877,17 @@ class Boundary2D
                         low = mid + 1; 
                     }
                 }
-                bool is_simple_cycle = (last_valid != INVALID_ALPHA_INDEX); 
-                opt_alpha_index = last_valid; 
-                opt_alpha = CGAL::to_double(shape.get_nth_alpha(last_valid));
+                bool is_simple_cycle = (last_valid != INVALID_ALPHA_INDEX);
+                if (is_simple_cycle)
+                    opt_alpha_index = last_valid; 
+                else 
+                    opt_alpha_index = mid; 
+                opt_alpha = CGAL::to_double(shape.get_nth_alpha(opt_alpha_index));
                 shape.set_alpha(shape.get_nth_alpha(opt_alpha_index));
 
                 // Re-compute the alpha shape for the last value of alpha for 
                 // which the alpha shape is a simple cycle, if necessary  
-                if (mid != last_valid)
+                if (is_simple_cycle && mid != last_valid)
                 {
                     // Establish an ordering for the vertices in the alpha shape
                     vertices_to_indices.clear();
