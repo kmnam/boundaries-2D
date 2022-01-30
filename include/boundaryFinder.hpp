@@ -1,11 +1,11 @@
 /**
- * An implementation of a "boundary-finding" algorithm in the plane. 
+ * An implementation of a boundary-finding algorithm in the plane. 
  *
  * **Authors:**
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     1/8/2022
+ *     1/30/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -415,28 +415,28 @@ class BoundaryFinder
             }
         }
 
+        /**
+         * Given a list of points (with their x- and y-coordinates
+         * specified in vectors of the same length), take one step
+         * in the boundary-sampling algorithm as follows: 
+         *
+         * 1) Get the boundary of the output points accrued thus far. 
+         * 2) "Mutate" (randomly perturb) the input points in the
+         *    determined boundary by uniformly sampling along each
+         *    dimension within [x-radius, x+radius] in logarithmic
+         *    coordinates.
+         * 3) Plug in the mutated parameter values and obtain new 
+         *    output points.
+         *
+         * The return value indicates whether or not the enclosed 
+         * area has converged to within the specified area tolerance. 
+         */
         bool step(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
                   std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const std::string write_prefix = "")
         {
-            /*
-             * Given a list of points (with their x- and y-coordinates
-             * specified in vectors of the same length), take one step
-             * in the boundary-sampling algorithm as follows: 
-             *
-             * 1) Get the boundary of the output points accrued thus far. 
-             * 2) "Mutate" (randomly perturb) the input points in the
-             *    determined boundary by uniformly sampling along each
-             *    dimension within [x-radius, x+radius] in logarithmic
-             *    coordinates.
-             * 3) Plug in the mutated parameter values and obtain new 
-             *    output points.
-             *
-             * The return value indicates whether or not the enclosed 
-             * area has converged to within the specified area tolerance. 
-             */
             // Store the output coordinates in vectors 
             std::vector<double> x, y;
             x.resize(this->N);
@@ -444,8 +444,8 @@ class BoundaryFinder
             VectorXd::Map(&x[0], this->N) = this->points.col(0);
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
 
-            // Get boundary of the output points in 2-D space (assume that 
-            // shape is simply connected)
+            // Get boundary of the output points in 2-D space (assuming that 
+            // the shape is simply connected)
             Boundary2D boundary(x, y);
             AlphaShape2DProperties bound_data;
             try
@@ -453,16 +453,17 @@ class BoundaryFinder
                 // This line may throw:
                 // - CGAL::Precondition_exception (while attempting polygon instantiation)
                 // - std::runtime_error (if polygon is not simple)
-                bound_data = boundary.getBoundary<true>(true, true, max_edges);
+                bound_data = boundary.getSimplyConnectedBoundary<true>(max_edges);
             }
             catch (CGAL::Precondition_exception& e)
             {
                 // Try with tag == false 
+                // 
                 // This may throw a CGAL::Assertion_exception (while attempting alpha 
                 // shape instantiation)
                 try 
                 {
-                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -472,11 +473,12 @@ class BoundaryFinder
             catch (std::runtime_error& e)
             {
                 // Try with tag == false 
+                // 
                 // This may throw a CGAL::Assertion_exception (while attempting alpha 
                 // shape instantiation)
                 try 
                 {
-                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -564,16 +566,16 @@ class BoundaryFinder
             return (std::abs(change) < this->area_tol * (area - change));
         }
 
+        /**
+         * "Pull" the boundary points along their outward normal vectors
+         * with sequential quadratic programming. 
+         */
         bool pull(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const double delta, const unsigned max_iter, const double sqp_tol,
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const bool sqp_verbose, const std::string write_prefix = "")
         {
-            /*
-             * "Pull" the boundary points along their outward normal vectors
-             * with sequential quadratic programming. 
-             */
             using std::abs;
 
             // Store point coordinates in two vectors
@@ -583,7 +585,8 @@ class BoundaryFinder
             VectorXd::Map(&x[0], this->N) = this->points.col(0);
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
 
-            // Get boundary of the points (assume that shape is simply connected)
+            // Get boundary of the points (assuming that the shape is simply
+            // connected)
             Boundary2D boundary(x, y);
             AlphaShape2DProperties bound_data;
             try
@@ -591,16 +594,17 @@ class BoundaryFinder
                 // This line may throw:
                 // - CGAL::Precondition_exception (while attempting polygon instantiation)
                 // - std::runtime_error (if polygon is not simple)
-                bound_data = boundary.getBoundary<true>(true, true, max_edges);
+                bound_data = boundary.getSimplyConnectedBoundary<true>(max_edges);
             }
             catch (CGAL::Precondition_exception& e)
             {
-                // Try with tag == false 
+                // Try with tag == false
+                //
                 // This may throw a CGAL::Assertion_exception (while attempting alpha 
                 // shape instantiation)
                 try 
                 {
-                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -609,12 +613,13 @@ class BoundaryFinder
             }
             catch (std::runtime_error& e)
             {
-                // Try with tag == false 
+                // Try with tag == false
+                //
                 // This may throw a CGAL::Assertion_exception (while attempting alpha 
                 // shape instantiation)
                 try 
                 {
-                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -787,16 +792,17 @@ class BoundaryFinder
                 // This line may throw:
                 // - CGAL::Precondition_exception (while attempting polygon instantiation)
                 // - std::runtime_error (if polygon is not simple)
-                bound_data = boundary.getBoundary<true>(true, true, max_edges);
+                bound_data = boundary.getSimplyConnectedBoundary<true>(max_edges);
             }
             catch (CGAL::Precondition_exception& e)
             {
-                // Try with tag == false 
+                // Try with tag == false
+                //
                 // This may throw a CGAL::Assertion_exception (while attempting alpha 
                 // shape instantiation)
                 try 
                 {
-                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -805,12 +811,13 @@ class BoundaryFinder
             }
             catch (std::runtime_error& e)
             {
-                // Try with tag == false 
+                // Try with tag == false
+                //
                 // This may throw a CGAL::Assertion_exception (while attempting alpha 
                 // shape instantiation)
                 try 
                 {
-                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -940,16 +947,17 @@ class BoundaryFinder
                 // This line may throw:
                 // - CGAL::Precondition_exception (while attempting polygon instantiation)
                 // - std::runtime_error (if polygon is not simple)
-                bound_data = boundary.getBoundary<true>(true, true, max_edges);
+                bound_data = boundary.getSimplyConnectedBoundary<true>(max_edges);
             }
             catch (CGAL::Precondition_exception& e)
             {
-                // Try with tag == false 
+                // Try with tag == false
+                //
                 // This may throw a CGAL::Assertion_exception (while attempting alpha 
                 // shape instantiation)
                 try 
                 {
-                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -958,12 +966,13 @@ class BoundaryFinder
             }
             catch (std::runtime_error& e)
             {
-                // Try with tag == false 
+                // Try with tag == false
+                //
                 // This may throw a CGAL::Assertion_exception (while attempting alpha 
                 // shape instantiation)
                 try 
                 {
-                    bound_data = boundary.getBoundary<false>(true, true, max_edges);
+                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
