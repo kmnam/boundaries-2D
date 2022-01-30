@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     1/27/2022
+ *     1/30/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -689,23 +689,20 @@ class Boundary2D
              * Determine the optimal value of alpha that satisfies the following 
              * properties:
              *
-             * - Every point in the cloud lies either in the boundary or interior
-             *   of the regularized alpha shape (i.e., calling classify() returns
-             *   either AlphaShape::REGULAR or AlphaShape::INTERIOR)
+             * IF THE BOUNDARY SHOULD BE CONNECTED:
              * - If connected is true, the boundary encloses a connected region
+             *
+             * IF THE BOUNDARY SHOULD BE SIMPLY CONNECTED:
              * - If simply_connected is true, the boundary encloses a simply 
              *   connected region (i.e., the boundary consists of one simple 
              *   cycle of vertices). 
              * ------------------------------------------------------------------ */
             double opt_alpha = 0.0;
             unsigned opt_alpha_index = 0;
-            const unsigned INVALID_ALPHA_INDEX = shape.number_of_alphas(); 
+            bool all_vertices_regular_or_interior = false;  
+            const unsigned INVALID_ALPHA_INDEX = shape.number_of_alphas();
             if (simply_connected)
             {
-                // -------------------------------------------------------------- // 
-                //         IF A SIMPLY CONNECTED BOUNDARY IS DESIRED ...          //
-                // -------------------------------------------------------------- //
-                
                 // Set the lower value of alpha for which the region is connected
                 unsigned low = 0; 
                 unsigned high; 
@@ -857,7 +854,7 @@ class Boundary2D
                         high = mid - 1;  
                     }
                     // Otherwise, if the number of edges is *greater than* the 
-                    // number of vertices, then the alpha shape is too detailed
+                    // number of vertices (closer to , then the alpha shape is too detailed
                     // and so we need to lower the value of alpha 
                     else if (nedges > nvertices)
                     {
@@ -973,11 +970,60 @@ class Boundary2D
                         // Otherwise, if neither vertex has been visited or both 
                         // vertices have been visited, then the alpha shape contains
                         // a more complicated structure (this is supposed to be
-                        // impossible)
+                        // impossible, since we know that the boundary is simple)
                         else
                             throw std::runtime_error("This is not supposed to happen!");  
                     }
                 }
+                // On the other hand, if the alpha shape is not simple -- in which
+                // case it may not have been fully traversed -- re-traverse the 
+                // alpha shape so that each vertex is traversed 
+                else if (!is_simple_cycle)
+                {
+                    // Starting from an arbitrary vertex, identify the incident 
+                    // edges on the vertex and "travel" along the boundary
+                    // 
+                    // Start from the zeroth vertex ...
+                    traversal.clear(); 
+                    int curr = 0;
+                    Matrix<int, Dynamic, 1> visited = Matrix<int, Dynamic, 1>::Zero(nvertices);
+                    
+                    while (visited.sum() < nvertices) 
+                    {
+                        // Mark the current vertex as having been visited
+                        traversal.push_back(curr); 
+                        visited(curr) = 1; 
+
+                        // Iterate over the nonzero entries in the current
+                        // vertex's row
+                        SparseMatrix<int, RowMajor>::InnerIterator row_it(adj, curr);
+
+                        // Find the first neighbor that has not been visited
+                        bool neighbor_visited = visited(row_it.col()); 
+                        while (row_it && neighbor_visited)
+                            ++row_it;
+                        if (!neighbor_visited)    // If we have found an unvisited neighbor, then jump to it next
+                        {
+                            curr = row_it.col();
+                        }
+                        else                      // Otherwise, find the unvisited vertex with the least index 
+                        {
+                            for (unsigned i = 0; i < nvertices; ++i)
+                            {
+                                if (!visited(i))
+                                {
+                                    curr = i;
+                                    break;
+                                }
+                            } 
+                        } 
+                    }
+                }
+                if (traversal.size() != nvertices)
+                    throw std::runtime_error(
+                        "Traversal does not contain the same number of boundary vertices: "
+                        "this is not supposed to happen!"
+                    );  
 
                 // Identify, for each vertex in the alpha shape, the point corresponding to it 
                 for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
@@ -1014,17 +1060,19 @@ class Boundary2D
                 std::vector<std::pair<unsigned, unsigned> > edge_indices_in_order; 
 
                 /* ------------------------------------------------------------------ //
-                 * If the detected boundary is a simple cycle and simplification is desired, 
-                 * simplify the alpha shape using Dyken et al.'s polyline simplification
-                 * algorithm:
+                 * If simplification of the detected boundary is desired, then simplify
+                 * the alpha shape using Dyken et al.'s polyline simplification algorithm:
                  * - The cost of decimating a vertex is measured using maximum distance
                  *   between the remaining vertices and the new line segment formed
                  * - The simplification is terminated once the total cost of decimation
                  *   exceeds 1e-5
                  * ------------------------------------------------------------------ */
-                if (is_simple_cycle && max_edges != 0 && nedges > max_edges)
+                if (max_edges != 0 && nedges > max_edges)
                 {
-                    std::cout << "- ... simplifying" << std::endl; 
+                    if (is_simple_cycle)
+                        std::cout << "- ... simplifying the simple-cycle boundary" << std::endl;
+                    else
+                        std::cout << "- ... simplifying the non-simple-cycle boundary" << std::endl;  
                     
                     // Instantiate a Polygon object with the given vertex order
                     std::vector<Point_2> traversed_points;
@@ -1032,10 +1080,8 @@ class Boundary2D
                     {
                         int nearest_index = vertices_to_points[indices_to_vertices[*it]].first;  
                         traversed_points.push_back(points[nearest_index]);
-                    } 
+                    }
                     Polygon_2 polygon(traversed_points.begin(), traversed_points.end()); 
-                    if (!polygon.is_simple())
-                        throw std::runtime_error("Polygon is not simple");
 
                     // Simplify the Polygon object
                     polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
@@ -1118,6 +1164,11 @@ class Boundary2D
                     edge_indices_in_order.emplace_back(
                         std::make_pair(curr, vertices_to_points[indices_to_vertices[*(traversal.begin())]].first)
                     );
+                }
+                // If the boundary is *not* a simple cycle but simplification 
+                // is still desired, prune the singular vertices in the boundary 
+                else if (max_edges != 0 && nedges > max_edges)
+                {
                 }
                 // Otherwise, accumulate the indices of the boundary vertices 
                 // in arbitrary order 
