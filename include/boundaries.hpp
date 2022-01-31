@@ -1101,16 +1101,11 @@ class Boundary2D
             unsigned low = 0; 
             unsigned high; 
             unsigned last_valid = INVALID_ALPHA_INDEX;
-            unsigned mid = INVALID_ALPHA_INDEX; 
 
             // Find the least value of alpha that is greater than the lower bound 
             // on the inter-point distance found through the minimum and maximum
             // x- and y-coordinate values 
             high = std::distance(shape.alpha_begin(), shape.alpha_lower_bound(maxdist));
-            std::cout << "- searching between alpha = "
-                      << CGAL::to_double(shape.get_nth_alpha(low))
-                      << " and "
-                      << CGAL::to_double(shape.get_nth_alpha(high)) << std::endl;
 
             // Try to find a value of alpha for which the boundary consists of
             // more than one connected component
@@ -1128,7 +1123,11 @@ class Boundary2D
 
             // If low >= high, decrease low to high - 1
             if (low >= high) 
-                low = high - 1; 
+                low = high - 1;
+            std::cout << "- searching between alpha = "
+                      << CGAL::to_double(shape.get_nth_alpha(low))
+                      << " and "
+                      << CGAL::to_double(shape.get_nth_alpha(high)) << std::endl;
 
             // Also keep track of the vertices and edges in the order in which 
             // they are traversed 
@@ -1138,9 +1137,8 @@ class Boundary2D
             // a simple cycle (every vertex has only two incident edges,
             // and traveling along the cycle in one direction gets us 
             // back to the starting point)
-            while (low <= high)
+            for (unsigned mid = low; mid < high; ++mid)
             {
-                mid = (low + high) / 2;
                 auto alpha = shape.get_nth_alpha(mid);  
                 shape.set_alpha(alpha);
                 std::cout << "- setting alpha = " << CGAL::to_double(alpha) << std::endl; 
@@ -1154,6 +1152,32 @@ class Boundary2D
                     vertices_to_indices[*it] = nvertices;
                     indices_to_vertices.push_back(*it);
                     nvertices++;
+                }
+                std::cout << nvertices << " " << this->n << std::endl;
+                
+                // Run through the points in the point-set and classify them 
+                // as lying:
+                // - along the boundary (REGULAR),
+                // - within the boundary (INTERIOR),
+                // - along the boundary without touching a face of the
+                //   triangulation (SINGULAR), or
+                // - away from all the other points (EXTERIOR)
+                unsigned nregular = 0;
+                unsigned nsingular = 0;
+                unsigned ninterior = 0; 
+                unsigned nexterior = 0;  
+                for (auto it = shape.finite_vertices_begin(); it != shape.finite_vertices_end(); ++it)
+                {
+                    Vertex_handle_2 v = Tds::Vertex_range::s_iterator_to(*it);
+                    auto type = shape.classify(v); 
+                    if (type == Alpha_shape::REGULAR)
+                        nregular++; 
+                    else if (type == Alpha_shape::SINGULAR)
+                        nsingular++; 
+                    else if (type == Alpha_shape::INTERIOR)
+                        ninterior++; 
+                    else 
+                        nexterior++; 
                 }
 
                 // Iterate through the edges in the alpha shape and fill in
@@ -1238,165 +1262,27 @@ class Boundary2D
                 }
 
                 // Have we traversed the entire alpha shape and returned to 
-                // the starting vertex? 
+                // the starting vertex, and does every vertex lie either along
+                // or within the simple cycle? 
                 int nvisited = visited.sum(); 
-                if (nvisited == nvertices && returned)
+                if (nvisited == nvertices && returned && this->n == nregular + ninterior)
                 {
                     std::cout << "- ... traversed " << nvisited << "/" << nvertices
                               << " boundary vertices in a simple cycle" << std::endl;
                     last_valid = mid; 
-                    high = mid - 1;  
+                    break; 
                 }
-                // Otherwise, if the number of edges is *greater than* the 
-                // number of vertices, then the alpha shape is too detailed
-                // and so we need to increase the value of alpha 
-                else if (nedges > nvertices)
+                else
                 {
                     std::cout << "- ... traversed " << nvisited << "/" << nvertices 
                               << " boundary vertices; boundary contains "
                               << nedges << " edges" << std::endl; 
-                    //high = mid - 1;
-                    low = mid + 1;  
-                }
-                // Otherwise, if the number of edges is *lower than* the 
-                // number of vertices, then the alpha shape is not detailed 
-                // enough and so we need to decrease the value of alpha
-                else 
-                {
-                    std::cout << "- ... traversed " << nvisited << "/" << nvertices
-                              << " boundary vertices; boundary contains "
-                              << nedges << " edges" << std::endl; 
-                    //low = mid + 1;
-                    high = mid - 1;  
                 }
             }
-            // Now look for the closest value of alpha to the current value 
-            // of alpha such that the boundary is a simple cycle
-            int delta = -1; 
-            while (last_valid != mid)
-            {
-                mid += delta;
-                if (mid < 0 || mid >= INVALID_ALPHA_INDEX)
-                    break;  
-                auto alpha = shape.get_nth_alpha(mid);  
-                shape.set_alpha(alpha);
-                std::cout << "- setting alpha = " << CGAL::to_double(alpha) << std::endl; 
-
-                // Establish an ordering for the vertices in the alpha shape
-                vertices_to_indices.clear();
-                indices_to_vertices.clear();  
-                nvertices = 0; 
-                for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
-                {
-                    vertices_to_indices[*it] = nvertices;
-                    indices_to_vertices.push_back(*it);
-                    nvertices++;
-                }
-
-                // Iterate through the edges in the alpha shape and fill in
-                // the adjacency matrix 
-                adj.resize(nvertices, nvertices); 
-                std::vector<Triplet<int> > triplets;
-                for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
-                {
-                    // Add the two corresponding entries to the adjacency 
-                    // matrix 
-                    int j = it->second; 
-                    Vertex_handle_2 source = (it->first)->vertex(Delaunay_triangulation_2::cw(j));
-                    Vertex_handle_2 target = (it->first)->vertex(Delaunay_triangulation_2::ccw(j));
-                    int source_i = vertices_to_indices[source]; 
-                    int target_i = vertices_to_indices[target]; 
-                    triplets.emplace_back(Triplet<int>(source_i, target_i, 1)); 
-                    triplets.emplace_back(Triplet<int>(target_i, source_i, 1)); 
-                }
-                adj.setFromTriplets(triplets.begin(), triplets.end());
-                VectorXi ones = VectorXi::Ones(nvertices); 
-                nedges = (adj.triangularView<Upper>() * ones).sum(); 
-
-                // Starting from an arbitrary vertex, identify the incident 
-                // edges on the vertex and "travel" along the boundary,
-                // checking that:
-                // 1) Each vertex has exactly two incident edges
-                // 2) Each vertex has one unvisited neighbor and one visited 
-                //    neighbor (except at the start and end of the traversal)
-                // 3) Iteratively choosing the visited neighbor returns us 
-                //    to the starting vertex after *every* vertex has been 
-                //    visited
-                // 
-                // Start from the zeroth vertex ...
-                traversal.clear(); 
-                int curr = 0;
-                Matrix<int, Dynamic, 1> visited = Matrix<int, Dynamic, 1>::Zero(nvertices);
-                bool returned = false;  
-                
-                while (!returned)
-                {
-                    // Mark the current vertex as having been visited
-                    traversal.push_back(curr); 
-                    visited(curr) = 1; 
-
-                    // Iterate over the nonzero entries in the current
-                    // vertex's row
-                    SparseMatrix<int, RowMajor>::InnerIterator row_it(adj, curr);
-                    
-                    if (!row_it) break;    // If the vertex has no neighbor, then break 
-                    int first = row_it.col();
-                    ++row_it; 
-                    if (!row_it) break;    // If the vertex has no second neighbor, then break 
-                    int second = row_it.col();
-                    ++row_it;  
-                    if (row_it)  break;    // If the vertex has more than two neighbors, then break
-
-                    // If both vertices have been visited *and* one of them 
-                    // is the zeroth vertex, then we have returned
-                    if (visited(first) == 1 && visited(second) == 1 && (first == 0 || second == 0))
-                        returned = true;  
-                    // Otherwise, if both vertices have been visited, then 
-                    // the alpha shape contains a more complicated structure
-                    else if (visited(first) == 1 && visited(second) == 1)
-                        break; 
-                    // Otherwise, if only the first vertex has been visited, 
-                    // then jump to the second vertex
-                    else if (visited(first) == 1 && visited(second) == 0)
-                        curr = second;
-                    // Otherwise, if only the second vertex has been visited, 
-                    // then jump to the first vertex
-                    else if (visited(second) == 1 && visited(first) == 0)
-                        curr = first;
-                    // Otherwise, if we are at the zeroth vertex (we are just
-                    // starting our traversal), then choose either vertex
-                    else if (visited(first) == 0 && visited(second) == 0 && curr == 0)
-                        curr = first; 
-                    // Otherwise, if neither vertex has been visited, then 
-                    // there is something wrong (this is supposed to be 
-                    // impossible)
-                    else 
-                        throw std::runtime_error("This is not supposed to happen!");  
-                }
-
-                // Have we traversed the entire alpha shape and returned to 
-                // the starting vertex? 
-                int nvisited = visited.sum(); 
-                if (nvisited == nvertices && returned)
-                {
-                    std::cout << "- ... traversed " << nvisited << "/" << nvertices
-                              << " boundary vertices in a simple cycle" << std::endl;
-                    last_valid = mid; 
-                }
-                else 
-                {
-                    std::cout << "- ... traversed " << nvisited << "/" << nvertices 
-                              << " boundary vertices; boundary contains "
-                              << nedges << " edges" << std::endl;
-                    if (delta < 0) 
-                        delta = -delta;
-                    else 
-                        delta = -delta - 1; 
-                }
-            }
-            // Have we finally found a value of alpha for which the boundary
-            // is a simple cycle? 
-            bool is_simple_cycle = (last_valid == mid && mid >= 0 && mid < INVALID_ALPHA_INDEX);
+            
+            // Have we found a value of alpha for which the boundary is a
+            // simple cycle? 
+            bool is_simple_cycle = (last_valid != INVALID_ALPHA_INDEX);
             if (is_simple_cycle)
                 opt_alpha_index = last_valid; 
             else
