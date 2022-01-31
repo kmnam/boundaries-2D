@@ -1020,19 +1020,19 @@ class Boundary2D
             typedef CGAL::Alpha_shape_2<Delaunay_triangulation_2, CGAL::Boolean_tag<tag> >         Alpha_shape;
             typedef typename Delaunay_triangulation_2::Face_handle                                 Face_handle_2;
             typedef typename Delaunay_triangulation_2::Vertex_handle                               Vertex_handle_2;
-            typedef CGAL::Polyline_simplification_2::Vertex_base_2<K>                              PS_Vb;
-            typedef CGAL::Constrained_triangulation_face_base_2<K>                                 CT_Fb;
-            typedef CGAL::Triangulation_data_structure_2<PS_Vb, CT_Fb>                             CT_Tds;  
-            typedef CGAL::Constrained_Delaunay_triangulation_2<K, CT_Tds, CGAL::Exact_predicates_tag>
-                Constrained_Delaunay_triangulation_2; 
-            typedef CGAL::Constrained_triangulation_plus_2<Constrained_Delaunay_triangulation_2>
-                Constrained_triangulation_plus_2;
-            typedef Constrained_triangulation_plus_2::Point                                        CT_Point; 
-            typedef Constrained_triangulation_plus_2::Constraint_iterator                          CT_Constraint_iterator; 
-            typedef Constrained_triangulation_plus_2::Vertices_in_constraint_iterator
-                CT_Vertices_in_constraint_iterator; 
-            typedef Constrained_triangulation_plus_2::Points_in_constraint_iterator
-                CT_Points_in_constraint_iterator; 
+            //typedef CGAL::Polyline_simplification_2::Vertex_base_2<K>                              PS_Vb;
+            //typedef CGAL::Constrained_triangulation_face_base_2<K>                                 CT_Fb;
+            //typedef CGAL::Triangulation_data_structure_2<PS_Vb, CT_Fb>                             CT_Tds;  
+            //typedef CGAL::Constrained_Delaunay_triangulation_2<K, CT_Tds, CGAL::Exact_predicates_tag>
+            //    Constrained_Delaunay_triangulation_2; 
+            //typedef CGAL::Constrained_triangulation_plus_2<Constrained_Delaunay_triangulation_2>
+            //    Constrained_triangulation_plus_2;
+            //typedef Constrained_triangulation_plus_2::Point                                        CT_Point; 
+            //typedef Constrained_triangulation_plus_2::Constraint_iterator                          CT_Constraint_iterator; 
+            //typedef Constrained_triangulation_plus_2::Vertices_in_constraint_iterator
+            //    CT_Vertices_in_constraint_iterator; 
+            //typedef Constrained_triangulation_plus_2::Points_in_constraint_iterator
+            //    CT_Points_in_constraint_iterator; 
 
             using std::abs;
             using std::pow;
@@ -1346,11 +1346,11 @@ class Boundary2D
                     traversed_points.push_back(p);
                 }
                 Polygon_2 polygon(traversed_points.begin(), traversed_points.end());
-                
-                // Simplify the polygon: this polygon should be simple   
-                CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
                 if (!polygon.is_simple())
                     throw std::runtime_error("Simple-cycle boundary does not form a simple polygon"); 
+                
+                // Simplify the polygon: this polygon should be simple   
+                polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
 
                 for (auto it = polygon.vertices_begin(); it != polygon.vertices_end(); ++it)
                 {
