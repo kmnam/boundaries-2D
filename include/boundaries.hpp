@@ -660,7 +660,6 @@ class Boundary2D
                 if (ymin > yi) ymin = yi; 
                 if (ymax < yi) ymax = yi;
             }
-            double maxdist = std::sqrt(std::pow(xmax - xmin, 2) + std::pow(ymax - ymin, 2));
 
             // Compute the alpha shape from the Delaunay triangulation
             Alpha_shape shape; 
@@ -871,7 +870,6 @@ class Boundary2D
                 if (ymin > yi) ymin = yi; 
                 if (ymax < yi) ymax = yi;
             }
-            double maxdist = std::sqrt(std::pow(xmax - xmin, 2) + std::pow(ymax - ymin, 2));
 
             // Compute the alpha shape from the Delaunay triangulation
             Alpha_shape shape; 
@@ -1246,49 +1244,44 @@ class Boundary2D
                 {
                     std::cout << "- ... traversed " << nvisited << "/" << nvertices
                               << " boundary vertices in a simple cycle" << std::endl;
-                    last_valid = mid;
+                    last_valid = mid; 
                     high = mid - 1;  
                 }
                 // Otherwise, if the number of edges is *greater than* the 
-                // number of vertices (closer to , then the alpha shape is too detailed
-                // and so we need to lower the value of alpha 
+                // number of vertices, then the alpha shape is too detailed
+                // and so we need to increase the value of alpha 
                 else if (nedges > nvertices)
                 {
                     std::cout << "- ... traversed " << nvisited << "/" << nvertices 
                               << " boundary vertices; boundary contains "
                               << nedges << " edges" << std::endl; 
-                    high = mid - 1; 
+                    //high = mid - 1;
+                    low = mid + 1;  
                 }
                 // Otherwise, if the number of edges is *lower than* the 
                 // number of vertices, then the alpha shape is not detailed 
-                // enough and so we need to increase the value of alpha
+                // enough and so we need to decrease the value of alpha
                 else 
                 {
                     std::cout << "- ... traversed " << nvisited << "/" << nvertices
                               << " boundary vertices; boundary contains "
                               << nedges << " edges" << std::endl; 
-                    low = mid + 1; 
+                    //low = mid + 1;
+                    high = mid - 1;  
                 }
             }
-            bool is_simple_cycle = (last_valid != INVALID_ALPHA_INDEX);
-            if (is_simple_cycle)
-                opt_alpha_index = last_valid; 
-            else 
-                opt_alpha_index = mid; 
-            opt_alpha = CGAL::to_double(shape.get_nth_alpha(opt_alpha_index));
-            shape.set_alpha(shape.get_nth_alpha(opt_alpha_index));
-
-            // Now collect *all* vertices into a vector of one or more 
-            // traversals, depending on whether the boundary is simple
-            std::vector<std::vector<int> > traversals_all_vertices;
-            std::vector<bool> traversals_closed;    // true if the i-th traversal is closed, false otherwise 
-
-            // If the last queried value of alpha is *not* the last value 
-            // of alpha for which the boundary is a simple cycle, re-compute
-            // the alpha shape for the latter value for alpha and re-traverse 
-            // the vertices 
-            if (is_simple_cycle && mid != last_valid)
+            // Now look for the closest value of alpha to the current value 
+            // of alpha such that the boundary is a simple cycle
+            int delta = -1; 
+            while (last_valid != mid)
             {
+                mid += delta;
+                if (mid < 0 || mid >= INVALID_ALPHA_INDEX)
+                    break;  
+                auto alpha = shape.get_nth_alpha(mid);  
+                shape.set_alpha(alpha);
+                std::cout << "- setting alpha = " << CGAL::to_double(alpha) << std::endl; 
+
                 // Establish an ordering for the vertices in the alpha shape
                 vertices_to_indices.clear();
                 indices_to_vertices.clear();  
@@ -1358,6 +1351,10 @@ class Boundary2D
                     // is the zeroth vertex, then we have returned
                     if (visited(first) == 1 && visited(second) == 1 && (first == 0 || second == 0))
                         returned = true;  
+                    // Otherwise, if both vertices have been visited, then 
+                    // the alpha shape contains a more complicated structure
+                    else if (visited(first) == 1 && visited(second) == 1)
+                        break; 
                     // Otherwise, if only the first vertex has been visited, 
                     // then jump to the second vertex
                     else if (visited(first) == 1 && visited(second) == 0)
@@ -1370,81 +1367,42 @@ class Boundary2D
                     // starting our traversal), then choose either vertex
                     else if (visited(first) == 0 && visited(second) == 0 && curr == 0)
                         curr = first; 
-                    // Otherwise, if neither vertex has been visited or both 
-                    // vertices have been visited, then the alpha shape contains
-                    // a more complicated structure (this is supposed to be
-                    // impossible, since we know that the boundary is simple)
-                    else
+                    // Otherwise, if neither vertex has been visited, then 
+                    // there is something wrong (this is supposed to be 
+                    // impossible)
+                    else 
                         throw std::runtime_error("This is not supposed to happen!");  
                 }
-                traversals_all_vertices.push_back(traversal);
-                traversals_closed.push_back(true); 
-            }
-            // Otherwise, if the alpha shape is simple and the re-traversal
-            // is not necessary, simply keep track of the traversal as is 
-            else if (is_simple_cycle)
-            {
-                traversals_all_vertices.push_back(traversal);
-                traversals_closed.push_back(true);  
-            }
-            // On the other hand, if the alpha shape is *not* simple --
-            // in which case it may not have been fully traversed --
-            // re-traverse the alpha shape so that each vertex is visited, 
-            // keeping track of where each traversal ends and starts 
-            else
-            {
-                // Starting from an arbitrary vertex, identify the incident 
-                // edges on the vertex and "travel" along the boundary
-                // 
-                // Start from the zeroth vertex ...
-                traversal.clear(); 
-                int curr = 0;
-                Matrix<int, Dynamic, 1> visited = Matrix<int, Dynamic, 1>::Zero(nvertices);
-                
-                while (visited.sum() < nvertices) 
+
+                // Have we traversed the entire alpha shape and returned to 
+                // the starting vertex? 
+                int nvisited = visited.sum(); 
+                if (nvisited == nvertices && returned)
                 {
-                    // Mark the current vertex as having been visited
-                    traversal.push_back(curr); 
-                    visited(curr) = 1; 
-
-                    // Iterate over the nonzero entries in the current
-                    // vertex's row
-                    SparseMatrix<int, RowMajor>::InnerIterator row_it(adj, curr);
-
-                    // Find the first neighbor that has not been visited
-                    bool neighbor_visited = visited(row_it.col()); 
-                    while (row_it && neighbor_visited)
-                        ++row_it;
-                    if (!neighbor_visited)    // If we have found an unvisited neighbor, then jump to it next
-                    {
-                        curr = row_it.col();
-                    }
-                    else    // Otherwise, start a new traversal at the unvisited vertex with the least index 
-                    {
-                        // Determine if the traversal spells out a cycle 
-                        // of vertices by seeing if the current vertex 
-                        // has an edge to the traversal's starting vertex
-                        traversals_all_vertices.push_back(traversal);
-                        traversals_closed.push_back(adj.coeff(traversal[0], curr));  
-                        traversal.clear(); 
-                        for (unsigned i = 0; i < nvertices; ++i)
-                        {
-                            if (!visited(i))
-                            {
-                                curr = i;
-                                break;
-                            }
-                        } 
-                    } 
+                    std::cout << "- ... traversed " << nvisited << "/" << nvertices
+                              << " boundary vertices in a simple cycle" << std::endl;
+                    last_valid = mid; 
+                }
+                else 
+                {
+                    std::cout << "- ... traversed " << nvisited << "/" << nvertices 
+                              << " boundary vertices; boundary contains "
+                              << nedges << " edges" << std::endl;
+                    if (delta < 0) 
+                        delta = -delta;
+                    else 
+                        delta = -delta - 1; 
                 }
             }
-            int ntraversed = 0; 
-            for (auto&& t : traversals_all_vertices) ntraversed += t.size(); 
-            if (ntraversed != nvertices)
-                throw std::runtime_error(
-                    "Traversal does not contain the same number of boundary vertices: "
-                    "this is not supposed to happen!"
-                );  
+            // Have we finally found a value of alpha for which the boundary
+            // is a simple cycle? 
+            bool is_simple_cycle = (last_valid == mid && mid >= 0 && mid < INVALID_ALPHA_INDEX);
+            if (is_simple_cycle)
+                opt_alpha_index = last_valid; 
+            else
+                throw std::runtime_error("Could not find any simple-cycle boundary");  
+            opt_alpha = CGAL::to_double(shape.get_nth_alpha(opt_alpha_index));
+            shape.set_alpha(shape.get_nth_alpha(opt_alpha_index));
 
             // Identify, for each vertex in the alpha shape, the point corresponding to it 
             for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
@@ -1490,101 +1448,61 @@ class Boundary2D
              * ------------------------------------------------------------------ */
             if (max_edges != 0 && nedges > max_edges)
             {
-                if (is_simple_cycle)
-                    std::cout << "- ... simplifying the simple-cycle boundary" << std::endl;
-                else
-                    std::cout << "- ... simplifying the non-simple-cycle boundary" << std::endl;  
-                
-                // Instantiate a Constrained_triangulation_plus_2 object, with 
-                // each traversal of vertices contributing a separate polyline
-                // constraint
-                //
-                // If the boundary is a simple cycle, then there is only one 
-                // traversal and only one polyline constraint
-                Constrained_triangulation_plus_2 ct; 
-                for (auto&& t : traversals_all_vertices)
+                std::cout << "- ... simplifying the boundary" << std::endl; 
+
+                // Instantiate a Polygon object with the vertices given in the
+                // order in which they were traversed
+                std::vector<Point_2> traversed_points;
+                for (auto it = traversal.begin(); it != traversal.end(); ++it)
                 {
-                    std::vector<CT_Point> traversed_points;
-                    for (auto it = t.begin(); it != t.end(); ++it)
-                    {
-                        int nearest_index = vertices_to_points[indices_to_vertices[*it]].first;
-                        CT_Point p(points[nearest_index].x(), points[nearest_index].y());  
-                        traversed_points.push_back(p);
-                    }
-                    ct.insert_constraint(traversed_points); 
+                    int nearest_index = vertices_to_points[indices_to_vertices[*it]].first;
+                    Point_2 p(points[nearest_index].x(), points[nearest_index].y());  
+                    traversed_points.push_back(p);
+                }
+                Polygon_2 polygon(traversed_points.begin(), traversed_points.end());
+                
+                // Simplify the polygon: this polygon should be simple   
+                CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
+                if (!polygon.is_simple())
+                    throw std::runtime_error("Simple-cycle boundary does not form a simple polygon"); 
+
+                for (auto it = polygon.vertices_begin(); it != polygon.vertices_end(); ++it)
+                {
+                    double x = it->x(); 
+                    double y = it->y(); 
+
+                    // ... and identify the index of the vertex in the 
+                    // entire point-set 
+                    auto itp = std::find_if(
+                        vertices_to_points.begin(), vertices_to_points.end(), 
+                        [x, y, &points](std::pair<Vertex_handle_2, std::pair<unsigned, double> > v)
+                        {
+                            unsigned i = v.second.first; 
+                            double sqdist = v.second.second; 
+                            double xv = points[i].x(); 
+                            double yv = points[i].y();
+                            return (std::pow(x - xv, 2) + std::pow(y - yv, 2) <= sqdist); 
+                        }
+                    );
+                    vertex_indices_in_order.push_back(itp->second.first);
                 }
 
-                // Simplify the polylines 
-                CGAL::Polyline_simplification_2::simplify(ct, Cost(), Stop(max_edges));
-
-                // Iterate over each polyline constraint ...
-                int constraint_index = 0;
-                int constraint_npoints = 0;  
-                for (CT_Constraint_iterator it = ct.constraints_begin(); it != ct.constraints_end(); ++it)
+                // The edges in the polygon are then easy to determine
+                for (int i = 0; i < vertex_indices_in_order.size() - 1; ++i)
                 {
-                    // And iterate over each vertex in the polyline ...
-                    for (CT_Vertices_in_constraint_iterator itv = ct.vertices_in_constraint_begin(*it); 
-                         itv != ct.vertices_in_constraint_end(*it); ++itv)
-                    {
-                        double x = (*itv)->point().x(); 
-                        double y = (*itv)->point().y(); 
-
-                        // ... and identify the index of the vertex in the 
-                        // entire point-set 
-                        auto itp = std::find_if(
-                            vertices_to_points.begin(), vertices_to_points.end(), 
-                            [x, y, &points](std::pair<Vertex_handle_2, std::pair<unsigned, double> > v)
-                            {
-                                unsigned i = v.second.first; 
-                                double sqdist = v.second.second; 
-                                double xv = points[i].x(); 
-                                double yv = points[i].y();
-                                return (std::pow(x - xv, 2) + std::pow(y - yv, 2) <= sqdist); 
-                            }
-                        );
-                        vertex_indices_in_order.push_back(itp->second.first);
-                        constraint_npoints++;  
-                    }
-
-                    // The edges in the polyline are then easy to determine
-                    int ntotal = vertex_indices_in_order.size(); 
-                    for (int i = ntotal - constraint_npoints; i < ntotal - 1; ++i)
-                    {
-                        int vi = vertex_indices_in_order[i];
-                        int vj = vertex_indices_in_order[i+1]; 
-                        edge_indices_in_order.emplace_back(std::make_pair(vi, vj)); 
-                    }
-                    if (traversals_closed[constraint_index])
-                    { 
-                        int vi = vertex_indices_in_order[ntotal-1]; 
-                        int vj = vertex_indices_in_order[ntotal-constraint_npoints]; 
-                        edge_indices_in_order.emplace_back(std::make_pair(vi, vj)); 
-                    }
-                    constraint_index++; 
-                    constraint_npoints = 0; 
-                } 
+                    int vi = vertex_indices_in_order[i];
+                    int vj = vertex_indices_in_order[i+1]; 
+                    edge_indices_in_order.emplace_back(std::make_pair(vi, vj)); 
+                }
+                int vi = *vertex_indices_in_order.end();
+                int vj = *vertex_indices_in_order.begin();
+                edge_indices_in_order.emplace_back(std::make_pair(vi, vj)); 
                 nvertices = vertex_indices_in_order.size(); 
                 nedges = edge_indices_in_order.size(); 
 
                 // Compute the area of the polygon formed by the simplified 
-                // boundary (by summing the areas of the polygons formed 
-                // by only the closed simplified traversals)
-                double total_area = 0; 
-                for (unsigned i = 0; i < traversals_all_vertices.size(); ++i)
-                {
-                    if (traversals_closed[i])
-                    {
-                        std::vector<Point_2> traversed_points;
-                        for (auto it = traversals_all_vertices[i].begin(); it != traversals_all_vertices[i].end(); ++it)
-                        {
-                            int nearest_index = vertices_to_points[indices_to_vertices[*it]].first;
-                            Point_2 p(points[nearest_index].x(), points[nearest_index].y());  
-                            traversed_points.push_back(p);
-                        }
-                        Polygon_2 polygon(traversed_points.begin(), traversed_points.end());
-                        total_area += abs(CGAL::to_double(polygon.area()));
-                    }
-                }
+                // boundary
+                double total_area = abs(CGAL::to_double(polygon.area())); 
                 std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
                 std::cout << "- enclosed area = " << total_area << std::endl;  
                 std::cout << "- number of vertices = " << nvertices << std::endl; 
@@ -1598,7 +1516,7 @@ class Boundary2D
             // If the boundary is a simple cycle but was *not* simplified,
             // then accumulate the indices of the boundary vertices in the
             // order in which they were traversed
-            else if (is_simple_cycle)
+            else
             {
                 auto it = traversal.begin();
                 unsigned curr = vertices_to_points[indices_to_vertices[*it]].first; 
@@ -1615,51 +1533,32 @@ class Boundary2D
                 edge_indices_in_order.emplace_back(
                     std::make_pair(curr, vertices_to_points[indices_to_vertices[*(traversal.begin())]].first)
                 );
-            }
-            // Otherwise, accumulate the indices of the boundary vertices 
-            // in arbitrary order 
-            else
-            {
-                for (unsigned i = 0; i < nvertices; ++i) 
+                
+                // Get the area of the region enclosed by the alpha shape 
+                // with the optimum value of alpha
+                double total_area = 0.0;
+                for (auto it = shape.finite_faces_begin(); it != shape.finite_faces_end(); ++it)
                 {
-                    Vertex_handle_2 v = indices_to_vertices[i];
-                    unsigned curr = vertices_to_points[v].first;  // Index of vertex *within the entire point-set*
-                    vertex_indices_in_order.push_back(curr); 
-                    for (SparseMatrix<int, RowMajor>::InnerIterator row_it(adj, i); row_it; ++row_it)
+                    Face_handle_2 face = Tds::Face_range::s_iterator_to(*it);
+                    auto type = shape.classify(face);
+                    if (type == Alpha_shape::REGULAR || type == Alpha_shape::INTERIOR)
                     {
-                        unsigned j = row_it.col();
-                        Vertex_handle_2 w = indices_to_vertices[j];  
-                        unsigned target = vertices_to_points[w].first; 
-                        if (curr < target)
-                            edge_indices_in_order.emplace_back(std::make_pair(curr, target));
-                    } 
+                        Point_2 p = it->vertex(0)->point();
+                        Point_2 q = it->vertex(1)->point();
+                        Point_2 r = it->vertex(2)->point();
+                        total_area += CGAL::area(p, q, r);
+                    }
                 }
-            }
+                std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
+                std::cout << "- number of vertices = " << nvertices << std::endl; 
+                std::cout << "- number of edges = " << nedges << std::endl;
+                std::cout << "- enclosed area = " << total_area << std::endl;  
 
-            // Get the area of the region enclosed by the alpha shape 
-            // with the optimum value of alpha
-            double total_area = 0.0;
-            for (auto it = shape.finite_faces_begin(); it != shape.finite_faces_end(); ++it)
-            {
-                Face_handle_2 face = Tds::Face_range::s_iterator_to(*it);
-                auto type = shape.classify(face);
-                if (type == Alpha_shape::REGULAR || type == Alpha_shape::INTERIOR)
-                {
-                    Point_2 p = it->vertex(0)->point();
-                    Point_2 q = it->vertex(1)->point();
-                    Point_2 r = it->vertex(2)->point();
-                    total_area += CGAL::area(p, q, r);
-                }
+                return AlphaShape2DProperties(
+                    x, y, vertex_indices_in_order, edge_indices_in_order,  
+                    opt_alpha, total_area, is_simple_cycle
+                );
             }
-            std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
-            std::cout << "- number of vertices = " << nvertices << std::endl; 
-            std::cout << "- number of edges = " << nedges << std::endl;
-            std::cout << "- enclosed area = " << total_area << std::endl;  
-
-            return AlphaShape2DProperties(
-                x, y, vertex_indices_in_order, edge_indices_in_order,  
-                opt_alpha, total_area, is_simple_cycle
-            );
         }
 };
 
