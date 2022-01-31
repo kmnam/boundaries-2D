@@ -1350,9 +1350,9 @@ class Boundary2D
                     throw std::runtime_error("Simple-cycle boundary does not form a simple polygon"); 
                 
                 // Simplify the polygon: this polygon should be simple   
-                polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
+                Polygon_2 simplified_polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
 
-                for (auto it = polygon.vertices_begin(); it != polygon.vertices_end(); ++it)
+                for (auto it = simplified_polygon.vertices_begin(); it != simplified_polygon.vertices_end(); ++it)
                 {
                     double x = it->x(); 
                     double y = it->y(); 
