@@ -1,6 +1,7 @@
 /**
- * An implementation of boundary-finding algorithms in the plane. 
- *
+ * Implementation of an alpha-shape-based algorithm for determining the 
+ * boundary of a planar region approximated by a finite point-set. 
+ * 
  * **Authors:**
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
