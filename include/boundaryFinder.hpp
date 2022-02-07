@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     1/30/2022
+ *     2/7/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -118,7 +118,7 @@ class ParamFileCollection
             std::ofstream outfile(filename);
             if (outfile.is_open())
             {
-                outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
                 for (unsigned i = 0; i < params.rows(); ++i)
                 {
                     for (unsigned j = 0; j < params.cols() - 1; ++j)
@@ -137,7 +137,7 @@ class ParamFileCollection
                 std::ofstream outfile2(filename, std::ios_base::app);
                 if (outfile2.is_open())
                 {
-                    outfile2 << std::setprecision(std::numeric_limits<double>::max_digits10);
+                    outfile2 << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
                     for (unsigned i = 0; i < params.rows(); ++i)
                     {
                         for (unsigned j = 0; j < params.cols() - 1; ++j)
@@ -504,7 +504,7 @@ class BoundaryFinder
                 outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
                 if (outfile.is_open())
                 {
-                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
                     for (unsigned i = 0; i < this->params.rows(); ++i)
                     {
                         outfile << "INPUT\t"; 
@@ -645,7 +645,7 @@ class BoundaryFinder
                 outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
                 if (outfile.is_open())
                 {
-                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
                     for (unsigned i = 0; i < this->params.rows(); ++i)
                     {
                         outfile << "INPUT\t"; 
@@ -843,7 +843,7 @@ class BoundaryFinder
                 outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
                 if (outfile.is_open())
                 {
-                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
                     for (unsigned i = 0; i < this->params.rows(); ++i)
                     {
                         outfile << "INPUT\t"; 
@@ -998,7 +998,7 @@ class BoundaryFinder
                 outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
                 if (outfile.is_open())
                 {
-                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
                     for (unsigned i = 0; i < this->params.rows(); ++i)
                     {
                         outfile << "INPUT\t"; 
