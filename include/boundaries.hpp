@@ -391,52 +391,70 @@ struct AlphaShape2DProperties
         }
 };
 
+/**
+ * A class that, given a set of points in the plane, computes a suitable
+ * "boundary" from its family of alpha shapes.  
+ */
 class Boundary2D 
 {
-    /*
-     * A class that computes a 2-D boundary from a set of input points
-     * in the plane. 
-     */
     private:
         std::vector<double> x;    // x-coordinates
         std::vector<double> y;    // y-coordinates
         int n;                    // Number of stored points
 
     public:
+        /**
+         * Trivial constructor. 
+         */
         Boundary2D()
         {
-            /*
-             * Empty constructor.
-             */
         }
 
-        Boundary2D(std::vector<double> x_, std::vector<double> y_)
+        /** 
+         * Constructor with a non-empty input point-set.
+         *
+         * @param x x-coordinates of input point-set. 
+         * @param y y-coordinates of input point-set.
+         * @throws std::invalid_argument If there are different numbers of x- 
+         *                               and y-coordinates specified.  
+         */
+        Boundary2D(std::vector<double> x, std::vector<double> y)
         {
-            /* 
-             * Constructor with input points specified in vectors.
-             */
             // Check that x and y have the same number of coordinates
-            this->n = x_.size(); 
-            if (this->n != y_.size())
-                throw std::invalid_argument("Invalid input vectors");
-            this->x = x_;
-            this->y = y_;
+            this->n = x.size(); 
+            if (this->n != y.size())
+            {
+                throw std::invalid_argument(
+                    "Invalid input point-set (different numbers of x- and y-coordinates)"
+                );
+            }
+            this->x = x;
+            this->y = y;
         }
 
+        /**
+         * Trivial destructor. 
+         */
         ~Boundary2D()
         {
-            /*
-             * Empty destructor.
-             */
         }
 
-        void fromFile(std::string path, char delim = '\t', bool clear = true)
+        /**
+         * Parse a set of points in the given delimited .txt file and either 
+         * (1) append the parsed points to the stored point-set (`clear = false`)
+         * or (2) overwrite the stored point-set with the parsed points
+         * (`clear = true`). 
+         *
+         * @param filename Input file name. 
+         * @param delim    Delimiter in the input file.
+         * @param clear    If true, overwrite all previously stored points with
+         *                 the parsed points; if false, append the parsed points
+         *                 to the previously stored points.  
+         */
+        void fromFile(std::string filename, char delim = '\t', bool clear = true)
         {
-            /*
-             * Parse input points from a delimited file. 
-             */
             // Check that a file exists at the given path
-            std::ifstream f(path);
+            std::ifstream f(filename);
             if (!f.good())
                 throw std::invalid_argument("Specified input file does not exist");
 
@@ -468,7 +486,10 @@ class Boundary2D
          * This method returns an `AlphaShape2DProperties` object containing
          * the indices of the points lying along the identified boundary
          * with the *smallest* value of alpha such that every point in the 
-         * the point-set falls within the boundary or its interior. 
+         * the point-set falls within the boundary or its interior.
+         *
+         * @returns `AlphaShape2DProperties` object containing the alpha shape 
+         *          representing the boundary of the point-set.  
          */
         template <bool tag = true>
         AlphaShape2DProperties getBoundary() 
@@ -665,9 +686,7 @@ class Boundary2D
             for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
                 vertices.push_back(vertices_to_points[*it].first);
 
-            return AlphaShape2DProperties(
-                x, y, vertices, edges, opt_alpha, total_area, false
-            );
+            return AlphaShape2DProperties(x, y, vertices, edges, opt_alpha, total_area, false);
         }
 
         /**
@@ -678,7 +697,10 @@ class Boundary2D
          * This method returns an `AlphaShape2DProperties` object containing
          * the indices of the points lying along the identified boundary
          * with the *smallest* value of alpha such that the boundary encloses
-         * a connected region. 
+         * a connected region.
+         *
+         * @returns `AlphaShape2DProperties` object containing the alpha shape 
+         *          representing the boundary of the point-set.  
          */
         template <bool tag = true>
         AlphaShape2DProperties getConnectedBoundary()
@@ -852,7 +874,14 @@ class Boundary2D
          * This method returns an `AlphaShape2DProperties` object containing
          * the indices of the points lying along the identified boundary
          * with the *smallest* value of alpha such that the boundary forms 
-         * a simple cycle (i.e., the enclosed region is simply connected). 
+         * a simple cycle (i.e., the enclosed region is simply connected).
+         *
+         * @param max_edges Maximum number of edges to be contained in the 
+         *                  alpha shape; if the number of edges in the alpha 
+         *                  shape exceeds this value, the alpha shape is
+         *                  simplified. 
+         * @returns `AlphaShape2DProperties` object containing the alpha shape 
+         *          representing the boundary of the point-set.  
          */
         template <bool tag = true>
         AlphaShape2DProperties getSimplyConnectedBoundary(unsigned max_edges = 0)
