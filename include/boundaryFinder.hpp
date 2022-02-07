@@ -22,17 +22,19 @@
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Vector_2.h>
 #include <boost/random.hpp>
+#include <polytopes.hpp>
 #include "boundaries.hpp"
 #include "linearConstraints.hpp"
 #include "SQP.hpp"
-#include "simplex.hpp"
-#include "triangulate.hpp"
 #include "sample.hpp"
 
 using namespace Eigen;
 
 typedef CGAL::Exact_predicates_inexact_constructions_kernel    K;
 typedef K::Vector_2                                            Vector_2;
+
+constexpr int MAX_NUM_MUTATION_ATTEMPTS = 20;
+constexpr int NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE = 5; 
 
 class ParamFileCollection
 {
@@ -152,16 +154,15 @@ class ParamFileCollection
         }
 };
 
+/**
+ * A class that implements an importance sampling algorithm for iteratively
+ * computing the boundary of a (compact) 2-D region, arising as the image of
+ * a map from a (possibly higher-dimensional) convex polytope. 
+ */
 class BoundaryFinder 
 {
-    /*
-     * A class that implements an importance sampling algorithm for
-     * iteratively computing the boundary of a (bounded) 2-D region,
-     * arising as the image of a map from a higher-dimensional space of 
-     * input points. 
-     */
     private:
-        unsigned D;          // Number of parameters
+        unsigned D;          // Dimension of convex polytope
         unsigned N;          // Number of points
         double area_tol;     // Terminate sampling when difference in area of 
                              // region bounded by alpha shapes in successive 
@@ -169,270 +170,205 @@ class BoundaryFinder
         unsigned max_iter;   // Maximum number of sampling iterations
         double curr_area;    // Area enclosed by last computed boundary
 
-        // Matrix of sampled parameters
-        MatrixXd params;
+        // Mapping from convex polytope to the plane 
+        std::function<VectorXd(const Ref<const VectorXd>&)> func;  
 
-        // Matrix of points in 2-D space
+        // Matrix of input points in the domain of the map 
+        MatrixXd input; 
+
+        // Matrix of output points in 2-D space
         MatrixX2d points;
 
-        // Set of linear constraints that parameters must satisfy
-        LinearConstraints* constraints;
+        // Linear inequalities that encode the convex polytopic domain 
+        LinearConstraints constraints;
 
-        // Set of simplices in the Delaunay triangulation of the 
-        // convex polytope
-        std::vector<Simplex> interior_simplices;
+        // The full-dimensional faces (simplices) of the Delaunay triangulation
+        // of the convex polytopic domain  
+        std::vector<Polytopes::Simplex> input_full_dim_faces; 
 
-        // Set of simplices in the boundary of the Delaunay triangulation
-        std::vector<Simplex> boundary_simplices; 
+        // Indices of the output points along the boundary 
+        std::vector<int> vertices;
 
-        // Vector containing indices of the boundary points  
-        std::vector<unsigned> vertices;
-
-        // boost::random::mt19937 random number generator
+        // Random number generator 
         boost::random::mt19937 rng;
 
     public:
+        /**
+         * Constructor with input polytope constraints given as `Eigen::Matrix`
+         * instances.
+         *
+         * @param area_tol Area tolerance for sampling termination. 
+         * @param rng      Random number generator instance. 
+         * @param A        Left-hand matrix for polytope constraints. 
+         * @param b        Right-hand vector for polytope constraints.
+         * @param func     Mapping from the input polytope into the plane.  
+         */
         BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
-                       const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
+                       const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b,
+                       std::function<VectorXd(const Ref<const VectorXd>&)>& func)
         {
-            /*
-             * Constructor with input polytope constraints as Eigen::Matrix
-             * objects.
-             */
             this->N = 0;
             this->area_tol = area_tol;
             this->curr_area = 0.0;
             this->rng = rng;
-            this->constraints = new LinearConstraints(A, b);
+            this->constraints.setAb(A, b); 
             this->D = A.cols();
+            this->func = func; 
         }
 
+        /**
+         * Constructor with input polytope constraints to be parsed from
+         * a text file.
+         *
+         * @param area_tol             Area tolerance for sampling termination. 
+         * @param rng                  Random number generator instance. 
+         * @param constraints_filename Name of input file of polytope constraints.
+         * @param func                 Mapping from the input polytope into
+         *                             the plane.  
+         */
         BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
-                       std::string constraints_file)
+                       std::string constraints_filename,
+                       std::function<VectorXd(const Ref<const VectorXd>&)>& func)
         {
-            /*
-             * Constructor with input polytope constraints to be parsed from
-             * a text file. 
-             */
             this->N = 0;
             this->area_tol = area_tol;
             this->curr_area = 0.0;
             this->rng = rng;
-            this->constraints = new LinearConstraints();
-            this->constraints->parse(constraints_file);
-            this->D = this->constraints->getA().cols();
+            this->constraints.parse(constraints_filename); 
+            this->D = this->constraints.getA().cols();
+            this->func = func; 
         }
 
+        /**
+         * Constructor with input polytope constraints and vertices to 
+         * be parsed from separate text files.
+         *
+         * The vertices are used to triangulate the polytope.
+         *
+         * @param area_tol             Area tolerance for sampling termination. 
+         * @param rng                  Random number generator instance. 
+         * @param constraints_filename Name of input file of polytope constraints. 
+         * @param vertices_filename    Name of input file of polytope vertices.
+         * @param func                 Mapping from the input polytope into
+         *                             the plane.  
+         */
         BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
-                       std::string constraints_file, std::string vertices_file)
+                       std::string constraints_filename,
+                       std::string vertices_filename,
+                       std::function<VectorXd(const Ref<const VectorXd>&)>& func)
         {
-            /*
-             * Constructor with input polytope constraints and vertices to 
-             * be parsed from text files.
-             *
-             * The enumerated vertices are used to triangulate the polytope.
-             */
             this->N = 0;
             this->area_tol = area_tol;
             this->curr_area = 0.0;
             this->rng = rng;
-            this->constraints = new LinearConstraints();
-            this->constraints->parse(constraints_file);
+            this->constraints.parse(constraints_filename);
+            this->D = this->constraints.getA().cols();
+            this->func = func; 
 
-            // Parse the vertices from the given .vert file
-            std::vector<std::vector<double> > vertices = parseVertices(vertices_file);
+            // Parse the vertices from the given file and obtain the Delaunay
+            // triangulation of the polytope  
+            Delaunay_triangulation del = Polytopes::parseVerticesFile(vertices_filename);
 
-            // Triangulate the parsed polytope
-            std::pair<Delaunay_triangulation, unsigned> result = triangulate(vertices);
-            Delaunay_triangulation dt = result.first;
-            this->D = result.second;
-
-            // Get the simplices of the triangulation
-            this->interior_simplices = getInteriorSimplices(dt, this->D);
-
-            // Get the facets of the convex hull
-            this->boundary_simplices = getConvexHullFacets(dt, this->D);
+            // Obtain the full-dimensional faces of the triangulation
+            this->input_full_dim_faces = Polytopes::getFullDimFaces(del);  
         }
 
-        BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
-                       std::string constraints_file, std::string vertices_file,
-                       std::string triangulation_file)
-        {
-            /*
-             * Constructor with input polytope constraints, vertices, and 
-             * pre-computed Delaunay triangulation all parsed from input 
-             * text files.
-             */
-            this->N = 0;
-            this->area_tol = area_tol;
-            this->curr_area = 0.0;
-            this->rng = rng;
-            this->constraints = new LinearConstraints();
-            this->constraints->parse(constraints_file);
-            this->D = this->constraints->getA().cols();
-
-            // Parse the vertices and triangulation from the given input files
-            std::vector<std::vector<double> > vertices = parseVertices(vertices_file);
-            auto triangulation = parseTriangulation(triangulation_file);
-            std::vector<Simplex> simplices = std::get<1>(triangulation);
-
-            /*
-            // Classify the simplices in the triangulation as either interior or boundary
-            auto classified = classifySimplices(simplices, *this->constraints, this->D, rng);
-            this->interior_simplices = classified.first; 
-            this->boundary_simplices = classified.second;
-            */
-
-            // Quick fix (classification is too slow in cases where there are 
-            // too many simplices): Treat every simplex as interior
-            this->interior_simplices = simplices;
-        }
-
+        /**
+         * Trivial destructor.
+         */
         ~BoundaryFinder()
         {
-            /*
-             * Trivial destructor. 
-             */
-            delete this->constraints;
         }
 
+        /**
+         * Update the stored input polytope constraints with the given matrix
+         * and vector. 
+         *
+         * @param A Left-hand matrix of polytope constraints.
+         * @param b Right-hand vector of polytope constraints. 
+         */
         void setConstraints(const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
         {
-            /*
-             * Instantiate and store a new LinearConstraints instance from
-             * the given matrix and vector. 
-             */
-            this->constraints->setAb(A, b);
+            this->constraints.setAb(A, b);
         }
 
-        MatrixXd getParams()
+        /**
+         * Return the stored input points. 
+         */ 
+        MatrixXd getInput()
         {
-            /*
-             * Get the stored matrix of parameter values.
-             */
-            return this->params; 
+            return this->input; 
         }
 
-        void initialize(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
-                        std::function<bool(const Ref<const VectorXd>&)> filter, 
-                        const Ref<const MatrixXd>& params)
+        /**
+         * Initialize the sampling run by evaluating the stored mapping 
+         * at the given set of points in the input polytope.
+         *
+         * @param filter Boolean function for filtering output points in the 
+         *               plane as desired.
+         * @param input  Initial set of points in the input polytope at which 
+         *               to evaluate the stored mapping. 
+         * @throws std::invalid_argument if the input points do not have the 
+         *                               correct dimension.  
+         */
+        void initialize(std::function<bool(const Ref<const VectorXd>&)> filter, 
+                        const Ref<const MatrixXd>& input) 
         {
-            /*
-             * Initialize the sampling run by evaluating the given function
-             * for a specified set of parameter values. 
-             */
+            // Check that the input points have the correct dimensionality 
+            if (input.cols() != this->D)
+                throw std::invalid_argument("Input points are of incorrect dimension"); 
+
             this->N = 0;
-            this->params.resize(this->N, this->D);
+            this->input.resize(this->N, this->D);
             this->points.resize(this->N, 2);
                 
-            // Evaluate the given function at a randomly generated 
-            // parameter point (if it satisfies the required constraints)
-            for (unsigned i = 0; i < params.rows(); ++i)
+            // Evaluate the stored mapping at each given input point
+            for (unsigned i = 0; i < input.rows(); ++i)
             {
-                VectorXd y = func(params.row(i));
+                VectorXd y = this->func(input.row(i));
                 
-                // Check that the point in the output space is not too 
-                // close to the others
-                if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.transpose()).rowwise().norm().minCoeff() > 1e-10))
+                // Check that the output point is not subject to filtering and 
+                // is not too close to the others 
+                if (!filter(y) && (this->N == 0 || (this->points.rowwise() - y.transpose()).rowwise().norm().minCoeff() > 1e-10))
                 {
                     this->N++;
-                    this->params.conservativeResize(this->N, this->D);
+                    this->input.conservativeResize(this->N, this->D);
                     this->points.conservativeResize(this->N, 2);
-                    this->params.row(this->N-1) = params.row(i);
+                    this->input.row(this->N-1) = input.row(i);
                     this->points.row(this->N-1) = y;
                 }
             }
         }
 
-        void initialize(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
-                        std::function<bool(const Ref<const VectorXd>&)> filter, 
-                        unsigned n_within, unsigned n_bound)
-        {
-            /*
-             * Initialize the sampling run by evaluating the given function
-             * for a specified number of random parameter values. 
-             */
-            this->N = 0;
-            this->params.resize(this->N, this->D);
-            this->points.resize(this->N, 2);
-
-            // Check that interior/boundary simplices have been labeled as 
-            // such if nonzero numbers of points are to be sampled from either 
-            if (n_within > 0 && this->interior_simplices.size() == 0)
-                throw std::invalid_argument("Interior simplices were not specified, cannot sample from interior"); 
-            else if (n_bound > 0 && this->boundary_simplices.size() == 0)
-                throw std::invalid_argument("Boundary simplices were not specified, cannot sample from boundary"); 
-
-            // Sample until the given number of points have been sampled
-            // from the interior of the polytope  
-            while (this->N < n_within)
-            {
-                MatrixXd params = sampleFromSimplices(this->interior_simplices, n_within - this->N, this->rng);
-                Map<MatrixXd> slice(params.data(), 5, this->D);
-
-                // Evaluate the given function at a randomly generated 
-                // parameter point (if it satisfies the required constraints)
-                for (unsigned i = 0; i < params.rows(); ++i)
-                {
-                    VectorXd y = func(params.row(i));
-                    
-                    // Check that the point in the output space is not too 
-                    // close to the others
-                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.transpose()).rowwise().norm().minCoeff() > 1e-10))
-                    {
-                        this->N++;
-                        this->params.conservativeResize(this->N, this->D);
-                        this->points.conservativeResize(this->N, 2);
-                        this->params.row(this->N-1) = params.row(i);
-                        this->points.row(this->N-1) = y;
-                    }
-                }
-            }
-
-            // Sample until the given number of points have been sampled
-            // from the boundary of the polytope  
-            while (this->N < n_bound + n_within)
-            {
-                MatrixXd params = sampleFromSimplices(this->boundary_simplices, n_bound + n_within - this->N, this->rng);
-
-                // Evaluate the given function at a randomly generated 
-                // parameter point (if it satisfies the required constraints)
-                for (unsigned i = 0; i < params.rows(); ++i)
-                {
-                    VectorXd y = func(params.row(i));
-                    
-                    // Check that the point in the output space is not too 
-                    // close to the others
-                    if (!filter(y) && (this->points.rows() == 0 || (this->points.rowwise() - y.transpose()).rowwise().norm().minCoeff() > 1e-10))
-                    {
-                        this->N++;
-                        this->params.conservativeResize(this->N, this->D);
-                        this->points.conservativeResize(this->N, 2);
-                        this->params.row(this->N-1) = params.row(i);
-                        this->points.row(this->N-1) = y;
-                    }
-                }
-            }
-        }
-
         /**
-         * Given a list of points (with their x- and y-coordinates
-         * specified in vectors of the same length), take one step
-         * in the boundary-sampling algorithm as follows: 
+         * Take one "step" in the boundary-sampling algorithm as follows: 
          *
-         * 1) Get the boundary of the output points accrued thus far. 
-         * 2) "Mutate" (randomly perturb) the input points in the
-         *    determined boundary by uniformly sampling along each
-         *    dimension within [x-radius, x+radius] in logarithmic
-         *    coordinates.
-         * 3) Plug in the mutated parameter values and obtain new 
-         *    output points.
+         * 1) Compute the boundary of the output points accrued thus far. 
+         * 2) "Mutate" (randomly perturb) the input points in the pre-image 
+         *    of the determined boundary, according to the given `mutate` 
+         *    function.
+         * 3) Evaluate the stored mapping on these new input points.
          *
-         * The return value indicates whether or not the enclosed 
-         * area has converged to within the specified area tolerance. 
+         * The return value indicates whether or not the area enclosed by the 
+         * boundary *obtained prior to mutation* has converged to within
+         * `this->area_tol`.
+         *
+         * Note that this method assumes that the boundary is simply connected.
+         *
+         * @param mutate       Function for randomly mutating input points as
+         *                     desired.
+         * @param filter       Boolean function for filtering output points in the 
+         *                     plane as desired.
+         * @param iter         Iteration number. 
+         * @param max_edges    Maximum number of edges to be contained in the
+         *                     boundary. 
+         * @param verbose      If true, output intermittent messages to `stdout`.
+         * @param write_prefix Prefix of output file name to which to write 
+         *                     the boundary obtained in this iteration.
+         * @returns True if the area enclosed by the boundary (obtained prior 
+         *          to mutation) has converged to within `this->area_tol`. 
          */
-        bool step(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
-                  std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
+        bool step(std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const std::string write_prefix = "")
@@ -498,19 +434,19 @@ class BoundaryFinder
                 ss << write_prefix << "-pass" << iter << ".txt";
                 bound_data.write(ss.str());
 
-                // Write the input vectors passed into the given function to
+                // Write the input vectors passed into the stored mapping to 
                 // yield the boundary points
                 std::ofstream outfile;
                 outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
                 if (outfile.is_open())
                 {
                     outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
-                    for (unsigned i = 0; i < this->params.rows(); ++i)
+                    for (unsigned i = 0; i < this->input.rows(); ++i)
                     {
                         outfile << "INPUT\t"; 
-                        for (unsigned j = 0; j < this->params.cols() - 1; ++j)
-                            outfile << this->params(i, j) << '\t'; 
-                        outfile << this->params(i, this->params.cols()-1) << std::endl;
+                        for (unsigned j = 0; j < this->input.cols() - 1; ++j)
+                            outfile << this->input(i, j) << '\t'; 
+                        outfile << this->input(i, this->input.cols() - 1) << std::endl;
                     }
                 }
                 outfile.close(); 
@@ -530,7 +466,7 @@ class BoundaryFinder
             }
             
             // For each of the points in the boundary, mutate the corresponding
-            // model parameters once, and evaluate the given function at these
+            // model parameters once, and evaluate the stored mapping at these 
             // mutated parameter values
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
@@ -538,13 +474,13 @@ class BoundaryFinder
                 double mindist = 0.0;
                 unsigned j = 0;
                 VectorXd q, z; 
-                while ((filtered || mindist < 1e-10) && j < 20)   // Attempt 20 mutations
+                while ((filtered || mindist < 1e-10) && j < MAX_NUM_MUTATION_ATTEMPTS)
                 {
                     // Evaluate the given function at a randomly generated 
                     // parameter point
-                    VectorXd p = this->params.row(this->vertices[i]); 
-                    q = this->constraints->nearestL2(mutate(p, this->rng));
-                    z = func(q);
+                    VectorXd p = this->input.row(this->vertices[i]); 
+                    q = this->constraints.nearestL2(mutate(p, this->rng));
+                    z = this->func(q);
                     filtered = filter(z);
                     
                     // Check that the mutation did not give rise to an already 
@@ -556,9 +492,9 @@ class BoundaryFinder
                 if (!filtered && mindist > 1e-10)
                 {
                     this->N++;
-                    this->params.conservativeResize(this->N, this->D);
+                    this->input.conservativeResize(this->N, this->D);
                     this->points.conservativeResize(this->N, 2);
-                    this->params.row(this->N-1) = q;
+                    this->input.row(this->N-1) = q;
                     this->points.row(this->N-1) = z;
                 }
             }
@@ -568,16 +504,35 @@ class BoundaryFinder
 
         /**
          * "Pull" the boundary points along their outward normal vectors
-         * with sequential quadratic programming. 
+         * with sequential quadratic programming.
+         *
+         * The return value indicates whether or not the enclosed area has 
+         * converged to within `this->area_tol`.
+         *
+         * Note that this method assumes that the boundary is simply connected.
+         *
+         * @param filter       Boolean function for filtering output points in the 
+         *                     plane as desired.
+         * @param delta        Distance by which the output points along the 
+         *                     boundary should be pulled. 
+         * @param max_iter     Maximum number of iterations for SQP. 
+         * @param sqp_tol      Tolerance for assessing convergence in SQP.
+         * @param iter         Iteration number.  
+         * @param max_edges    Maximum number of edges to be contained in the
+         *                     boundary. 
+         * @param verbose      If true, output intermittent messages to `stdout`.
+         * @param sqp_verbose  If true, output intermittent messages during 
+         *                     SQP to `stdout`. 
+         * @param write_prefix Prefix of output file name to which to write 
+         *                     the boundary obtained in this iteration.
+         * @returns True if the area enclosed by the boundary (obtained prior 
+         *          to mutation) has converged to within `this->area_tol`. 
          */
-        bool pull(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
-                  std::function<bool(const Ref<const VectorXd>&)> filter, 
+        bool pull(std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const double delta, const unsigned max_iter, const double sqp_tol,
                   const unsigned iter, const unsigned max_edges, const bool verbose,
                   const bool sqp_verbose, const std::string write_prefix = "")
         {
-            using std::abs;
-
             // Store point coordinates in two vectors
             std::vector<double> x, y;
             x.resize(this->N);
@@ -646,12 +601,12 @@ class BoundaryFinder
                 if (outfile.is_open())
                 {
                     outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
-                    for (unsigned i = 0; i < this->params.rows(); ++i)
+                    for (unsigned i = 0; i < this->input.rows(); ++i)
                     {
                         outfile << "INPUT\t"; 
-                        for (unsigned j = 0; j < this->params.cols() - 1; ++j)
-                            outfile << this->params(i, j) << '\t'; 
-                        outfile << this->params(i, this->params.cols()-1) << std::endl;
+                        for (unsigned j = 0; j < this->input.cols() - 1; ++j)
+                            outfile << this->input(i, j) << '\t'; 
+                        outfile << this->input(i, this->input.cols() - 1) << std::endl;
                     }
                 }
                 outfile.close(); 
@@ -692,8 +647,8 @@ class BoundaryFinder
             }
 
             // Pull out the constraint matrix and vector 
-            MatrixXd A = this->constraints->getA();
-            VectorXd b = this->constraints->getb();
+            MatrixXd A = this->constraints.getA();
+            VectorXd b = this->constraints.getb();
             unsigned nc = A.rows();
 
             // Define an SQPOptimizer instance to be utilized 
@@ -705,16 +660,16 @@ class BoundaryFinder
             {
                 // Minimize the appropriate objective function
                 VectorXd target = pulled.row(i); 
-                auto obj = [func, target](const Ref<const VectorXd>& x)
+                auto obj = [this, target](const Ref<const VectorXd>& x)
                 {
-                    return (target - func(x)).squaredNorm();
+                    return (target - this->func(x)).squaredNorm();
                 };
-                VectorXd x_init = this->params.row(this->vertices[i]);
-                VectorXd l_init = VectorXd::Ones(nc) - this->constraints->active(x_init).cast<double>();
+                VectorXd x_init = this->input.row(this->vertices[i]);
+                VectorXd l_init = VectorXd::Ones(nc) - this->constraints.active(x_init).cast<double>();
                 VectorXd xl_init(this->D + nc); 
                 xl_init << x_init, l_init;
                 VectorXd q = optimizer->run(obj, xl_init, max_iter, sqp_tol, BFGS, sqp_verbose);
-                VectorXd z = func(q); 
+                VectorXd z = this->func(q); 
                 
                 // Check that the mutation did not give rise to an already 
                 // computed point
@@ -722,9 +677,9 @@ class BoundaryFinder
                 if (!filter(z) && mindist > 1e-10)
                 {
                     this->N++;
-                    this->params.conservativeResize(this->N, this->D);
+                    this->input.conservativeResize(this->N, this->D);
                     this->points.conservativeResize(this->N, 2);
-                    this->params.row(this->N-1) = q;
+                    this->input.row(this->N-1) = q;
                     this->points.row(this->N-1) = z;
                 }
             }
@@ -733,49 +688,75 @@ class BoundaryFinder
             return (std::abs(change) < this->area_tol * (area - change));
         }
 
-        void run(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
-                 std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
+        /**
+         * Run the full boundary-sampling algorithm until convergence, up to
+         * the maximum number of iterations.
+         *
+         * @param mutate        Function for randomly mutating input points as
+         *                      desired.
+         * @param filter        Boolean function for filtering output points in the 
+         *                      plane as desired.
+         * @param init_input    Initial set of points in the input polytope at  
+         *                      which to evaluate the stored mapping.
+         * @param min_step_iter Minimum number of step iterations. 
+         * @param max_step_iter Maximum number of step iterations. 
+         * @param min_pull_iter Minimum number of pull iterations. 
+         * @param max_pull_iter Maximum number of pull iterations.
+         * @param max_edges     Maximum number of edges to be contained in the
+         *                      boundary. 
+         * @param verbose       If true, output intermittent messages to `stdout`.
+         * @param sqp_max_iter  Maximum number of SQP iterations to be performed
+         *                      per pull iteration. 
+         * @param sqp_tol       Tolerance for assessing convergence in SQP.
+         * @param sqp_verbose   If true, output intermittent messages during 
+         *                      SQP to `stdout`. 
+         * @param write_prefix  Prefix of output file name to which to write 
+         *                      the boundary obtained in this iteration.
+         */
+        void run(std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
                  std::function<bool(const Ref<const VectorXd>&)> filter, 
-                 const Ref<const MatrixXd>& init_params, 
+                 const Ref<const MatrixXd>& init_input, 
                  const unsigned min_step_iter, const unsigned max_step_iter,
                  const unsigned min_pull_iter, const unsigned max_pull_iter,
                  const unsigned max_edges, const bool verbose,
                  const unsigned sqp_max_iter, const double sqp_tol,
                  const bool sqp_verbose, const std::string write_prefix = "")
         {
-            /*
-             * Run the boundary sampling until convergence, up to the maximum
-             * number of iterations. 
-             */
             // Initialize the sampling run ...
-            this->initialize(func, filter, init_params);
+            this->initialize(filter, init_input);
 
-            // ... then take up to the maximum number of iterations 
+            // ... then step through the boundary-finding algorithm up to the
+            // maximum number of iterations ...
             unsigned i = 0;
             bool terminate = false;
             unsigned n_converged = 0;
             while (i < min_step_iter || (i < max_step_iter && !terminate))
             {
-                bool result = this->step(func, mutate, filter, i, max_edges, verbose, write_prefix);
-                if (!result) n_converged = 0;
-                else         n_converged += 1;
-                terminate = (n_converged >= 5);
+                bool result = this->step(mutate, filter, i, max_edges, verbose, write_prefix);
+                if (!result)
+                    n_converged = 0;
+                else
+                    n_converged++; 
+                terminate = (n_converged >= NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE);
                 i++;
             }
 
-            // Pull the boundary points outward
+            // ... then turn to pulling the boundary points outward
             unsigned j = 0;
             terminate = false;
             n_converged = 0;
             while (j < min_pull_iter || (j < max_pull_iter && !terminate))
             {
+                // Set delta = 0.1 * std::sqrt(this->curr_area) 
                 bool result = this->pull(
-                    func, filter, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
+                    filter, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
                     i + j, max_edges, verbose, sqp_verbose, write_prefix
                 );
-                if (!result) n_converged = 0;
-                else         n_converged += 1;
-                terminate = (n_converged >= 5);
+                if (!result)
+                    n_converged = 0;
+                else
+                    n_converged++; 
+                terminate = (n_converged >= NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE);
                 j++;
             }
 
@@ -844,167 +825,12 @@ class BoundaryFinder
                 if (outfile.is_open())
                 {
                     outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
-                    for (unsigned i = 0; i < this->params.rows(); ++i)
+                    for (unsigned i = 0; i < this->input.rows(); ++i)
                     {
                         outfile << "INPUT\t"; 
-                        for (unsigned j = 0; j < this->params.cols() - 1; ++j)
-                            outfile << this->params(i, j) << '\t'; 
-                        outfile << this->params(i, this->params.cols()-1) << std::endl;
-                    }
-                }
-                outfile.close(); 
-            }
-
-            // Compute enclosed area and test for convergence if algorithm
-            // did not already terminate
-            if (!terminate)
-            {
-                double area = bound_data.area;
-                double change = area - this->curr_area;
-                this->curr_area = area;
-                if (verbose)
-                {
-                    std::cout << "[FINAL] Iteration " << i + j
-                              << "; enclosed area: " << area
-                              << "; " << this->vertices.size() << " boundary points"
-                              << "; " << this->points.rows() << " total points" 
-                              << "; change in area: " << change << std::endl;
-                }
-                if (std::abs(change) < this->area_tol)
-                    terminate = true;
-            }
-
-            // Did the loop terminate without achieving convergence?
-            if (!terminate)
-            {
-                std::cout << "Reached maximum number of iterations ("
-                          << max_step_iter + max_pull_iter
-                          << ") without convergence" << std::endl;
-            }
-            else
-            {
-                std::cout << "Reached convergence within " << i + j << " iterations"
-                          << std::endl;
-            }
-        }
-
-        void run(std::function<VectorXd(const Ref<const VectorXd>&)> func, 
-                 std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
-                 std::function<bool(const Ref<const VectorXd>&)> filter, 
-                 const unsigned n_within, const unsigned n_bound,
-                 const unsigned min_step_iter, const unsigned max_step_iter,
-                 const unsigned min_pull_iter, const unsigned max_pull_iter,
-                 const unsigned max_edges, const bool verbose,
-                 const unsigned sqp_max_iter, const double sqp_tol,
-                 const bool sqp_verbose, const std::string write_prefix = "")
-        {
-            /*
-             * Run the boundary sampling until convergence, up to the maximum
-             * number of iterations. 
-             */
-            // Initialize the sampling run ...
-            this->initialize(func, filter, n_within, n_bound);
-
-            // ... then take up to the maximum number of iterations 
-            unsigned i = 0;
-            bool terminate = false;
-            unsigned n_converged = 0;
-            while (i < min_step_iter || (i < max_step_iter && !terminate))
-            {
-                bool result = this->step(func, mutate, filter, i, max_edges, verbose, write_prefix);
-                if (!result) n_converged = 0;
-                else         n_converged += 1;
-                terminate = (n_converged >= 5);
-                i++;
-            }
-
-            // Pull the boundary points outward
-            unsigned j = 0;
-            terminate = false;
-            n_converged = 0;
-            while (j < min_pull_iter || (j < max_pull_iter && !terminate))
-            {
-                bool result = this->pull(
-                    func, filter, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
-                    i + j, max_edges, verbose, sqp_verbose, write_prefix
-                );
-                if (!result) n_converged = 0;
-                else         n_converged += 1;
-                terminate = (n_converged >= 5);
-                j++;
-            }
-
-            // Compute the boundary one last time
-            std::vector<double> x, y;
-            x.resize(this->N);
-            y.resize(this->N);
-            VectorXd::Map(&x[0], this->N) = this->points.col(0);
-            VectorXd::Map(&y[0], this->N) = this->points.col(1);
-            Boundary2D boundary(x, y);
-            AlphaShape2DProperties bound_data;
-            try
-            {
-                // This line may throw:
-                // - CGAL::Precondition_exception (while attempting polygon instantiation)
-                // - std::runtime_error (if polygon is not simple)
-                bound_data = boundary.getSimplyConnectedBoundary<true>(max_edges);
-            }
-            catch (CGAL::Precondition_exception& e)
-            {
-                // Try with tag == false
-                //
-                // This may throw a CGAL::Assertion_exception (while attempting alpha 
-                // shape instantiation)
-                try 
-                {
-                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
-                }
-                catch (CGAL::Assertion_exception& e)
-                {
-                    throw; 
-                }
-            }
-            catch (std::runtime_error& e)
-            {
-                // Try with tag == false
-                //
-                // This may throw a CGAL::Assertion_exception (while attempting alpha 
-                // shape instantiation)
-                try 
-                {
-                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
-                }
-                catch (CGAL::Assertion_exception& e)
-                {
-                    throw; 
-                }
-            }
-
-            // Re-orient the points so that the boundary is traversed clockwise
-            bound_data.orient(CGAL::RIGHT_TURN);
-            this->vertices = bound_data.vertices;
-
-            // Write boundary information to file if desired
-            if (write_prefix.compare(""))
-            {
-                // Write the boundary points, vertices, and edges 
-                std::stringstream ss;
-                ss << write_prefix << "-final.txt";
-                bound_data.write(ss.str());
-
-                // Write the input vectors passed into the given function to
-                // yield the boundary points
-                std::ofstream outfile;
-                outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
-                if (outfile.is_open())
-                {
-                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
-                    for (unsigned i = 0; i < this->params.rows(); ++i)
-                    {
-                        outfile << "INPUT\t"; 
-                        for (unsigned j = 0; j < this->params.cols() - 1; ++j)
-                            outfile << this->params(i, j) << '\t'; 
-                        outfile << this->params(i, this->params.cols()-1) << std::endl;
+                        for (unsigned j = 0; j < this->input.cols() - 1; ++j)
+                            outfile << this->input(i, j) << '\t'; 
+                        outfile << this->input(i, this->input.cols() - 1) << std::endl;
                     }
                 }
                 outfile.close(); 
