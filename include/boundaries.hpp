@@ -38,7 +38,7 @@ using std::cos;
 using std::acos;
 using std::sqrt;
 using namespace Eigen;
-constexpr double TWO_PI = 2 * std::acos(-1);
+const double TWO_PI = 2 * std::acos(-1);
 
 typedef CGAL::Exact_predicates_inexact_constructions_kernel         K;
 typedef K::FT                                                       FT;
@@ -554,7 +554,7 @@ class Boundary2D
 
             // Set up a dictionary that maps each vertex in the alpha shape 
             // to the corresponding point in the point-set
-            std::unordered_map<Vertex_handle_2, std::pair<unsigned, double> > vertices_to_points;
+            std::unordered_map<Vertex_handle_2, std::pair<int, double> > vertices_to_points;
 
             /* ------------------------------------------------------------------ //
              * Determine the least value of alpha such that each point in the
@@ -674,7 +674,7 @@ class Boundary2D
             std::cout << "- number of edges = " << nedges << std::endl; 
 
             // Finally collect the boundary vertices and edges in arbitrary order 
-            std::vector<std::pair<unsigned, unsigned> > edges;
+            std::vector<std::pair<int, int> > edges; 
             for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
             {
                 Face_handle_2 f = it->first;
@@ -683,7 +683,7 @@ class Boundary2D
                 Vertex_handle_2 t = f->vertex(f->ccw(i));
                 edges.emplace_back(std::make_pair(vertices_to_points[s].first, vertices_to_points[t].first));
             }
-            std::vector<unsigned> vertices;
+            std::vector<int> vertices;
             for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
                 vertices.push_back(vertices_to_points[*it].first);
 
@@ -765,7 +765,7 @@ class Boundary2D
 
             // Set up a dictionary that maps each vertex in the alpha shape 
             // to the corresponding point in the point-set 
-            std::unordered_map<Vertex_handle_2, std::pair<unsigned, double> > vertices_to_points;
+            std::unordered_map<Vertex_handle_2, std::pair<int, double> > vertices_to_points;
 
             /* ------------------------------------------------------------------ //
              * Determine the least value of alpha such that the boundary encloses
@@ -851,7 +851,7 @@ class Boundary2D
             std::cout << "- number of edges = " << nedges << std::endl; 
 
             // Finally collect the boundary vertices and edges in arbitrary order 
-            std::vector<std::pair<unsigned, unsigned> > edges;
+            std::vector<std::pair<int, int> > edges; 
             for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
             {
                 Face_handle_2 f = it->first;
@@ -860,7 +860,7 @@ class Boundary2D
                 Vertex_handle_2 t = f->vertex(f->ccw(i));
                 edges.emplace_back(std::make_pair(vertices_to_points[s].first, vertices_to_points[t].first));
             }
-            std::vector<unsigned> vertices;
+            std::vector<int> vertices;
             for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
                 vertices.push_back(vertices_to_points[*it].first);
 
@@ -947,7 +947,7 @@ class Boundary2D
 
             // Set up a dictionary that maps each vertex in the alpha shape 
             // to the corresponding point in the point-set 
-            std::unordered_map<Vertex_handle_2, std::pair<unsigned, double> > vertices_to_points;
+            std::unordered_map<Vertex_handle_2, std::pair<int, double> > vertices_to_points;
 
             /* ------------------------------------------------------------------ //
              * Determine the optimal value of alpha such that the boundary encloses
@@ -1014,7 +1014,6 @@ class Boundary2D
                     indices_to_vertices.push_back(*it);
                     nvertices++;
                 }
-                std::cout << nvertices << " " << this->n << std::endl;
                 
                 // Run through the points in the point-set and classify them 
                 // as lying:
@@ -1182,8 +1181,8 @@ class Boundary2D
             // order in which they were traversed, *in terms of their 
             // indices in the point-set*, as well as the edges in the 
             // order in which they were traversed
-            std::vector<unsigned> vertex_indices_in_order; 
-            std::vector<std::pair<unsigned, unsigned> > edge_indices_in_order; 
+            std::vector<int> vertex_indices_in_order; 
+            std::vector<std::pair<int, int> > edge_indices_in_order; 
 
             /* ------------------------------------------------------------------ //
              * If simplification of the detected boundary is desired, then simplify
@@ -1266,12 +1265,12 @@ class Boundary2D
             else
             {
                 auto it = traversal.begin();
-                unsigned curr = vertices_to_points[indices_to_vertices[*it]].first; 
+                int curr = vertices_to_points[indices_to_vertices[*it]].first; 
                 vertex_indices_in_order.push_back(curr);
                 ++it;
                 while (it != traversal.end())
                 {
-                    unsigned next = vertices_to_points[indices_to_vertices[*it]].first;
+                    int next = vertices_to_points[indices_to_vertices[*it]].first;
                     edge_indices_in_order.emplace_back(std::make_pair(curr, next));
                     curr = next;  
                     vertex_indices_in_order.push_back(curr);
