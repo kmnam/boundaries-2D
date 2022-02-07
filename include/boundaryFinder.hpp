@@ -34,7 +34,8 @@ typedef CGAL::Exact_predicates_inexact_constructions_kernel    K;
 typedef K::Vector_2                                            Vector_2;
 
 constexpr int MAX_NUM_MUTATION_ATTEMPTS = 20;
-constexpr int NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE = 5; 
+constexpr int NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE = 5;
+constexpr int INTERNAL_PRECISION = 100; 
 
 class ParamFileCollection
 {
@@ -182,10 +183,6 @@ class BoundaryFinder
         // Linear inequalities that encode the convex polytopic domain 
         LinearConstraints constraints;
 
-        // The full-dimensional faces (simplices) of the Delaunay triangulation
-        // of the convex polytopic domain  
-        std::vector<Polytopes::Simplex> input_full_dim_faces; 
-
         // Indices of the output points along the boundary 
         std::vector<int> vertices;
 
@@ -268,9 +265,6 @@ class BoundaryFinder
             // Parse the vertices from the given file and obtain the Delaunay
             // triangulation of the polytope  
             Delaunay_triangulation del = Polytopes::parseVerticesFile(vertices_filename);
-
-            // Obtain the full-dimensional faces of the triangulation
-            this->input_full_dim_faces = Polytopes::getFullDimFaces(del);  
         }
 
         /**
@@ -298,6 +292,20 @@ class BoundaryFinder
         MatrixXd getInput()
         {
             return this->input; 
+        }
+
+        /**
+         * Randomly sample the given number of points from the uniform density 
+         * on the input polytope.
+         *
+         * @param npoints Number of points to sample. 
+         * @returns       Matrix of sampled points (each row a point).  
+         */
+        MatrixXd sampleInput(const int npoints)
+        {
+            return Polytopes::sampleFromConvexPolytope<INTERNAL_PRECISION, INTERNAL_PRECISION>(
+                this->tri, npoints, 0, this->rng
+            );  
         }
 
         /**
