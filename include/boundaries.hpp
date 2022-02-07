@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     1/30/2022
+ *     2/7/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -26,115 +26,67 @@
 #include <CGAL/Alpha_shape_face_base_2.h>
 #include <CGAL/Delaunay_triangulation_2.h>
 #include <CGAL/Polygon_2.h>
-#include <CGAL/Constrained_Delaunay_triangulation_2.h>
-#include <CGAL/Constrained_triangulation_plus_2.h>
 #include <CGAL/Polyline_simplification_2/simplify.h>
 #include <CGAL/algorithm.h>
 #include <CGAL/exceptions.h>
 #include <CGAL/tags.h>
 #include <Eigen/Sparse>
 
-using namespace Eigen; 
+using std::sin;
+using std::cos;
+using std::acos;
+using std::sqrt;
+using namespace Eigen;
+constexpr double TWO_PI = 2 * std::acos(-1);
 
-// CGAL convenience typedefs, adapted from the CGAL docs
-typedef CGAL::Exact_predicates_inexact_constructions_kernel                            K;
-typedef K::FT                                                                          FT;
-typedef K::Point_2                                                                     Point_2;
-typedef K::Vector_2                                                                    Vector_2;
-typedef CGAL::Aff_transformation_2<K>                                                  Transformation;
-typedef CGAL::Orientation                                                              Orientation;
-typedef CGAL::Polygon_2<K>                                                             Polygon_2;
-typedef CGAL::Polyline_simplification_2::Squared_distance_cost                         Cost;
-typedef CGAL::Polyline_simplification_2::Stop_below_count_threshold                    Stop;
+typedef CGAL::Exact_predicates_inexact_constructions_kernel         K;
+typedef K::FT                                                       FT;
+typedef K::Point_2                                                  Point_2;
+typedef K::Vector_2                                                 Vector_2;
+typedef CGAL::Aff_transformation_2<K>                               Transformation;
+typedef CGAL::Orientation                                           Orientation;
+typedef CGAL::Polygon_2<K>                                          Polygon_2;
+typedef CGAL::Polyline_simplification_2::Squared_distance_cost      Cost;
+typedef CGAL::Polyline_simplification_2::Stop_below_count_threshold Stop;
 
-struct Grid2DProperties
-{
-    /*
-     * A struct that stores the indices of the points within the grid-based
-     * boundary, along with the grid's meshsize.
-     */
-    public:
-        unsigned n;
-        std::vector<unsigned> vertices;
-        double meshsize;
-
-        Grid2DProperties(unsigned n, std::vector<unsigned> vertices, 
-                         double meshsize)
-        {
-            /* 
-             * Trivial constructor.
-             */
-            this->n = n; 
-            this->vertices = vertices;
-            this->meshsize = meshsize;
-        }
-
-        ~Grid2DProperties()
-        {
-            /*
-             * Empty destructor.
-             */
-        }
-
-        void write(std::vector<double> x, std::vector<double> y, std::string filename)
-        {
-            /*
-             * Write the boundary information in tab-delimited format, as follows:
-             *
-             * - The first line contains the meshsize.  
-             * - The next block of lines contains the coordinates of the points
-             *   in the region.
-             * - The next block of lines contains the indices of the vertices
-             *   in the boundary.
-             */
-            std::ofstream outfile;
-            outfile.open(filename);
-            outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
-            outfile << "MESHSIZE\t" << this->meshsize << std::endl;
-            for (unsigned i = 0; i < x.size(); i++)
-                outfile << "POINT\t" << x[i] << "\t" << y[i] << std::endl;
-            for (auto&& v : this->vertices)
-                outfile << "VERTEX\t" << v << std::endl;
-            outfile.close();
-        }
-};
-
+/**
+ * A container that stores a planar point-set along with the indices of the 
+ * points lying in an alpha shape of the point-set, together with the
+ * corresponding value of alpha and the area of the enclosed region. 
+ */
 struct AlphaShape2DProperties
 {
-    /*
-     * A struct that stores the indices of the points within an alpha
-     * shape, along with the value of alpha and the area of the enclosed
-     * region. 
-     */
     private:
-        Vector_2 outwardVertexNormal(unsigned p, unsigned q, unsigned r)
+        /**
+         * Given the indices of three *consecutive* vertices `p`, `q`, `r` in
+         * the alpha shape, return the outward normal vector at the middle
+         * vertex, `q`.
+         *
+         * The alpha shape is assumed to contain the edges `(p,q)` and `(q,r)`.
+         *
+         * @param p Index of first vertex in alpha shape.
+         * @param q Index of second vertex in alpha shape. 
+         * @param r Index of third vertex in alpha shape. 
+         * @return Outward normal vector at `q`. 
+         */
+        Vector_2 outwardVertexNormal(int p, int q, int r)
         {
-            /*
-             * Given the indices of three vertices in the boundary, 
-             * return the outward normal vector at the middle vertex, q.
-             * It is assumed that the boundary contains edges between
-             * (p,q) and (q,r). 
-             */
-            using std::sin;
-            using std::cos;
-            using std::acos;
-            using std::sqrt;
-            const double two_pi = 2 * acos(-1);
-
             Vector_2 v, w, normal;
-            double angle;
-            Orientation v_to_w;
+
+            // Get the vectors from q to p and from q to r 
             v = Vector_2(this->x[p] - this->x[q], this->y[p] - this->y[q]);
             w = Vector_2(this->x[r] - this->x[q], this->y[r] - this->y[q]);
-            angle = acos(CGAL::scalar_product(v, w) / sqrt(v.squared_length() * w.squared_length()));
-            v_to_w = CGAL::orientation(-v, w);
+
+            // Get the angle between the two vectors 
+            double angle = std::acos(CGAL::scalar_product(v, w) / std::sqrt(v.squared_length() * w.squared_length()));
+            Orientation v_to_w = CGAL::orientation(-v, w);
 
             // Case 1: The boundary is oriented by right turns and -v and w
             // form a right turn
             if (this->orientation == CGAL::RIGHT_TURN && v_to_w == CGAL::RIGHT_TURN)
             {
                 // Rotate w by (2*pi - angle) / 2 counterclockwise
-                Transformation rotate(CGAL::ROTATION, sin((two_pi - angle) / 2.0), cos((two_pi - angle) / 2.0)); 
+                Transformation rotate(CGAL::ROTATION, std::sin((TWO_PI - angle) / 2.0), std::cos((TWO_PI - angle) / 2.0)); 
                 normal = rotate(w);
             }
             // Case 2: The boundary is oriented by right turns and -v and w
@@ -142,7 +94,7 @@ struct AlphaShape2DProperties
             else if (this->orientation == CGAL::RIGHT_TURN && v_to_w == CGAL::LEFT_TURN)
             {
                 // Rotate w by angle / 2 counterclockwise
-                Transformation rotate(CGAL::ROTATION, sin(angle / 2.0), cos(angle / 2.0));
+                Transformation rotate(CGAL::ROTATION, std::sin(angle / 2.0), std::cos(angle / 2.0));
                 normal = rotate(w);
             }
             // Case 3: The boundary is oriented by left turns and -v and w
@@ -150,7 +102,7 @@ struct AlphaShape2DProperties
             else if (this->orientation == CGAL::LEFT_TURN && v_to_w == CGAL::RIGHT_TURN)
             {
                 // Rotate v by angle / 2 counterclockwise
-                Transformation rotate(CGAL::ROTATION, sin(angle / 2.0), cos(angle / 2.0));
+                Transformation rotate(CGAL::ROTATION, std::sin(angle / 2.0), std::cos(angle / 2.0));
                 normal = rotate(v);
             }
             // Case 4: The boundary is oriented by left turns and -v and w 
@@ -158,7 +110,7 @@ struct AlphaShape2DProperties
             else if (this->orientation == CGAL::LEFT_TURN && v_to_w == CGAL::LEFT_TURN)
             {
                 // Rotate v by (2*pi - angle) / 2 counterclockwise
-                Transformation rotate(CGAL::ROTATION, sin((two_pi - angle) / 2.0), cos((two_pi - angle) / 2.0));
+                Transformation rotate(CGAL::ROTATION, std::sin((TWO_PI - angle) / 2.0), std::cos((TWO_PI - angle) / 2.0));
                 normal = rotate(v);
             }
             // Case 5: -v and w are collinear
@@ -185,40 +137,68 @@ struct AlphaShape2DProperties
         }
 
     public:
+        // x- and y-coordinates of the points in the point-set 
         std::vector<double> x;
         std::vector<double> y;
-        std::vector<unsigned> vertices;
-        std::vector<std::pair<unsigned, unsigned> > edges;
-        unsigned np;
-        unsigned nv;
-        double alpha;
-        double area;
-        bool is_simple_cycle;
+
+        // Vertices and edges of the alpha shape, indicated by the indices
+        // of the points in x and y
+        std::vector<int> vertices;
+        std::vector<std::pair<int, int> > edges;
+         
+        unsigned np;                // Number of points in the point-set
+        unsigned nv;                // Number of vertices in the alpha shape
+        double alpha;               // Value of alpha
+        double area;                // Enclosed area 
+        bool is_simple_cycle;       // Whether the region is a simple cycle 
         unsigned min;               // Index of point with minimum y-coordinate
         Orientation orientation;    // Orientation of edges
 
+        /**
+         * Trivial constructor. 
+         */
         AlphaShape2DProperties()
         {
-            /**
-             * Trivial constructor. 
-             */
         }
 
+        /**
+         * Constructor with a non-empty point-set and alpha shape.
+         *
+         * Setting `is_simple_cycle = true` and `check_order = true` enforces
+         * an explicit check that the boundary is a simple cycle and the
+         * vertices and edges are specified "in order," as in `edges[0]` lies
+         * between `vertices[0]` and `vertices[1]`, `edges[1]` between
+         * `vertices[1]` and `vertices[2]`, and so on.
+         *
+         * @param x               x-coordinates of input point-set. 
+         * @param y               y-coordinates of input point-set. 
+         * @param vertices        Indices of vertices lying in input alpha shape.
+         * @param edges           Pairs of indices of vertices connected by 
+         *                        edges in input alpha shape.
+         * @param alpha           Corresponding value of alpha. 
+         * @param area            Area of region enclosed by the alpha shape. 
+         * @param is_simple_cycle If true, the alpha shape consists of one 
+         *                        simple cycle of edges.
+         * @param check_order     If true (and `is_simple_cycle` is also true), 
+         *                        this constructor checks whether the alpha
+         *                        shape indeed consists of one simple cycle of 
+         *                        edges, and whether the vertices and edges have
+         *                        been specified in order, as described above.
+         * @throws std::invalid_argument If `x`, `y`, and `vertices` do not all 
+         *                               have the same size, or if `is_simple_cycle`
+         *                               is true and yet `vertices` and `edges`
+         *                               do not have the same size. 
+         * @throws std::runtime_error    If `check_order` and `is_simple_cycle`
+         *                               are true, but the vertices and edges 
+         *                               do not form a simple cycle or have not 
+         *                               been specified in order. 
+         */
         AlphaShape2DProperties(std::vector<double> x, std::vector<double> y,
-                               std::vector<unsigned> vertices,
-                               std::vector<std::pair<unsigned, unsigned> > edges,
+                               std::vector<int> vertices,
+                               std::vector<std::pair<int, int> > edges, 
                                double alpha, double area, bool is_simple_cycle,
                                bool check_order = false)
         {
-            /**
-             * Constructor with input alpha shape. 
-             *
-             * Setting `check_order = true` enforces an explicit check that
-             * the boundary is a simple cycle and the vertices and edges are
-             * specified "in order," as in `edges[0]` lies between `vertices[0]`
-             * and `vertices[1]`, `edges[1]` between `vertices[1]` and 
-             * `vertices[2]`, and so on.
-             */
             // The number of x- and y-coordinates should be the same  
             if (!(x.size() == y.size() && y.size() >= vertices.size()))
                 throw std::invalid_argument("Invalid dimensions for input points");
@@ -265,7 +245,7 @@ struct AlphaShape2DProperties
             // *given that the boundary is a simple cycle*
             if (this->is_simple_cycle && check_order)
             {
-                unsigned i = 0;
+                int i = 0;
                 // Check the first vertex first 
                 bool ordered = (vertices[0] == edges[0].first && vertices[0] == edges[this->nv-1].second);
                 while (ordered && i < this->nv - 1)
@@ -274,14 +254,14 @@ struct AlphaShape2DProperties
                     ordered = (vertices[i] == edges[i-1].second && vertices[i] == edges[i].first);
                 }
                 if (!ordered)
-                    throw std::invalid_argument(
+                    throw std::runtime_error(
                         "Vertices and edges were not specified in order in given simple-cycle boundary"
                     );
             }
 
             // Find the orientation of the edges
             Point_2 p, q, r;
-            unsigned nv = this->vertices.size();
+            int nv = this->vertices.size();
             if (this->min == 0)
             {
                 p = Point_2(this->x[this->vertices[this->nv-1]], this->y[this->vertices[this->nv-1]]);
@@ -305,27 +285,33 @@ struct AlphaShape2DProperties
             }
             this->orientation = CGAL::orientation(p, q, r);
         }
-
+        
+        /**
+         * Trivial destructor. 
+         */
         ~AlphaShape2DProperties()
         {
-            /*
-             * Empty destructor.
-             */
         }
 
+        /**
+         * Re-direct the edges (i.e., change the edge `(p, q)` to `(q, p)`) so
+         * that every edge exhibits the given orientation.
+         *
+         * @param orientation            Desired orientation of edges.
+         * @throws std::invalid_argument If the specified orientation is invalid 
+         *                               (is not `CGAL::LEFT_TURN` or
+         *                               `CGAL::RIGHT_TURN`).  
+         */
         void orient(Orientation orientation)
         {
-            /*
-             * Re-direct the edges so that they exhibit the given orientation. 
-             */
             if (orientation != CGAL::LEFT_TURN && orientation != CGAL::RIGHT_TURN)
                 throw std::invalid_argument("Invalid orientation specified");
 
             // If the given orientation is the opposite of the current orientation ...
             if (orientation != this->orientation)
             {
-                std::vector<unsigned> vertices;
-                std::vector<std::pair<unsigned, unsigned> > edges;
+                std::vector<int> vertices;
+                std::vector<std::pair<int, int> > edges; 
 
                 vertices.push_back(this->vertices[0]);
                 edges.push_back(std::make_pair(this->vertices[0], this->vertices[this->nv-1]));
@@ -340,13 +326,15 @@ struct AlphaShape2DProperties
             }
         }
 
+        /**
+         * Return the outward normal vectors from all vertices along the alpha
+         * shape.
+         *
+         * @returns `std::vector` of outward normal vectors.  
+         */
         std::vector<Vector_2> outwardVertexNormals()
         {
-            /*
-             * Return the outward normal vectors from the vertices in the
-             * alpha shape. 
-             */
-            unsigned p, q, r;
+            int p, q, r;
             std::vector<Vector_2> normals;
 
             // Obtain the outward normal vector at each vertex 
@@ -365,31 +353,40 @@ struct AlphaShape2DProperties
             return normals;
         }
 
+        /**
+         * Write the boundary data to an output file with the given name, as
+         * follows: 
+         * - The first line contains the value of alpha. 
+         * - The second line contains the area of the enclosed region.
+         * - The next block of lines contains the coordinates of the points
+         *   in the region.
+         * - The next block of lines contains the indices of the vertices
+         *   in the alpha shape.
+         * - The final block of lines contains the indices of the endpoints
+         *   of the edges in the alpha shape.
+         *
+         * @param filename Output file name. 
+         */
         void write(std::string filename)
         {
-            /*
-             * Write the boundary information in tab-delimited format, as follows:
-             *
-             * - The first line contains the value of alpha. 
-             * - The second line contains the area of the enclosed region.
-             * - The next block of lines contains the coordinates of the points
-             *   in the region.
-             * - The next block of lines contains the indices of the vertices
-             *   in the alpha shape.
-             * - The final block of lines contains the indices of the endpoints
-             *   of the edges in the alpha shape.
-             */
             std::ofstream outfile;
             outfile.open(filename);
-            outfile << std::setprecision(std::numeric_limits<double>::max_digits10);
+            outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
+
+            // Write the value of alpha and the enclosed area 
             outfile << "ALPHA\t" << this->alpha << std::endl;
             outfile << "AREA\t" << this->area << std::endl;
+
+            // Write each point in the full point-set 
             for (unsigned i = 0; i < this->np; ++i)
                 outfile << "POINT\t" << this->x[i] << "\t" << this->y[i] << std::endl;
+
+            // Write each vertex and edge in the alpha shape 
             for (auto&& v : this->vertices)
                 outfile << "VERTEX\t" << v << std::endl;
             for (auto&& e : this->edges)
                 outfile << "EDGE\t" << e.first << "\t" << e.second << std::endl;
+
             outfile.close();
         }
 };
@@ -463,157 +460,6 @@ class Boundary2D
             }
         }
 
-        Grid2DProperties getGridBoundary(double meshsize)
-        {
-            /*
-             * Return the coordinates of the points lying along the grid-based
-             * boundary of the point-set. 
-             */
-            using std::ceil;
-            using std::floor;
-            const int X_INVALID_INDEX = this->x.size();
-            const int Y_INVALID_INDEX = this->y.size();  
-
-            // Divide the two axes into meshes of the given meshsize
-            double epsilon = 1e-5;
-            double min_x = *std::min_element(this->x.begin(), this->x.end()) - epsilon;
-            double min_y = *std::min_element(this->y.begin(), this->y.end()) - epsilon;
-            double max_x = *std::max_element(this->x.begin(), this->x.end()) + epsilon;
-            double max_y = *std::max_element(this->y.begin(), this->y.end()) + epsilon;
-            unsigned nmesh_x = static_cast<unsigned>(ceil((max_x - min_x) / meshsize));
-            unsigned nmesh_y = static_cast<unsigned>(ceil((max_y - min_y) / meshsize));
-            std::vector<double> mesh_x;
-            std::vector<double> mesh_y;
-            double curr_x = min_x, curr_y = min_y;
-            unsigned i = 0, j = 0;
-            while (curr_x < max_x)
-            {
-                mesh_x.push_back(curr_x);
-                curr_x += meshsize;
-                i += 1;
-            }
-            mesh_x.push_back(max_x);
-            while (curr_y < max_y)
-            {
-                mesh_y.push_back(curr_y);
-                curr_y += meshsize;
-                j += 1;
-            }
-            mesh_y.push_back(max_y);
-
-            // Keep track of the indices of the maximum and minimum values of
-            // x and y within each row and column of the grid
-            std::vector<int> ymin_per_col, ymax_per_col, xmin_per_row, xmax_per_row;
-            for (unsigned i = 0; i < nmesh_x - 1; i++)
-            {
-                ymin_per_col.push_back(Y_INVALID_INDEX);
-                ymax_per_col.push_back(Y_INVALID_INDEX);
-            }
-            for (unsigned i = 0; i < nmesh_y - 1; i++)
-            {
-                xmin_per_row.push_back(X_INVALID_INDEX);
-                xmax_per_row.push_back(X_INVALID_INDEX);
-            }
-            
-            // For each point in the point-set, find the row/column in the grid
-            // that contains it and update its max/min value accordingly
-            for (unsigned i = 0; i < this->n; i++)
-            {
-                double xval = this->x[i], yval = this->y[i];
-                
-                // Find the column to which the point belongs with binary search
-                unsigned low = 0, high = nmesh_x - 2;
-                unsigned mid = static_cast<unsigned>(floor((low + high) / 2.0));
-                while (low < high)
-                {
-                    if (mesh_x[mid] < xval)          // x-value falls to left of column
-                        low = mid + 1;
-                    else if (mesh_x[mid+1] >= xval)  // x-value falls to right of column
-                        high = mid - 1;
-                    else                             // x-value falls within column
-                        break;
-                    mid = static_cast<unsigned>(floor((low + high) / 2.0));
-                }
-                unsigned col = mid;
-
-                // Find the row to which the point belongs with binary search
-                low = 0; high = nmesh_y - 2;
-                mid = static_cast<unsigned>(floor((low + high) / 2.0));
-                while (low < high)
-                {
-                    if (mesh_y[mid] < yval)          // y-value falls below row
-                        low = mid + 1;
-                    else if (mesh_y[mid+1] >= yval)  // y-value falls above row
-                        high = mid - 1;
-                    else                             // y-value falls within row
-                        break;
-                    mid = static_cast<unsigned>(floor((low + high) / 2.0));
-                }
-                unsigned row = mid;
-
-                // Update max/min values per column and row
-                if (ymin_per_col[col] == Y_INVALID_INDEX || this->y[ymin_per_col[col]] > yval)
-                    ymin_per_col[col] = i;
-                if (ymax_per_col[col] == Y_INVALID_INDEX || this->y[ymax_per_col[col]] < yval)
-                    ymax_per_col[col] = i;
-                if (xmin_per_row[row] == X_INVALID_INDEX || this->x[xmin_per_row[row]] > xval)
-                    xmin_per_row[row] = i;
-                if (xmax_per_row[row] == X_INVALID_INDEX || this->x[xmax_per_row[row]] < xval)
-                    xmax_per_row[row] = i;
-            }
-            for (unsigned i = 0; i < nmesh_x - 1; i++)
-                assert(
-                    (ymin_per_col[i] == Y_INVALID_INDEX && ymax_per_col[i] == Y_INVALID_INDEX) ||
-                    (ymin_per_col[i] != Y_INVALID_INDEX && ymax_per_col[i] != Y_INVALID_INDEX)
-                );
-            for (unsigned i = 0; i < nmesh_y - 1; i++)
-                assert(
-                    (xmin_per_row[i] == X_INVALID_INDEX && xmax_per_row[i] == X_INVALID_INDEX) ||
-                    (xmin_per_row[i] != X_INVALID_INDEX && xmax_per_row[i] != X_INVALID_INDEX)
-                );
-
-            // Run through the max/min values per column and row and remove 
-            // all invalid indices (which indicate empty columns/rows)
-            auto empty_col = std::find(ymin_per_col.begin(), ymin_per_col.end(), Y_INVALID_INDEX);
-            while (empty_col != ymin_per_col.end())
-            {
-                ymin_per_col.erase(empty_col);
-                nmesh_x--;
-                empty_col = std::find(ymin_per_col.begin(), ymin_per_col.end(), Y_INVALID_INDEX);
-            }
-            empty_col = std::find(ymax_per_col.begin(), ymax_per_col.end(), Y_INVALID_INDEX);
-            while (empty_col != ymax_per_col.end())
-            {
-                ymax_per_col.erase(empty_col);
-                empty_col = std::find(ymax_per_col.begin(), ymax_per_col.end(), Y_INVALID_INDEX);
-            }
-            auto empty_row = std::find(xmin_per_row.begin(), xmin_per_row.end(), X_INVALID_INDEX);
-            while (empty_row != xmin_per_row.end())
-            {
-                xmin_per_row.erase(empty_row);
-                nmesh_y--;
-                empty_row = std::find(xmin_per_row.begin(), xmin_per_row.end(), X_INVALID_INDEX);
-            }
-            empty_row = std::find(xmax_per_row.begin(), xmax_per_row.end(), X_INVALID_INDEX);
-            while (empty_row != xmax_per_row.end())
-            {
-                xmax_per_row.erase(empty_row);
-                empty_row = std::find(xmax_per_row.begin(), xmax_per_row.end(), X_INVALID_INDEX);
-            }
-
-            // Collect the boundary vertices and edges in order (removing 
-            // duplicate vertices)
-            std::unordered_set<unsigned> vertex_set;
-            for (auto&& v : xmin_per_row) vertex_set.insert(v);
-            for (auto&& v : ymin_per_col) vertex_set.insert(v);
-            for (auto&& v : xmax_per_row) vertex_set.insert(v);
-            for (auto&& v : ymax_per_col) vertex_set.insert(v);
-            std::vector<unsigned> vertices;
-            for (auto&& v : vertex_set) vertices.push_back(v);
-            
-            return Grid2DProperties(this->n, vertices, meshsize);
-        }
-
         /**
          * Identify a subset of vertices in the point-set that form a boundary
          * for the point-set by computing an alpha shape, with no topological 
@@ -627,13 +473,13 @@ class Boundary2D
         template <bool tag = true>
         AlphaShape2DProperties getBoundary() 
         {
-            typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >     Vb;
-            typedef CGAL::Alpha_shape_face_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >       Fb;
-            typedef CGAL::Triangulation_data_structure_2<Vb, Fb>                                   Tds;
-            typedef CGAL::Delaunay_triangulation_2<K, Tds>                                         Delaunay_triangulation_2;
-            typedef CGAL::Alpha_shape_2<Delaunay_triangulation_2, CGAL::Boolean_tag<tag> >         Alpha_shape;
-            typedef typename Delaunay_triangulation_2::Face_handle                                 Face_handle_2;
-            typedef typename Delaunay_triangulation_2::Vertex_handle                               Vertex_handle_2;
+            typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> > Vb;
+            typedef CGAL::Alpha_shape_face_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >   Fb;
+            typedef CGAL::Triangulation_data_structure_2<Vb, Fb>                               Tds;
+            typedef CGAL::Delaunay_triangulation_2<K, Tds>                                     Delaunay_triangulation_2;
+            typedef CGAL::Alpha_shape_2<Delaunay_triangulation_2, CGAL::Boolean_tag<tag> >     Alpha_shape;
+            typedef typename Delaunay_triangulation_2::Face_handle                             Face_handle_2;
+            typedef typename Delaunay_triangulation_2::Vertex_handle                           Vertex_handle_2;
 
             using std::abs;
             using std::pow;
@@ -837,13 +683,13 @@ class Boundary2D
         template <bool tag = true>
         AlphaShape2DProperties getConnectedBoundary()
         {
-            typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >     Vb;
-            typedef CGAL::Alpha_shape_face_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >       Fb;
-            typedef CGAL::Triangulation_data_structure_2<Vb, Fb>                                   Tds;
-            typedef CGAL::Delaunay_triangulation_2<K, Tds>                                         Delaunay_triangulation_2;
-            typedef CGAL::Alpha_shape_2<Delaunay_triangulation_2, CGAL::Boolean_tag<tag> >         Alpha_shape;
-            typedef typename Delaunay_triangulation_2::Face_handle                                 Face_handle_2;
-            typedef typename Delaunay_triangulation_2::Vertex_handle                               Vertex_handle_2;
+            typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> > Vb;
+            typedef CGAL::Alpha_shape_face_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >   Fb;
+            typedef CGAL::Triangulation_data_structure_2<Vb, Fb>                               Tds;
+            typedef CGAL::Delaunay_triangulation_2<K, Tds>                                     Delaunay_triangulation_2;
+            typedef CGAL::Alpha_shape_2<Delaunay_triangulation_2, CGAL::Boolean_tag<tag> >     Alpha_shape;
+            typedef typename Delaunay_triangulation_2::Face_handle                             Face_handle_2;
+            typedef typename Delaunay_triangulation_2::Vertex_handle                           Vertex_handle_2;
 
             using std::abs;
             using std::pow;
@@ -995,9 +841,7 @@ class Boundary2D
             for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
                 vertices.push_back(vertices_to_points[*it].first);
 
-            return AlphaShape2DProperties(
-                x, y, vertices, edges, opt_alpha, total_area, false
-            );
+            return AlphaShape2DProperties(x, y, vertices, edges, opt_alpha, total_area, false);
         }
 
         /**
@@ -1013,26 +857,13 @@ class Boundary2D
         template <bool tag = true>
         AlphaShape2DProperties getSimplyConnectedBoundary(unsigned max_edges = 0)
         {
-            typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >     Vb;
-            typedef CGAL::Alpha_shape_face_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >       Fb;
-            typedef CGAL::Triangulation_data_structure_2<Vb, Fb>                                   Tds;
-            typedef CGAL::Delaunay_triangulation_2<K, Tds>                                         Delaunay_triangulation_2;
-            typedef CGAL::Alpha_shape_2<Delaunay_triangulation_2, CGAL::Boolean_tag<tag> >         Alpha_shape;
-            typedef typename Delaunay_triangulation_2::Face_handle                                 Face_handle_2;
-            typedef typename Delaunay_triangulation_2::Vertex_handle                               Vertex_handle_2;
-            //typedef CGAL::Polyline_simplification_2::Vertex_base_2<K>                              PS_Vb;
-            //typedef CGAL::Constrained_triangulation_face_base_2<K>                                 CT_Fb;
-            //typedef CGAL::Triangulation_data_structure_2<PS_Vb, CT_Fb>                             CT_Tds;  
-            //typedef CGAL::Constrained_Delaunay_triangulation_2<K, CT_Tds, CGAL::Exact_predicates_tag>
-            //    Constrained_Delaunay_triangulation_2; 
-            //typedef CGAL::Constrained_triangulation_plus_2<Constrained_Delaunay_triangulation_2>
-            //    Constrained_triangulation_plus_2;
-            //typedef Constrained_triangulation_plus_2::Point                                        CT_Point; 
-            //typedef Constrained_triangulation_plus_2::Constraint_iterator                          CT_Constraint_iterator; 
-            //typedef Constrained_triangulation_plus_2::Vertices_in_constraint_iterator
-            //    CT_Vertices_in_constraint_iterator; 
-            //typedef Constrained_triangulation_plus_2::Points_in_constraint_iterator
-            //    CT_Points_in_constraint_iterator; 
+            typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> > Vb;
+            typedef CGAL::Alpha_shape_face_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >   Fb;
+            typedef CGAL::Triangulation_data_structure_2<Vb, Fb>                               Tds;
+            typedef CGAL::Delaunay_triangulation_2<K, Tds>                                     Delaunay_triangulation_2;
+            typedef CGAL::Alpha_shape_2<Delaunay_triangulation_2, CGAL::Boolean_tag<tag> >     Alpha_shape;
+            typedef typename Delaunay_triangulation_2::Face_handle                             Face_handle_2;
+            typedef typename Delaunay_triangulation_2::Vertex_handle                           Vertex_handle_2;
 
             using std::abs;
             using std::pow;
