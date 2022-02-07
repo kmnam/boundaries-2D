@@ -160,10 +160,10 @@ class ParamFileCollection
  * computing the boundary of a (compact) 2-D region, arising as the image of
  * a map from a (possibly higher-dimensional) convex polytope. 
  */
+template <int InputDim>
 class BoundaryFinder 
 {
     private:
-        unsigned D;          // Dimension of convex polytope
         unsigned N;          // Number of points
         double area_tol;     // Terminate sampling when difference in area of 
                              // region bounded by alpha shapes in successive 
@@ -182,6 +182,9 @@ class BoundaryFinder
 
         // Linear inequalities that encode the convex polytopic domain 
         LinearConstraints constraints;
+
+        // Delaunay triangulation of the convex polytopic domain 
+        Delaunay_triangulation tri; 
 
         // Indices of the output points along the boundary 
         std::vector<int> vertices;
@@ -203,14 +206,18 @@ class BoundaryFinder
         BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
                        const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b,
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
+            : tri(InputDim)    // Initialize Delaunay triangulation with input dimension 
         {
             this->N = 0;
             this->area_tol = area_tol;
             this->curr_area = 0.0;
             this->rng = rng;
             this->constraints.setAb(A, b); 
-            this->D = A.cols();
-            this->func = func; 
+            this->func = func;
+
+            // Check that A has the correct number of columns 
+            if (A.cols() != InputDim) 
+                throw std::invalid_argument("Invalid linear constraints specified");  
         }
 
         /**
@@ -226,14 +233,18 @@ class BoundaryFinder
         BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
                        std::string constraints_filename,
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
+            : tri(InputDim)    // Initialize Delaunay triangulation with input dimension 
         {
             this->N = 0;
             this->area_tol = area_tol;
             this->curr_area = 0.0;
             this->rng = rng;
             this->constraints.parse(constraints_filename); 
-            this->D = this->constraints.getA().cols();
-            this->func = func; 
+            this->func = func;
+
+            // Check that A has the correct number of columns 
+            if (this->constraints.getA().cols() != InputDim) 
+                throw std::invalid_argument("Invalid linear constraints specified");  
         }
 
         /**
@@ -253,18 +264,22 @@ class BoundaryFinder
                        std::string constraints_filename,
                        std::string vertices_filename,
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
+            : tri(InputDim)    // Initialize Delaunay triangulation with input dimension 
         {
             this->N = 0;
             this->area_tol = area_tol;
             this->curr_area = 0.0;
             this->rng = rng;
             this->constraints.parse(constraints_filename);
-            this->D = this->constraints.getA().cols();
-            this->func = func; 
+            this->func = func;
+
+            // Check that A has the correct number of columns 
+            if (this->constraints.getA().cols() != InputDim) 
+                throw std::invalid_argument("Invalid linear constraints specified");  
 
             // Parse the vertices from the given file and obtain the Delaunay
             // triangulation of the polytope  
-            Delaunay_triangulation del = Polytopes::parseVerticesFile(vertices_filename);
+            Polytopes::parseVerticesFile(vertices_filename, this->tri);
         }
 
         /**
@@ -323,11 +338,11 @@ class BoundaryFinder
                         const Ref<const MatrixXd>& input) 
         {
             // Check that the input points have the correct dimensionality 
-            if (input.cols() != this->D)
+            if (input.cols() != InputDim)
                 throw std::invalid_argument("Input points are of incorrect dimension"); 
 
             this->N = 0;
-            this->input.resize(this->N, this->D);
+            this->input.resize(this->N, InputDim); 
             this->points.resize(this->N, 2);
                 
             // Evaluate the stored mapping at each given input point
@@ -340,7 +355,7 @@ class BoundaryFinder
                 if (!filter(y) && (this->N == 0 || (this->points.rowwise() - y.transpose()).rowwise().norm().minCoeff() > 1e-10))
                 {
                     this->N++;
-                    this->input.conservativeResize(this->N, this->D);
+                    this->input.conservativeResize(this->N, InputDim); 
                     this->points.conservativeResize(this->N, 2);
                     this->input.row(this->N-1) = input.row(i);
                     this->points.row(this->N-1) = y;
@@ -500,7 +515,7 @@ class BoundaryFinder
                 if (!filtered && mindist > 1e-10)
                 {
                     this->N++;
-                    this->input.conservativeResize(this->N, this->D);
+                    this->input.conservativeResize(this->N, InputDim); 
                     this->points.conservativeResize(this->N, 2);
                     this->input.row(this->N-1) = q;
                     this->points.row(this->N-1) = z;
@@ -660,7 +675,7 @@ class BoundaryFinder
             unsigned nc = A.rows();
 
             // Define an SQPOptimizer instance to be utilized 
-            SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(this->D, nc, A, b);
+            SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(InputDim, nc, A, b); 
 
             // For each vertex in the boundary, minimize the distance to the
             // pulled vertex with a feasible parameter point
@@ -673,8 +688,8 @@ class BoundaryFinder
                     return (target - this->func(x)).squaredNorm();
                 };
                 VectorXd x_init = this->input.row(this->vertices[i]);
-                VectorXd l_init = VectorXd::Ones(nc) - this->constraints.active(x_init).cast<double>();
-                VectorXd xl_init(this->D + nc); 
+                VectorXd l_init = VectorXd::Ones(nc) - this->constraints.active(x_init).template cast<double>();
+                VectorXd xl_init(InputDim + nc); 
                 xl_init << x_init, l_init;
                 VectorXd q = optimizer->run(obj, xl_init, max_iter, sqp_tol, BFGS, sqp_verbose);
                 VectorXd z = this->func(q); 
@@ -685,7 +700,7 @@ class BoundaryFinder
                 if (!filter(z) && mindist > 1e-10)
                 {
                     this->N++;
-                    this->input.conservativeResize(this->N, this->D);
+                    this->input.conservativeResize(this->N, InputDim); 
                     this->points.conservativeResize(this->N, 2);
                     this->input.row(this->N-1) = q;
                     this->points.row(this->N-1) = z;
