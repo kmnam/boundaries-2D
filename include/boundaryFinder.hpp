@@ -26,7 +26,6 @@
 #include "boundaries.hpp"
 #include "linearConstraints.hpp"
 #include "SQP.hpp"
-#include "sample.hpp"
 
 using namespace Eigen;
 
