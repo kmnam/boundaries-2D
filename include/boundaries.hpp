@@ -138,22 +138,38 @@ struct AlphaShape2DProperties
         }
 
     public:
-        // x- and y-coordinates of the points in the point-set 
+        /** x-coordinates of the points in the point-set. */
         std::vector<double> x;
+
+        /** y-coordinates of the points in the point-set. */
         std::vector<double> y;
 
-        // Vertices and edges of the alpha shape, indicated by the indices
-        // of the points in x and y
+        /** Vertices in the alpha shape, indicated by their indices in `this->x`. */ 
         std::vector<int> vertices;
+
+        /** Edges in the alpha shape. */ 
         std::vector<std::pair<int, int> > edges;
-         
-        unsigned np;                // Number of points in the point-set
-        unsigned nv;                // Number of vertices in the alpha shape
-        double alpha;               // Value of alpha
-        double area;                // Enclosed area 
-        bool is_simple_cycle;       // Whether the region is a simple cycle 
-        unsigned min;               // Index of point with minimum y-coordinate
-        Orientation orientation;    // Orientation of edges
+        
+        /** Number of points in the point-set. */  
+        unsigned np;
+
+        /** Number of vertices in the alpha shape. */ 
+        unsigned nv;
+
+        /** Value of alpha. */ 
+        double alpha;
+
+        /** Area of the region enclosed by the alpha shape. */ 
+        double area;
+
+        /** Whether the alpha shape forms a simple cycle of edges. */  
+        bool is_simple_cycle;
+
+        /** Index of point with minimum y-coordinate. */  
+        unsigned min;
+
+        /** Orientation of edges in the alpha shape. */ 
+        Orientation orientation;
 
         /**
          * Trivial constructor. 
