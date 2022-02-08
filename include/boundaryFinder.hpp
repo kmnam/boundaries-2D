@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     2/7/2022
+ *     2/8/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -36,124 +36,6 @@ typedef K::Vector_2                                            Vector_2;
 constexpr int MAX_NUM_MUTATION_ATTEMPTS = 20;
 constexpr int NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE = 5;
 constexpr int INTERNAL_PRECISION = 100; 
-
-class ParamFileCollection
-{
-    /*
-     * A class that dumps and reads parameter values to and from a 
-     * collection of files.
-     */
-    public:
-        std::string prefix;                // Prefix for filenames
-        std::vector<std::string> paths;    // Vector of filenames
-        unsigned nfiles;                   // Number of files (length of paths)
-
-        ParamFileCollection(std::string prefix)
-        {
-            /*
-             * Trivial constructor.
-             */
-            this->prefix = prefix;
-        }
-
-        ~ParamFileCollection()
-        {
-            /*
-             * Empty destructor.
-             */
-        }
-
-        MatrixXd read(unsigned i)
-        {
-            /*
-             * Read the i-th file in the collection.
-             */
-            if (i >= this->nfiles)
-            {
-                std::stringstream ss;
-                ss << "File does not exist: " << this->prefix << "-" << i << ".tsv";
-                throw std::runtime_error(ss.str());
-            }
-
-            MatrixXd params;
-            std::stringstream ss;
-            ss << this->prefix << "-" << i << ".tsv";
-            std::string path = ss.str();
-            std::ifstream infile(path);
-            if (infile.is_open())
-            {
-                unsigned nrows = 0, ncols = 0;
-                std::string line;
-                while (std::getline(infile, line))
-                {
-                    std::istringstream ssl(line);
-                    std::string token;
-                    std::vector<double> row;
-                    while (std::getline(ssl, token, '\t'))
-                    {
-                        row.push_back(std::stod(token));
-                    }
-                    if (nrows == 0) ncols = row.size();
-                    nrows++;
-                    params.conservativeResize(nrows, ncols);
-                    for (unsigned i = 0; i < row.size(); ++i)
-                    {
-                        params(nrows-1, i) = row[i];
-                    }
-                }
-            }
-            return params;
-        }
-
-        void writeToFile(std::string filename)
-        {
-            /*
-             * Write the parameters in the entire collection to a single
-             * file at the given path. 
-             */
-            if (this->nfiles == 0)
-            {
-                throw std::runtime_error("Parameter file collection is empty");
-            }
-
-            // Start with the 0-th file ...
-            MatrixXd params = this->read(0);
-            std::ofstream outfile(filename);
-            if (outfile.is_open())
-            {
-                outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
-                for (unsigned i = 0; i < params.rows(); ++i)
-                {
-                    for (unsigned j = 0; j < params.cols() - 1; ++j)
-                    {
-                        outfile << params(i,j) << "\t";
-                    }
-                    outfile << params(i,params.cols()-1) << "\n";
-                }
-            }
-            outfile.close();
-
-            // ... then run through the remaining files
-            for (unsigned k = 1; k < this->nfiles; ++k)
-            {
-                params = this->read(k);
-                std::ofstream outfile2(filename, std::ios_base::app);
-                if (outfile2.is_open())
-                {
-                    outfile2 << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
-                    for (unsigned i = 0; i < params.rows(); ++i)
-                    {
-                        for (unsigned j = 0; j < params.cols() - 1; ++j)
-                        {
-                            outfile2 << params(i,j) << "\t";
-                        }
-                        outfile2 << params(i,params.cols()-1) << "\n";
-                    }
-                }
-                outfile2.close();
-            }
-        }
-};
 
 /**
  * A class that implements an importance sampling algorithm for iteratively
