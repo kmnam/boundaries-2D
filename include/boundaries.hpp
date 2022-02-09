@@ -1113,7 +1113,6 @@ class Boundary2D
 
             // Set the lower value of alpha for which the region is connected
             int low = 0; 
-            int high; 
             int last_valid = INVALID_ALPHA_INDEX;
 
             // Try to find the smallest value of alpha for which the boundary
@@ -1129,10 +1128,7 @@ class Boundary2D
             {
                 low = 0;
             }
-
-            // If low >= high, decrease low to high - 1
-            if (low >= high) 
-                low = high - 1;
+            int high = shape.number_of_alphas(); 
             std::cout << "- searching between alpha = "
                       << CGAL::to_double(shape.get_nth_alpha(low))
                       << " and "
