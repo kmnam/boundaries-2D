@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     2/7/2022
+ *     2/9/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -33,10 +33,6 @@
 #include <CGAL/tags.h>
 #include <Eigen/Sparse>
 
-using std::sin;
-using std::cos;
-using std::acos;
-using std::sqrt;
 using namespace Eigen;
 const double TWO_PI = 2 * std::acos(-1);
 
@@ -133,7 +129,7 @@ struct AlphaShape2DProperties
             }
 
             // Normalize the vector by its length and return
-            normal /= sqrt(normal.squared_length());
+            normal /= std::sqrt(normal.squared_length());
             return normal;
         }
 
@@ -408,6 +404,7 @@ struct AlphaShape2DProperties
         }
 };
 
+
 /**
  * A class that, given a set of points in the plane, computes a suitable
  * "boundary" from its family of alpha shapes.  
@@ -418,6 +415,180 @@ class Boundary2D
         std::vector<double> x;    // x-coordinates
         std::vector<double> y;    // y-coordinates
         int n;                    // Number of stored points
+
+        /**
+         * Given a pre-computed alpha shape on the stored point-set, traverse 
+         * the vertices in the alpha shape and determine whether they form a
+         * simple cycle. 
+         *
+         * @param shape               Reference to pre-computed input `Alpha_shape_2`
+         *                            instance.
+         * @param points              Reference to `std::vector` of `Point_2` 
+         *                            instances for all points in the alpha shape.  
+         * @param traversal           Reference to `std::vector` to be updated
+         *                            with the vertices of the alpha shape in
+         *                            the traversed order. 
+         * @param vertices_to_indices Reference to `std::unordered_map` to be
+         *                            updated with an index assignment to
+         *                            vertices in the alpha shape.
+         * @param indices_to_vertices Reference to `std::vector` to be updated 
+         *                            with the same index assignment to vertices
+         *                            in the alpha shape as in `vertices_to_indices`.
+         * @param vertices_to_points  Reference to `std::unordered_map` to be
+         *                            updated with the nearest point to each
+         *                            vertex in the alpha shape. 
+         * @param adj                 Reference to adjacency matrix to be updated.  
+         * @param alpha_index         Index of the value of alpha of interest.
+         * @param verbose             If true, output intermittent messages to
+         *                            `stdout`.
+         * @returns                   The number of vertices in the alpha shape, 
+         *                            along with a boolean value that indicates 
+         *                            whether the alpha shape is a simple cycle.  
+         */
+        template <typename Dt, typename ExactAlphaComparisonTag>
+        std::pair<int, bool> traverseAlphaShape(CGAL::Alpha_shape_2<Dt, ExactAlphaComparisonTag>& shape, 
+                                                std::vector<Point_2>& points, 
+                                                std::vector<int>& traversal,
+                                                std::unordered_map<typename Dt::Vertex_handle, int>& vertices_to_indices,
+                                                std::vector<typename Dt::Vertex_handle>& indices_to_vertices,
+                                                std::unordered_map<typename Dt::Vertex_handle, std::pair<int, double> >&
+                                                    vertices_to_points, 
+                                                SparseMatrix<int, RowMajor>& adj, 
+                                                const int alpha_index, const bool verbose)
+        {
+            auto alpha = shape.get_nth_alpha(alpha_index);  
+            shape.set_alpha(alpha);
+            if (verbose)
+                std::cout << "- setting alpha = " << CGAL::to_double(alpha) << std::endl; 
+
+            // Establish an ordering for the vertices in the alpha shape
+            vertices_to_indices.clear();
+            indices_to_vertices.clear();  
+            int nvertices = 0; 
+            for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
+            {
+                vertices_to_indices[*it] = nvertices;
+                indices_to_vertices.push_back(*it);
+                nvertices++;
+            }
+           
+            // Iterate through the edges in the alpha shape and fill in the adjacency matrix 
+            adj.resize(nvertices, nvertices); 
+            std::vector<Triplet<int> > triplets;
+            for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
+            {
+                // Add the two corresponding entries to the adjacency matrix 
+                int j = it->second; 
+                typename Dt::Vertex_handle source = (it->first)->vertex(Dt::cw(j));
+                typename Dt::Vertex_handle target = (it->first)->vertex(Dt::ccw(j));
+                int source_i = vertices_to_indices[source]; 
+                int target_i = vertices_to_indices[target]; 
+                triplets.emplace_back(Triplet<int>(source_i, target_i, 1)); 
+                triplets.emplace_back(Triplet<int>(target_i, source_i, 1)); 
+            }
+            adj.setFromTriplets(triplets.begin(), triplets.end());
+            VectorXi ones = VectorXi::Ones(nvertices); 
+            int nedges = (adj.triangularView<Upper>() * ones).sum(); 
+
+            // Starting from an arbitrary vertex, identify the incident edges on the
+            // vertex and "travel" along the boundary, checking that:
+            // 1) Each vertex has exactly two incident edges
+            // 2) Each vertex has one unvisited neighbor and one visited neighbor
+            //    (except at the start and end of the traversal)
+            // 3) Iteratively choosing the visited neighbor returns us to the
+            //    starting vertex after *every* vertex has been visited
+            // 
+            // Start from the zeroth vertex ...
+            traversal.clear(); 
+            int curr = 0;
+            VectorXi visited = VectorXi::Zero(nvertices); 
+            bool returned = false;  
+            
+            while (!returned)
+            {
+                // Mark the current vertex as having been visited
+                traversal.push_back(curr); 
+                visited(curr) = 1; 
+
+                // Iterate over the nonzero entries in the current
+                // vertex's row
+                SparseMatrix<int, RowMajor>::InnerIterator row_it(adj, curr);
+                
+                if (!row_it) break;    // If the vertex has no neighbor, then break 
+                int first = row_it.col();
+                ++row_it; 
+                if (!row_it) break;    // If the vertex has no second neighbor, then break 
+                int second = row_it.col();
+                ++row_it;  
+                if (row_it)  break;    // If the vertex has more than two neighbors, then break
+
+                // If both vertices have been visited *and* one of them is the zeroth
+                // vertex, then we have returned
+                if (visited(first) == 1 && visited(second) == 1 && (first == 0 || second == 0))
+                    returned = true;  
+                // Otherwise, if both vertices have been visited, then the alpha shape
+                // contains a more complicated structure
+                else if (visited(first) == 1 && visited(second) == 1)
+                    break; 
+                // Otherwise, if only the first vertex has been visited, then jump to
+                // the second vertex
+                else if (visited(first) == 1 && visited(second) == 0)
+                    curr = second;
+                // Otherwise, if only the second vertex has been visited, then jump to
+                // the first vertex
+                else if (visited(second) == 1 && visited(first) == 0)
+                    curr = first;
+                // Otherwise, if we are at the zeroth vertex (we are just starting our
+                // traversal), then choose either vertex
+                else if (visited(first) == 0 && visited(second) == 0 && curr == 0)
+                    curr = first; 
+                // Otherwise, if neither vertex has been visited, then there is
+                // something wrong (this is supposed to be impossible)
+                else 
+                    throw std::runtime_error("This is not supposed to happen!");  
+            }
+
+            // Identify, for each vertex in the alpha shape, the point corresponding to it 
+            vertices_to_points.clear(); 
+            for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
+            {
+                // Find the point being pointed to by the boundary vertex 
+                Point_2 point = (*it)->point();
+                double x = point.x(); 
+                double y = point.y(); 
+                
+                // Find the nearest point in the point-set to this boundary vertex
+                double nearest_sqdist = std::numeric_limits<double>::infinity(); 
+                int nearest_index = 0; 
+                for (int i = 0; i < this->n; ++i)
+                {
+                    double sqdist = std::pow(this->x[i] - x, 2) + std::pow(this->y[i] - y, 2);
+                    if (sqdist < nearest_sqdist)
+                    {
+                        nearest_sqdist = sqdist;
+                        nearest_index = i; 
+                    }
+                }
+                vertices_to_points[*it] = std::make_pair(nearest_index, nearest_sqdist);
+            }
+
+            // Have we traversed the entire alpha shape and returned to the starting 
+            // vertex, and does every vertex lie either along or within the simple cycle? 
+            int nvisited = visited.sum(); 
+            if (nvisited == nvertices && returned)
+            {
+                std::cout << "- ... traversed " << nvisited << "/" << nvertices
+                          << " boundary vertices in a simple cycle" << std::endl;
+                return std::make_pair(nvertices, true); 
+            }
+            else
+            {
+                std::cout << "- ... traversed " << nvisited << "/" << nvertices 
+                          << " boundary vertices; boundary contains "
+                          << nedges << " edges" << std::endl;
+                return std::make_pair(nvertices, false);  
+            }
+        }
 
     public:
         /**
@@ -519,10 +690,6 @@ class Boundary2D
             typedef typename Delaunay_triangulation_2::Face_handle                             Face_handle_2;
             typedef typename Delaunay_triangulation_2::Vertex_handle                           Vertex_handle_2;
 
-            using std::abs;
-            using std::pow;
-            using std::floor;
-
             // Print warning if tag == false 
             if (!tag)
                 std::cout << "[WARN] Computing alpha shape with tag == false\n";
@@ -561,12 +728,12 @@ class Boundary2D
             // (this varies as we change alpha) 
             std::unordered_map<Vertex_handle_2, int> vertices_to_indices;
             std::vector<Vertex_handle_2> indices_to_vertices;
-            unsigned nvertices = 0;
+            int nvertices = 0;
 
             // Set up a sparse adjacency matrix for the alpha shape 
             // (this varies as we change alpha) 
             SparseMatrix<int, RowMajor> adj;
-            unsigned nedges = 0;
+            int nedges = 0;
 
             // Set up a dictionary that maps each vertex in the alpha shape 
             // to the corresponding point in the point-set
@@ -577,11 +744,11 @@ class Boundary2D
              * point-set lies either along the boundary or within the boundary 
              * ------------------------------------------------------------------ */
             double opt_alpha = 0.0;
-            unsigned opt_alpha_index = 0;
+            int opt_alpha_index = 0;
 
             // Begin with the smallest value of alpha 
             auto alpha_it = shape.alpha_begin();
-            unsigned i = 0; 
+            int i = 0; 
 
             // For each larger value of alpha, test that every vertex in the 
             // point-set lies along either along the alpha shape or within 
@@ -653,7 +820,7 @@ class Boundary2D
                 // Find the nearest input point to this point
                 double nearest_sqdist = std::numeric_limits<double>::infinity(); 
                 int nearest_index = 0; 
-                for (unsigned i = 0; i < this->n; ++i)
+                for (int i = 0; i < this->n; ++i)
                 {
                     double sqdist = std::pow(this->x[i] - x, 2) + std::pow(this->y[i] - y, 2);
                     if (sqdist < nearest_sqdist)
@@ -730,10 +897,6 @@ class Boundary2D
             typedef typename Delaunay_triangulation_2::Face_handle                             Face_handle_2;
             typedef typename Delaunay_triangulation_2::Vertex_handle                           Vertex_handle_2;
 
-            using std::abs;
-            using std::pow;
-            using std::floor;
-
             // Print warning if tag == false 
             if (!tag)
                 std::cout << "[WARN] Computing alpha shape with tag == false\n";
@@ -772,12 +935,12 @@ class Boundary2D
             // (this varies as we change alpha) 
             std::unordered_map<Vertex_handle_2, int> vertices_to_indices;
             std::vector<Vertex_handle_2> indices_to_vertices;
-            unsigned nvertices = 0;
+            int nvertices = 0;
 
             // Set up a sparse adjacency matrix for the alpha shape 
             // (this varies as we change alpha) 
             SparseMatrix<int, RowMajor> adj;
-            unsigned nedges = 0;
+            int nedges = 0;
 
             // Set up a dictionary that maps each vertex in the alpha shape 
             // to the corresponding point in the point-set 
@@ -788,7 +951,7 @@ class Boundary2D
              * a connected region (i.e., the alpha complex consists of a single 
              * connected component) 
              * ------------------------------------------------------------------ */
-            unsigned opt_alpha_index = std::distance(shape.alpha_begin(), shape.find_optimal_alpha(1));
+            int opt_alpha_index = std::distance(shape.alpha_begin(), shape.find_optimal_alpha(1));
             double opt_alpha = CGAL::to_double(shape.get_nth_alpha(opt_alpha_index));
             shape.set_alpha(shape.get_nth_alpha(opt_alpha_index));
 
@@ -830,7 +993,7 @@ class Boundary2D
                 // Find the nearest point in the point-set to this boundary vertex
                 double nearest_sqdist = std::numeric_limits<double>::infinity(); 
                 int nearest_index = 0; 
-                for (unsigned i = 0; i < this->n; ++i)
+                for (int i = 0; i < this->n; ++i)
                 {
                     double sqdist = std::pow(this->x[i] - x, 2) + std::pow(this->y[i] - y, 2);
                     if (sqdist < nearest_sqdist)
@@ -901,7 +1064,7 @@ class Boundary2D
          *          representing the boundary of the point-set.  
          */
         template <bool tag = true>
-        AlphaShape2DProperties getSimplyConnectedBoundary(unsigned max_edges = 0)
+        AlphaShape2DProperties getSimplyConnectedBoundary(int max_edges = 0)
         {
             typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> > Vb;
             typedef CGAL::Alpha_shape_face_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >   Fb;
@@ -910,10 +1073,6 @@ class Boundary2D
             typedef CGAL::Alpha_shape_2<Delaunay_triangulation_2, CGAL::Boolean_tag<tag> >     Alpha_shape;
             typedef typename Delaunay_triangulation_2::Face_handle                             Face_handle_2;
             typedef typename Delaunay_triangulation_2::Vertex_handle                           Vertex_handle_2;
-
-            using std::abs;
-            using std::pow;
-            using std::floor;
 
             // Print warning if tag == false 
             if (!tag)
@@ -954,12 +1113,12 @@ class Boundary2D
             // (this varies as we change alpha) 
             std::unordered_map<Vertex_handle_2, int> vertices_to_indices;
             std::vector<Vertex_handle_2> indices_to_vertices;
-            unsigned nvertices = 0;
+            int nvertices = 0;
 
             // Set up a sparse adjacency matrix for the alpha shape 
             // (this varies as we change alpha) 
             SparseMatrix<int, RowMajor> adj;
-            unsigned nedges = 0;
+            int nedges = 0;
 
             // Set up a dictionary that maps each vertex in the alpha shape 
             // to the corresponding point in the point-set 
@@ -971,13 +1130,13 @@ class Boundary2D
              * simple cycle of vertices) 
              * ------------------------------------------------------------------ */
             double opt_alpha = 0.0;
-            unsigned opt_alpha_index = 0;
-            const unsigned INVALID_ALPHA_INDEX = shape.number_of_alphas();
+            int opt_alpha_index = 0;
+            const int INVALID_ALPHA_INDEX = shape.number_of_alphas();
 
             // Set the lower value of alpha for which the region is connected
-            unsigned low = 0; 
-            unsigned high; 
-            unsigned last_valid = INVALID_ALPHA_INDEX;
+            int low = 0; 
+            int high; 
+            int last_valid = INVALID_ALPHA_INDEX;
 
             // Find the least value of alpha that is greater than the lower bound 
             // on the inter-point distance found through the minimum and maximum
@@ -1004,7 +1163,10 @@ class Boundary2D
             std::cout << "- searching between alpha = "
                       << CGAL::to_double(shape.get_nth_alpha(low))
                       << " and "
-                      << CGAL::to_double(shape.get_nth_alpha(high)) << std::endl;
+                      << CGAL::to_double(shape.get_nth_alpha(high))
+                      << " inclusive ("
+                      << high - low + 1
+                      << " values of alpha)" << std::endl;
 
             // Also keep track of the vertices and edges in the order in which 
             // they are traversed 
@@ -1014,145 +1176,17 @@ class Boundary2D
             // a simple cycle (every vertex has only two incident edges,
             // and traveling along the cycle in one direction gets us 
             // back to the starting point)
-            for (unsigned mid = low; mid < high; ++mid)
+            for (int mid = low; mid <= high; ++mid)
             {
-                auto alpha = shape.get_nth_alpha(mid);  
-                shape.set_alpha(alpha);
-                std::cout << "- setting alpha = " << CGAL::to_double(alpha) << std::endl; 
-
-                // Establish an ordering for the vertices in the alpha shape
-                vertices_to_indices.clear();
-                indices_to_vertices.clear();  
-                nvertices = 0; 
-                for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
-                {
-                    vertices_to_indices[*it] = nvertices;
-                    indices_to_vertices.push_back(*it);
-                    nvertices++;
-                }
-                
-                // Run through the points in the point-set and classify them 
-                // as lying:
-                // - along the boundary (REGULAR),
-                // - within the boundary (INTERIOR),
-                // - along the boundary without touching a face of the
-                //   triangulation (SINGULAR), or
-                // - away from all the other points (EXTERIOR)
-                unsigned nregular = 0;
-                unsigned nsingular = 0;
-                unsigned ninterior = 0; 
-                unsigned nexterior = 0;  
-                for (auto it = shape.finite_vertices_begin(); it != shape.finite_vertices_end(); ++it)
-                {
-                    Vertex_handle_2 v = Tds::Vertex_range::s_iterator_to(*it);
-                    auto type = shape.classify(v); 
-                    if (type == Alpha_shape::REGULAR)
-                        nregular++; 
-                    else if (type == Alpha_shape::SINGULAR)
-                        nsingular++; 
-                    else if (type == Alpha_shape::INTERIOR)
-                        ninterior++; 
-                    else 
-                        nexterior++; 
-                }
-
-                // Iterate through the edges in the alpha shape and fill in
-                // the adjacency matrix 
-                adj.resize(nvertices, nvertices); 
-                std::vector<Triplet<int> > triplets;
-                for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
-                {
-                    // Add the two corresponding entries to the adjacency 
-                    // matrix 
-                    int j = it->second; 
-                    Vertex_handle_2 source = (it->first)->vertex(Delaunay_triangulation_2::cw(j));
-                    Vertex_handle_2 target = (it->first)->vertex(Delaunay_triangulation_2::ccw(j));
-                    int source_i = vertices_to_indices[source]; 
-                    int target_i = vertices_to_indices[target]; 
-                    triplets.emplace_back(Triplet<int>(source_i, target_i, 1)); 
-                    triplets.emplace_back(Triplet<int>(target_i, source_i, 1)); 
-                }
-                adj.setFromTriplets(triplets.begin(), triplets.end());
-                VectorXi ones = VectorXi::Ones(nvertices); 
-                nedges = (adj.triangularView<Upper>() * ones).sum(); 
-
-                // Starting from an arbitrary vertex, identify the incident 
-                // edges on the vertex and "travel" along the boundary,
-                // checking that:
-                // 1) Each vertex has exactly two incident edges
-                // 2) Each vertex has one unvisited neighbor and one visited 
-                //    neighbor (except at the start and end of the traversal)
-                // 3) Iteratively choosing the visited neighbor returns us 
-                //    to the starting vertex after *every* vertex has been 
-                //    visited
-                // 
-                // Start from the zeroth vertex ...
-                traversal.clear(); 
-                int curr = 0;
-                Matrix<int, Dynamic, 1> visited = Matrix<int, Dynamic, 1>::Zero(nvertices);
-                bool returned = false;  
-                
-                while (!returned)
-                {
-                    // Mark the current vertex as having been visited
-                    traversal.push_back(curr); 
-                    visited(curr) = 1; 
-
-                    // Iterate over the nonzero entries in the current
-                    // vertex's row
-                    SparseMatrix<int, RowMajor>::InnerIterator row_it(adj, curr);
-                    
-                    if (!row_it) break;    // If the vertex has no neighbor, then break 
-                    int first = row_it.col();
-                    ++row_it; 
-                    if (!row_it) break;    // If the vertex has no second neighbor, then break 
-                    int second = row_it.col();
-                    ++row_it;  
-                    if (row_it)  break;    // If the vertex has more than two neighbors, then break
-
-                    // If both vertices have been visited *and* one of them 
-                    // is the zeroth vertex, then we have returned
-                    if (visited(first) == 1 && visited(second) == 1 && (first == 0 || second == 0))
-                        returned = true;  
-                    // Otherwise, if both vertices have been visited, then 
-                    // the alpha shape contains a more complicated structure
-                    else if (visited(first) == 1 && visited(second) == 1)
-                        break; 
-                    // Otherwise, if only the first vertex has been visited, 
-                    // then jump to the second vertex
-                    else if (visited(first) == 1 && visited(second) == 0)
-                        curr = second;
-                    // Otherwise, if only the second vertex has been visited, 
-                    // then jump to the first vertex
-                    else if (visited(second) == 1 && visited(first) == 0)
-                        curr = first;
-                    // Otherwise, if we are at the zeroth vertex (we are just
-                    // starting our traversal), then choose either vertex
-                    else if (visited(first) == 0 && visited(second) == 0 && curr == 0)
-                        curr = first; 
-                    // Otherwise, if neither vertex has been visited, then 
-                    // there is something wrong (this is supposed to be 
-                    // impossible)
-                    else 
-                        throw std::runtime_error("This is not supposed to happen!");  
-                }
-
-                // Have we traversed the entire alpha shape and returned to 
-                // the starting vertex, and does every vertex lie either along
-                // or within the simple cycle? 
-                int nvisited = visited.sum(); 
-                if (nvisited == nvertices && returned && this->n == nregular + ninterior)
-                {
-                    std::cout << "- ... traversed " << nvisited << "/" << nvertices
-                              << " boundary vertices in a simple cycle" << std::endl;
+                std::pair<int, bool> result = traverseAlphaShape(
+                    shape, points, traversal, vertices_to_indices,
+                    indices_to_vertices, vertices_to_points, adj, mid, true
+                );
+                nvertices = result.first; 
+                if (result.second)
+                { 
                     last_valid = mid; 
                     break; 
-                }
-                else
-                {
-                    std::cout << "- ... traversed " << nvisited << "/" << nvertices 
-                              << " boundary vertices; boundary contains "
-                              << nedges << " edges" << std::endl; 
                 }
             }
             
@@ -1165,29 +1199,6 @@ class Boundary2D
                 throw std::runtime_error("Could not find any simple-cycle boundary");  
             opt_alpha = CGAL::to_double(shape.get_nth_alpha(opt_alpha_index));
             shape.set_alpha(shape.get_nth_alpha(opt_alpha_index));
-
-            // Identify, for each vertex in the alpha shape, the point corresponding to it 
-            for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
-            {
-                // Find the point being pointed to by the boundary vertex 
-                Point_2 point = (*it)->point();
-                double x = point.x(); 
-                double y = point.y(); 
-                
-                // Find the nearest point in the point-set to this boundary vertex
-                double nearest_sqdist = std::numeric_limits<double>::infinity(); 
-                int nearest_index = 0; 
-                for (unsigned i = 0; i < this->n; ++i)
-                {
-                    double sqdist = std::pow(this->x[i] - x, 2) + std::pow(this->y[i] - y, 2);
-                    if (sqdist < nearest_sqdist)
-                    {
-                        nearest_sqdist = sqdist;
-                        nearest_index = i; 
-                    }
-                }
-                vertices_to_points[*it] = std::make_pair(nearest_index, nearest_sqdist);
-            }
 
             // Count the edges in the alpha shape
             VectorXi ones = VectorXi::Ones(nvertices); 
@@ -1222,10 +1233,8 @@ class Boundary2D
                     traversed_points.push_back(p);
                 }
                 Polygon_2 polygon(traversed_points.begin(), traversed_points.end());
-                if (!polygon.is_simple())
-                    throw std::runtime_error("Simple-cycle boundary does not form a simple polygon"); 
                 
-                // Simplify the polygon: this polygon should be simple   
+                // Simplify the polygon ...  
                 Polygon_2 simplified_polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
 
                 for (auto it = simplified_polygon.vertices_begin(); it != simplified_polygon.vertices_end(); ++it)
@@ -1233,20 +1242,22 @@ class Boundary2D
                     double x = it->x(); 
                     double y = it->y(); 
 
-                    // ... and identify the index of the vertex in the 
-                    // entire point-set 
-                    auto itp = std::find_if(
-                        vertices_to_points.begin(), vertices_to_points.end(), 
-                        [x, y, &points](std::pair<Vertex_handle_2, std::pair<unsigned, double> > v)
+                    // ... and identify the index of each vertex in the polygon
+                    // with respect to the entire point-set 
+                    double sqdist_to_nearest_point = std::numeric_limits<double>::infinity(); 
+                    auto it_nearest_point = points.begin(); 
+                    for (auto it2 = points.begin(); it2 != points.end(); ++it2) 
+                    {
+                        double xv = it2->x(); 
+                        double yv = it2->y(); 
+                        double sqdist = std::pow(x - xv, 2) + std::pow(y - yv, 2);
+                        if (sqdist_to_nearest_point > sqdist)
                         {
-                            unsigned i = v.second.first; 
-                            double sqdist = v.second.second; 
-                            double xv = points[i].x(); 
-                            double yv = points[i].y();
-                            return (std::pow(x - xv, 2) + std::pow(y - yv, 2) <= sqdist); 
+                            sqdist_to_nearest_point = sqdist; 
+                            it_nearest_point = it2; 
                         }
-                    );
-                    vertex_indices_in_order.push_back(itp->second.first);
+                    } 
+                    vertex_indices_in_order.push_back(std::distance(points.begin(), it_nearest_point)); 
                 }
 
                 // The edges in the polygon are then easy to determine
@@ -1264,7 +1275,7 @@ class Boundary2D
 
                 // Compute the area of the polygon formed by the simplified 
                 // boundary
-                double total_area = abs(CGAL::to_double(polygon.area())); 
+                double total_area = std::abs(CGAL::to_double(polygon.area())); 
                 std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
                 std::cout << "- enclosed area = " << total_area << std::endl;  
                 std::cout << "- number of vertices = " << nvertices << std::endl; 
