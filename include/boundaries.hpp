@@ -1128,7 +1128,7 @@ class Boundary2D
             {
                 low = 0;
             }
-            int high = shape.number_of_alphas(); 
+            int high = shape.number_of_alphas() - 1; 
             std::cout << "- searching between alpha = "
                       << CGAL::to_double(shape.get_nth_alpha(low))
                       << " and "
