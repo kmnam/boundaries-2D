@@ -700,22 +700,13 @@ class Boundary2D
             if (!tag)
                 std::cout << "[WARN] Computing alpha shape with tag == false\n";
 
-            // Instantiate a vector of Point objects, keeping track of the 
-            // smallest and largest x- and y-coordinate values 
+            // Instantiate a vector of Point objects
             std::vector<Point_2> points;
-            double xmin = std::numeric_limits<double>::infinity(); 
-            double ymin = std::numeric_limits<double>::infinity();
-            double xmax = -std::numeric_limits<double>::infinity();
-            double ymax = -std::numeric_limits<double>::infinity();
             for (unsigned i = 0; i < this->n; ++i)
             {
                 double xi = this->x[i]; 
                 double yi = this->y[i]; 
                 points.emplace_back(Point_2(xi, yi)); 
-                if (xmin > xi) xmin = xi; 
-                if (xmax < xi) xmax = xi; 
-                if (ymin > yi) ymin = yi; 
-                if (ymax < yi) ymax = yi;
             }
 
             // Compute the alpha shape from the Delaunay triangulation
@@ -907,22 +898,13 @@ class Boundary2D
             if (!tag)
                 std::cout << "[WARN] Computing alpha shape with tag == false\n";
 
-            // Instantiate a vector of Point objects, keeping track of the 
-            // smallest and largest x- and y-coordinate values 
+            // Instantiate a vector of Point objects
             std::vector<Point_2> points;
-            double xmin = std::numeric_limits<double>::infinity(); 
-            double ymin = std::numeric_limits<double>::infinity();
-            double xmax = -std::numeric_limits<double>::infinity();
-            double ymax = -std::numeric_limits<double>::infinity();
             for (unsigned i = 0; i < this->n; ++i)
             {
                 double xi = this->x[i]; 
                 double yi = this->y[i]; 
                 points.emplace_back(Point_2(xi, yi)); 
-                if (xmin > xi) xmin = xi; 
-                if (xmax < xi) xmax = xi; 
-                if (ymin > yi) ymin = yi; 
-                if (ymax < yi) ymax = yi;
             }
 
             // Compute the alpha shape from the Delaunay triangulation
@@ -1084,24 +1066,14 @@ class Boundary2D
             if (!tag)
                 std::cout << "[WARN] Computing alpha shape with tag == false\n";
 
-            // Instantiate a vector of Point objects, keeping track of the 
-            // smallest and largest x- and y-coordinate values 
+            // Instantiate a vector of Point objects
             std::vector<Point_2> points;
-            double xmin = std::numeric_limits<double>::infinity(); 
-            double ymin = std::numeric_limits<double>::infinity();
-            double xmax = -std::numeric_limits<double>::infinity();
-            double ymax = -std::numeric_limits<double>::infinity();
             for (unsigned i = 0; i < this->n; ++i)
             {
                 double xi = this->x[i]; 
                 double yi = this->y[i]; 
                 points.emplace_back(Point_2(xi, yi)); 
-                if (xmin > xi) xmin = xi; 
-                if (xmax < xi) xmax = xi; 
-                if (ymin > yi) ymin = yi; 
-                if (ymax < yi) ymax = yi;
             }
-            double maxdist = std::sqrt(std::pow(xmax - xmin, 2) + std::pow(ymax - ymin, 2));
 
             // Compute the alpha shape from the Delaunay triangulation
             Alpha_shape shape; 
@@ -1143,11 +1115,6 @@ class Boundary2D
             int low = 0; 
             int high; 
             int last_valid = INVALID_ALPHA_INDEX;
-
-            // Find the least value of alpha that is greater than the lower bound 
-            // on the inter-point distance found through the minimum and maximum
-            // x- and y-coordinate values 
-            high = std::distance(shape.alpha_begin(), shape.alpha_lower_bound(maxdist));
 
             // Try to find the smallest value of alpha for which the boundary
             // consists of one connected component
