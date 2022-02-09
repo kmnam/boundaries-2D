@@ -577,15 +577,21 @@ class Boundary2D
             int nvisited = visited.sum(); 
             if (nvisited == nvertices && returned)
             {
-                std::cout << "- ... traversed " << nvisited << "/" << nvertices
-                          << " boundary vertices in a simple cycle" << std::endl;
+                if (verbose)
+                { 
+                    std::cout << "- ... traversed " << nvisited << "/" << nvertices
+                              << " boundary vertices in a simple cycle" << std::endl;
+                }
                 return std::make_pair(nvertices, true); 
             }
             else
             {
-                std::cout << "- ... traversed " << nvisited << "/" << nvertices 
-                          << " boundary vertices; boundary contains "
-                          << nedges << " edges" << std::endl;
+                if (verbose)
+                {
+                    std::cout << "- ... traversed " << nvisited << "/" << nvertices 
+                              << " boundary vertices; boundary contains "
+                              << nedges << " edges" << std::endl;
+                }
                 return std::make_pair(nvertices, false);  
             }
         }
@@ -1143,14 +1149,14 @@ class Boundary2D
             // x- and y-coordinate values 
             high = std::distance(shape.alpha_begin(), shape.alpha_lower_bound(maxdist));
 
-            // Try to find a value of alpha for which the boundary consists of
-            // more than one connected component
+            // Try to find the smallest value of alpha for which the boundary
+            // consists of one connected component
             //
             // Alpha_shape_2::find_optimal_alpha() can throw an Assertion_exception
             // if there are collinear points within the alpha shape
             try
             {
-                low = std::distance(shape.alpha_begin(), shape.find_optimal_alpha(2));
+                low = std::distance(shape.alpha_begin(), shape.find_optimal_alpha(1));
             } 
             catch (CGAL::Assertion_exception& e)
             {
@@ -1180,7 +1186,7 @@ class Boundary2D
             {
                 std::pair<int, bool> result = traverseAlphaShape(
                     shape, points, traversal, vertices_to_indices,
-                    indices_to_vertices, vertices_to_points, adj, mid, true
+                    indices_to_vertices, vertices_to_points, adj, mid, false
                 );
                 nvertices = result.first; 
                 if (result.second)
