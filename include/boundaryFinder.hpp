@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     2/8/2022
+ *     2/18/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -23,8 +23,8 @@
 #include <CGAL/Vector_2.h>
 #include <boost/random.hpp>
 #include <polytopes.hpp>
+#include <linearConstraints.hpp>
 #include "boundaries.hpp"
-#include "linearConstraints.hpp"
 #include "SQP.hpp"
 
 using namespace Eigen;
@@ -291,16 +291,33 @@ class BoundaryFinder
             try
             {
                 // This line may throw:
-                // - CGAL::Precondition_exception (while attempting polygon instantiation)
+                // - CGAL::Assertion_exception (while instantiating the alpha shape) 
+                // - CGAL::Precondition_exception (while instantiating the polygon 
+                //   for simplification) 
                 // - std::runtime_error (if polygon is not simple)
                 bound_data = boundary.getSimplyConnectedBoundary<true>(max_edges);
             }
+            catch (CGAL::Assertion_exception& e) 
+            {
+                // Try with tag == false
+                //
+                // This may throw (another) CGAL::Assertion_exception (while
+                // instantiating the alpha shape) 
+                try 
+                {
+                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
             catch (CGAL::Precondition_exception& e)
             {
-                // Try with tag == false 
-                // 
-                // This may throw a CGAL::Assertion_exception (while attempting alpha 
-                // shape instantiation)
+                // Try with tag == false
+                //
+                // This may throw a CGAL::Assertion_exception (while instantiating
+                // the alpha shape) 
                 try 
                 {
                     bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
@@ -312,10 +329,10 @@ class BoundaryFinder
             }
             catch (std::runtime_error& e)
             {
-                // Try with tag == false 
-                // 
-                // This may throw a CGAL::Assertion_exception (while attempting alpha 
-                // shape instantiation)
+                // Try with tag == false
+                //
+                // This may throw a CGAL::Assertion_exception (while instantiating
+                // the alpha shape) 
                 try 
                 {
                     bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
@@ -451,16 +468,33 @@ class BoundaryFinder
             try
             {
                 // This line may throw:
-                // - CGAL::Precondition_exception (while attempting polygon instantiation)
+                // - CGAL::Assertion_exception (while instantiating the alpha shape) 
+                // - CGAL::Precondition_exception (while instantiating the polygon 
+                //   for simplification) 
                 // - std::runtime_error (if polygon is not simple)
                 bound_data = boundary.getSimplyConnectedBoundary<true>(max_edges);
+            }
+            catch (CGAL::Assertion_exception& e) 
+            {
+                // Try with tag == false
+                //
+                // This may throw (another) CGAL::Assertion_exception (while
+                // instantiating the alpha shape) 
+                try 
+                {
+                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
             }
             catch (CGAL::Precondition_exception& e)
             {
                 // Try with tag == false
                 //
-                // This may throw a CGAL::Assertion_exception (while attempting alpha 
-                // shape instantiation)
+                // This may throw a CGAL::Assertion_exception (while instantiating
+                // the alpha shape) 
                 try 
                 {
                     bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
@@ -474,8 +508,8 @@ class BoundaryFinder
             {
                 // Try with tag == false
                 //
-                // This may throw a CGAL::Assertion_exception (while attempting alpha 
-                // shape instantiation)
+                // This may throw a CGAL::Assertion_exception (while instantiating
+                // the alpha shape) 
                 try 
                 {
                     bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
@@ -675,16 +709,33 @@ class BoundaryFinder
             try
             {
                 // This line may throw:
-                // - CGAL::Precondition_exception (while attempting polygon instantiation)
+                // - CGAL::Assertion_exception (while instantiating the alpha shape) 
+                // - CGAL::Precondition_exception (while instantiating the polygon 
+                //   for simplification) 
                 // - std::runtime_error (if polygon is not simple)
                 bound_data = boundary.getSimplyConnectedBoundary<true>(max_edges);
+            }
+            catch (CGAL::Assertion_exception& e) 
+            {
+                // Try with tag == false
+                //
+                // This may throw (another) CGAL::Assertion_exception (while
+                // instantiating the alpha shape) 
+                try 
+                {
+                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
             }
             catch (CGAL::Precondition_exception& e)
             {
                 // Try with tag == false
                 //
-                // This may throw a CGAL::Assertion_exception (while attempting alpha 
-                // shape instantiation)
+                // This may throw a CGAL::Assertion_exception (while instantiating
+                // the alpha shape) 
                 try 
                 {
                     bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
@@ -698,8 +749,8 @@ class BoundaryFinder
             {
                 // Try with tag == false
                 //
-                // This may throw a CGAL::Assertion_exception (while attempting alpha 
-                // shape instantiation)
+                // This may throw a CGAL::Assertion_exception (while instantiating
+                // the alpha shape) 
                 try 
                 {
                     bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
