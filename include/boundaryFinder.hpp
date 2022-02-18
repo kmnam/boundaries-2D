@@ -124,7 +124,7 @@ class BoundaryFinder
             this->func = func;
 
             // Check that A has the correct number of columns 
-            if (this->constraints.getA().cols() != InputDim) 
+            if (this->constraints.getD() != InputDim)
                 throw std::invalid_argument("Invalid linear constraints specified");  
         }
 
@@ -155,7 +155,7 @@ class BoundaryFinder
             this->func = func;
 
             // Check that A has the correct number of columns 
-            if (this->constraints.getA().cols() != InputDim) 
+            if (this->constraints.getD() != InputDim) 
                 throw std::invalid_argument("Invalid linear constraints specified");  
 
             // Parse the vertices from the given file and obtain the Delaunay
