@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     2/18/2022
+ *     2/23/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -82,12 +82,15 @@ class BoundaryFinder
          * @param rng      Random number generator instance. 
          * @param A        Left-hand matrix for polytope constraints. 
          * @param b        Right-hand vector for polytope constraints.
+         * @param type     Inequality type. 
          * @param func     Mapping from the input polytope into the plane.  
          */
-        BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
+        BoundaryFinder(const double area_tol, boost::random::mt19937& rng, 
                        const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b,
+                       const InequalityType type, 
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
-            : tri(InputDim)    // Initialize Delaunay triangulation with input dimension 
+            : tri(InputDim),      // Initialize Delaunay triangulation with input dimension
+              constraints(type)   // Initialize linear constraints with given inequality type 
         {
             this->N = 0;
             this->area_tol = area_tol;
@@ -111,16 +114,18 @@ class BoundaryFinder
          * @param func                 Mapping from the input polytope into
          *                             the plane.  
          */
-        BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
-                       std::string constraints_filename,
+        BoundaryFinder(const double area_tol, boost::random::mt19937& rng, 
+                       const std::string constraints_filename,
+                       const InequalityType type, 
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
-            : tri(InputDim)    // Initialize Delaunay triangulation with input dimension 
+            : tri(InputDim),      // Initialize Delaunay triangulation with input dimension
+              constraints(type)   // Initialize linear constraints with given inequality type 
         {
             this->N = 0;
             this->area_tol = area_tol;
             this->curr_area = 0.0;
             this->rng = rng;
-            this->constraints.parse(constraints_filename); 
+            this->constraints.parse(constraints_filename, type); 
             this->func = func;
 
             // Check that A has the correct number of columns 
@@ -141,17 +146,19 @@ class BoundaryFinder
          * @param func                 Mapping from the input polytope into
          *                             the plane.  
          */
-        BoundaryFinder(double area_tol, boost::random::mt19937& rng, 
-                       std::string constraints_filename,
-                       std::string vertices_filename,
+        BoundaryFinder(const double area_tol, boost::random::mt19937& rng, 
+                       const std::string constraints_filename,
+                       const std::string vertices_filename,
+                       const InequalityType type, 
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
-            : tri(InputDim)    // Initialize Delaunay triangulation with input dimension 
+            : tri(InputDim),      // Initialize Delaunay triangulation with input dimension
+              constraints(type)   // Initialize linear constraints with given inequality type 
         {
             this->N = 0;
             this->area_tol = area_tol;
             this->curr_area = 0.0;
             this->rng = rng;
-            this->constraints.parse(constraints_filename);
+            this->constraints.parse(constraints_filename, type);
             this->func = func;
 
             // Check that A has the correct number of columns 
@@ -211,7 +218,7 @@ class BoundaryFinder
          * @param filter Boolean function for filtering output points in the 
          *               plane as desired.
          * @param input  Initial set of points in the input polytope at which 
-         *               to evaluate the stored mapping. 
+         *               to evaluate the stored mapping., type 
          * @throws std::invalid_argument if the input points do not have the 
          *                               correct dimension.  
          */
@@ -590,7 +597,12 @@ class BoundaryFinder
             unsigned nc = A.rows();
 
             // Define an SQPOptimizer instance to be utilized 
-            SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(InputDim, nc, A, b); 
+            InequalityType type = this->constraints.getInequalityType(); 
+            SQPOptimizer<double> optimizer(
+                InputDim, nc,
+                (type == Polytopes::InequalityType::LessThanOrEqualTo ? -A : A),
+                (type == Polytopes::InequalityType::LessThanOrEqualTo ? -b : b)
+            ); 
 
             // For each vertex in the boundary, minimize the distance to the
             // pulled vertex with a feasible parameter point
@@ -606,7 +618,7 @@ class BoundaryFinder
                 VectorXd l_init = VectorXd::Ones(nc) - this->constraints.active(x_init).template cast<double>();
                 VectorXd xl_init(InputDim + nc); 
                 xl_init << x_init, l_init;
-                VectorXd q = optimizer->run(obj, xl_init, max_iter, sqp_tol, BFGS, sqp_verbose);
+                VectorXd q = optimizer.run(obj, xl_init, max_iter, sqp_tol, BFGS, sqp_verbose);
                 VectorXd z = this->func(q); 
                 
                 // Check that the mutation did not give rise to an already 
@@ -622,7 +634,6 @@ class BoundaryFinder
                 }
             }
 
-            delete optimizer;
             return (std::abs(change) < this->area_tol * (area - change));
         }
 
