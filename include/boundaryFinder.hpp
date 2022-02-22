@@ -62,7 +62,7 @@ class BoundaryFinder
         MatrixX2d points;
 
         // Linear inequalities that encode the convex polytopic domain 
-        LinearConstraints constraints;
+        Polytopes::LinearConstraints constraints;
 
         // Delaunay triangulation of the convex polytopic domain 
         Delaunay_triangulation tri; 
@@ -87,7 +87,7 @@ class BoundaryFinder
          */
         BoundaryFinder(const double area_tol, boost::random::mt19937& rng, 
                        const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b,
-                       const InequalityType type, 
+                       const Polytopes::InequalityType type, 
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
             : tri(InputDim),      // Initialize Delaunay triangulation with input dimension
               constraints(type)   // Initialize linear constraints with given inequality type 
@@ -116,7 +116,7 @@ class BoundaryFinder
          */
         BoundaryFinder(const double area_tol, boost::random::mt19937& rng, 
                        const std::string constraints_filename,
-                       const InequalityType type, 
+                       const Polytopes::InequalityType type, 
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
             : tri(InputDim),      // Initialize Delaunay triangulation with input dimension
               constraints(type)   // Initialize linear constraints with given inequality type 
@@ -149,7 +149,7 @@ class BoundaryFinder
         BoundaryFinder(const double area_tol, boost::random::mt19937& rng, 
                        const std::string constraints_filename,
                        const std::string vertices_filename,
-                       const InequalityType type, 
+                       const Polytopes::InequalityType type, 
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
             : tri(InputDim),      // Initialize Delaunay triangulation with input dimension
               constraints(type)   // Initialize linear constraints with given inequality type 
@@ -597,7 +597,7 @@ class BoundaryFinder
             unsigned nc = A.rows();
 
             // Define an SQPOptimizer instance to be utilized 
-            InequalityType type = this->constraints.getInequalityType(); 
+            Polytopes::InequalityType type = this->constraints.getInequalityType(); 
             SQPOptimizer<double> optimizer(
                 InputDim, nc,
                 (type == Polytopes::InequalityType::LessThanOrEqualTo ? -A : A),

@@ -106,10 +106,10 @@ class SQPOptimizer
      * inequality constraints). 
      */
     private:
-        unsigned D;                        // Dimension of input space
-        unsigned N;                        // Number of constraints 
-        LinearConstraints* constraints;    // Linear inequality constraints
-        Program* program;                  // Internal quadratic program to be solved at each step
+        unsigned D;                                   // Dimension of input space
+        unsigned N;                                   // Number of constraints 
+        Polytopes::LinearConstraints* constraints;    // Linear inequality constraints
+        Program* program;                             // Internal quadratic program to be solved at each step
 
     public:
         SQPOptimizer(unsigned D, unsigned N, const Ref<const MatrixXd>& A,
@@ -122,7 +122,9 @@ class SQPOptimizer
             this->N = N;
             if (A.rows() != this->N || A.cols() != this->D || b.size() != this->N)
                 throw std::invalid_argument("Invalid input matrix dimensions");
-            this->constraints = new LinearConstraints(A, b);
+            this->constraints = new Polytopes::LinearConstraints(
+                Polytopes::InequalityType::GreaterThanOrEqualTo, A, b
+            );
             this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
         }
 
@@ -142,7 +144,7 @@ class SQPOptimizer
              */
             if (A.rows() != this->N || A.cols() != this->D || b.size() != this->N)
                 throw std::invalid_argument("Invalid input matrix dimensions");
-            this->constraints = new LinearConstraints(A, b);
+            this->constraints->setAb(A, b);
         }
 
         std::pair<T, VectorXd> func_with_gradient(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
