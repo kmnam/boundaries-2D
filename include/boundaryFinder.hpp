@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     2/23/2022
+ *     3/2/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -21,6 +21,7 @@
 #include <Eigen/Dense>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Vector_2.h>
+#include <boost/multiprecision/gmp.hpp>
 #include <boost/random.hpp>
 #include <polytopes.hpp>
 #include <linearConstraints.hpp>
@@ -61,8 +62,9 @@ class BoundaryFinder
         // Matrix of output points in 2-D space
         MatrixX2d points;
 
-        // Linear inequalities that encode the convex polytopic domain 
-        Polytopes::LinearConstraints constraints;
+        // Linear inequalities that encode the convex polytopic domain
+        // with rational coordinates  
+        Polytopes::LinearConstraints<mpq_rational> constraints;
 
         // Delaunay triangulation of the convex polytopic domain 
         Delaunay_triangulation tri; 
@@ -86,7 +88,8 @@ class BoundaryFinder
          * @param func     Mapping from the input polytope into the plane.  
          */
         BoundaryFinder(const double area_tol, boost::random::mt19937& rng, 
-                       const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b,
+                       const Ref<const Matrix<mpq_rational, Dynamic, Dynamic> >& A,
+                       const Ref<const Matrix<mpq_rational, Dynamic, 1> >& b,
                        const Polytopes::InequalityType type, 
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
             : tri(InputDim),      // Initialize Delaunay triangulation with input dimension
@@ -184,7 +187,8 @@ class BoundaryFinder
          * @param A Left-hand matrix of polytope constraints.
          * @param b Right-hand vector of polytope constraints. 
          */
-        void setConstraints(const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
+        void setConstraints(const Ref<const Matrix<mpq_rational, Dynamic, Dynamic> >& A,
+                            const Ref<const Matrix<mpq_rational, Dynamic, 1> >& b)
         {
             this->constraints.setAb(A, b);
         }
@@ -407,7 +411,7 @@ class BoundaryFinder
                     // Evaluate the given function at a randomly generated 
                     // parameter point
                     VectorXd p = this->input.row(this->vertices[i]); 
-                    q = this->constraints.nearestL2(mutate(p, this->rng));
+                    q = this->constraints.template nearestL2<double>(mutate(p, this->rng)).template cast<double>();
                     z = this->func(q);
                     filtered = filter(z);
                     
@@ -592,8 +596,8 @@ class BoundaryFinder
             }
 
             // Pull out the constraint matrix and vector 
-            MatrixXd A = this->constraints.getA();
-            VectorXd b = this->constraints.getb();
+            MatrixXd A = this->constraints.getA().template cast<double>();
+            VectorXd b = this->constraints.getb().template cast<double>();
             unsigned nc = A.rows();
 
             // Define an SQPOptimizer instance to be utilized 
@@ -615,7 +619,8 @@ class BoundaryFinder
                     return (target - this->func(x)).squaredNorm();
                 };
                 VectorXd x_init = this->input.row(this->vertices[i]);
-                VectorXd l_init = VectorXd::Ones(nc) - this->constraints.active(x_init).template cast<double>();
+                VectorXd l_init = VectorXd::Ones(nc)
+                    - this->constraints.active(x_init.cast<mpq_rational>()).template cast<double>();
                 VectorXd xl_init(InputDim + nc); 
                 xl_init << x_init, l_init;
                 VectorXd q = optimizer.run(obj, xl_init, max_iter, sqp_tol, BFGS, sqp_verbose);

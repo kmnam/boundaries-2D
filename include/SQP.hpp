@@ -1,3 +1,15 @@
+/**
+ * An implementation of a nonlinear optimizer with respect to linear 
+ * constraints with sequential quadratic programming (SQP) with automatic
+ * differentiation and/or quasi-Newton Hessian approximations. 
+ *
+ * **Authors:** 
+ *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
+ * 
+ * **Last updated:**
+ *     3/2/2022
+ */
+
 #ifndef SQP_OPTIMIZER_HPP
 #define SQP_OPTIMIZER_HPP
 
@@ -8,19 +20,10 @@
 #include <Eigen/Dense>
 #include <CGAL/QP_models.h>
 #include <CGAL/QP_functions.h>
+#include <boost/multiprecision/gmp.hpp>
 #include "linearConstraints.hpp"
 #include "quasiNewton.hpp"
 
-/*
- * An implementation of a nonlinear optimizer with respect to linear 
- * constraints with sequential quadratic programming (SQP) with automatic
- * differentiation and/or quasi-Newton Hessian approximations. 
- *
- * Authors: 
- *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
- * Last updated:
- *     3/17/2021
- */
 using namespace Eigen;
 typedef CGAL::Gmpzf ET;
 typedef CGAL::Quadratic_program<double> Program;
@@ -106,10 +109,11 @@ class SQPOptimizer
      * inequality constraints). 
      */
     private:
-        unsigned D;                                   // Dimension of input space
-        unsigned N;                                   // Number of constraints 
-        Polytopes::LinearConstraints* constraints;    // Linear inequality constraints
-        Program* program;                             // Internal quadratic program to be solved at each step
+        unsigned D;                                                 // Dimension of input space
+        unsigned N;                                                 // Number of constraints 
+        Polytopes::LinearConstraints<mpq_rational>* constraints;    // Linear inequality constraints
+        Program* program;                                           // Internal quadratic program to
+                                                                    // be solved at each step
 
     public:
         SQPOptimizer(unsigned D, unsigned N, const Ref<const MatrixXd>& A,
@@ -122,7 +126,7 @@ class SQPOptimizer
             this->N = N;
             if (A.rows() != this->N || A.cols() != this->D || b.size() != this->N)
                 throw std::invalid_argument("Invalid input matrix dimensions");
-            this->constraints = new Polytopes::LinearConstraints(
+            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(
                 Polytopes::InequalityType::GreaterThanOrEqualTo, A, b
             );
             this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
@@ -137,7 +141,8 @@ class SQPOptimizer
             delete this->program;
         }
 
-        void setConstraints(const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
+        void setConstraints(const Ref<const Matrix<mpq_rational, Dynamic, Dynamic> >& A,
+                            const Ref<const Matrix<mpq_rational, Dynamic, 1> >& b)
         {
             /*
              * Update the stored linear constraints. 
@@ -255,8 +260,8 @@ std::pair<double, VectorXd>
 
     VectorXd x = xl.head(this->D);
     VectorXd l = xl.tail(this->N);
-    MatrixXd A = this->constraints->getA();
-    VectorXd b = this->constraints->getb();
+    MatrixXd A = this->constraints->getA().template cast<double>();
+    VectorXd b = this->constraints->getb().template cast<double>();
     double L = func(x) - l.dot(A * x - b);
 
     // Evaluate the Lagrangian at 2 * D values, with each coordinate 
@@ -312,8 +317,8 @@ StepData<double> SQPOptimizer<double>::step(std::function<double(const Ref<const
         return prev_data;
 
     // Evaluate the constraints and their gradients
-    MatrixXd A = this->constraints->getA();
-    VectorXd c = -(A * x.cast<double>() - this->constraints->getb());
+    MatrixXd A = this->constraints->getA().template cast<double>();
+    VectorXd c = -(A * x.cast<double>() - this->constraints->getb().template cast<double>());
 
     // Set up the quadratic program:
     //
