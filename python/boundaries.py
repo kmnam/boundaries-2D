@@ -357,7 +357,7 @@ class Boundary2D(object):
         # Instantiate the Polygon object to be plotted 
         polygon = patches.Polygon(
             self.points[self.vertices, :], closed=True,
-            facecolor=(None if not shade_interior else interior_color),
+            facecolor=('none' if not shade_interior else interior_color),
             edgecolor=color, alpha=(None if not shade_interior else shade_alpha),
             linewidth=linewidth, **boundary_kws
         )
