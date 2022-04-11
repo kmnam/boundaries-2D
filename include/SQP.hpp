@@ -7,7 +7,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     3/2/2022
+ *     4/11/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -116,37 +116,83 @@ class SQPOptimizer
                                                                     // be solved at each step
 
     public:
-        SQPOptimizer(unsigned D, unsigned N, const Ref<const MatrixXd>& A,
-                     const Ref<const VectorXd>& b)
+        /**
+         * Straightforward constructor with `N` variables.
+         *
+         * Each variable is constrained to be greater than or equal to zero. 
+         */
+        SQPOptimizer(const unsigned N)
         {
-            /*
-             * Straightforward constructor.
-             */
+            this->D = D;
+            this->N = D;    // One constraint for each variable
+            MatrixXd A = MatrixXd::Identity(D, D); 
+            VectorXd b = VectorXd::Zero(D); 
+            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(
+                Polytopes::InequalityType::GreaterThanOrEqualTo, A, b
+            ); 
+            this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
+        }
+
+        /**
+         * Constructor with constraint matrix and vector specified, and
+         * inequality set to greater-than-or-equal-to. 
+         */
+        SQPOptimizer(const unsigned D, const unsigned N,
+                     const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
+        {
             this->D = D;
             this->N = N;
             if (A.rows() != this->N || A.cols() != this->D || b.size() != this->N)
                 throw std::invalid_argument("Invalid input matrix dimensions");
             this->constraints = new Polytopes::LinearConstraints<mpq_rational>(
                 Polytopes::InequalityType::GreaterThanOrEqualTo, A, b
-            );
+            ); 
             this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
         }
 
+        /**
+         * Constructor with constraint matrix, vector, and inequality type
+         * specified. 
+         */
+        SQPOptimizer(const unsigned D, const unsigned N,
+                     const Polytopes::InequalityType type, 
+                     const Ref<const MatrixXd>& A, const Ref<const VectorXd>& b)
+        {
+            this->D = D;
+            this->N = N;
+            if (A.rows() != this->N || A.cols() != this->D || b.size() != this->N)
+                throw std::invalid_argument("Invalid input matrix dimensions");
+            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type, A, b); 
+            this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
+        }
+
+        /**
+         * Constructor with linear constraints specified via a `LinearConstraints`
+         * instance. 
+         */
+        SQPOptimizer(const LinearConstraints<mpq_rational>* constraints)
+        {
+            this->constraints = constraints;
+            this->D = constraints->getD(); 
+            this->N = constraints->getN(); 
+            this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);  
+        }
+
+        /**
+         * Destructor; deallocates the `LinearConstraints` and `Program` instances.
+         */
         ~SQPOptimizer()
         {
-            /*
-             * Destructor; deallocates the LinearConstraints object.
-             */
             delete this->constraints;
             delete this->program;
         }
 
+        /**
+         * Update the stored linear constraints. 
+         */
         void setConstraints(const Ref<const Matrix<mpq_rational, Dynamic, Dynamic> >& A,
                             const Ref<const Matrix<mpq_rational, Dynamic, 1> >& b)
         {
-            /*
-             * Update the stored linear constraints. 
-             */
             if (A.rows() != this->N || A.cols() != this->D || b.size() != this->N)
                 throw std::invalid_argument("Invalid input matrix dimensions");
             this->constraints->setAb(A, b);
