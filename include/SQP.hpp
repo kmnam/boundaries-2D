@@ -21,7 +21,7 @@
 #include <CGAL/QP_models.h>
 #include <CGAL/QP_functions.h>
 #include <boost/multiprecision/gmp.hpp>
-#include "linearConstraints.hpp"
+#include <linearConstraints.hpp>
 #include "quasiNewton.hpp"
 
 using namespace Eigen;
@@ -210,15 +210,15 @@ class SQPOptimizer
                                          const StepData<T> prev_data, const bool verbose,
                                          const unsigned hessian_modify_max_iter);
 
+        /**
+         * Run the optimization with the given objective function, initial
+         * vector, and settings. 
+         */
         VectorXd run(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                      const Ref<const Matrix<T, Dynamic, 1> >& xl_init,
                      const unsigned max_iter, const double tol,
                      const QuasiNewtonMethod quasi_newton, const bool verbose)
         {
-            /*
-             * Run the optimization with the given objective, initial vector,
-             * and settings.   
-             */
             // Print the input vector and value of the objective function
             if (verbose)
             {
