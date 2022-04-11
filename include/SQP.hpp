@@ -146,7 +146,9 @@ class SQPOptimizer
             if (A.rows() != this->N || A.cols() != this->D || b.size() != this->N)
                 throw std::invalid_argument("Invalid input matrix dimensions");
             this->constraints = new Polytopes::LinearConstraints<mpq_rational>(
-                Polytopes::InequalityType::GreaterThanOrEqualTo, A, b
+                Polytopes::InequalityType::GreaterThanOrEqualTo,
+                A.template cast<mpq_rational>(),
+                b.template cast<mpq_rational>()
             ); 
             this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
         }
@@ -163,7 +165,9 @@ class SQPOptimizer
             this->N = N;
             if (A.rows() != this->N || A.cols() != this->D || b.size() != this->N)
                 throw std::invalid_argument("Invalid input matrix dimensions");
-            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type, A, b); 
+            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(
+                type, A.template cast<mpq_rational>(), b.template cast<mpq_rational>()
+            ); 
             this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
         }
 
