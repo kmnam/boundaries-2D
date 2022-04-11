@@ -128,18 +128,20 @@ int main(int argc, char** argv)
     // Run boundary-finding algorithm on the image of func1() on the square 
     std::stringstream ss_out;
     joinPath(ss_out, output_dir, "square-2-func1");
+    std::function<VectorXd(const Ref<const VectorXd>&)> obj1 = func1; 
     BoundaryFinder<2>* finder1 = new BoundaryFinder<2>(
         tol, rng, square_constraints.str(), square_vertices.str(), 
-        Polytopes::GreaterThanOrEqualTo, *func1
+        Polytopes::GreaterThanOrEqualTo, obj1
     );
     MatrixXd init_input1 = Polytopes::sampleFromConvexPolytope<100>(square_vertices.str(), 20, 0, rng); 
     testBoundaryFinder(finder1, init_input1, ss_out.str(), add_delta);
    
     // Run boundary-finding algorithm on the image of project() on the cube 
-    joinPath(ss_out, output_dir, "cube-4-project"); 
+    joinPath(ss_out, output_dir, "cube-4-project");
+    std::function<VectorXd(const Ref<const VectorXd>&)> obj2 = project;  
     BoundaryFinder<4>* finder2 = new BoundaryFinder<4>(
         tol, rng, cube_constraints.str(), cube_vertices.str(), 
-        Polytopes::GreaterThanOrEqualTo, *project
+        Polytopes::GreaterThanOrEqualTo, obj2
     );
     MatrixXd init_input2 = Polytopes::sampleFromConvexPolytope<100>(cube_vertices.str(), 20, 0, rng); 
     testBoundaryFinder(finder2, init_input2, ss_out.str(), add_delta); 
