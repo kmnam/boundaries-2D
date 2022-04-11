@@ -10,10 +10,11 @@
 /*
  * Test module for the BoundaryFinder class. 
  *
- * Authors:
+ * **Authors:**
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
- * Last updated:
- *     3/19/2021
+ *
+ * **Last updated:**
+ *     4/11/2022
  */
 using namespace Eigen;
 
@@ -66,22 +67,29 @@ VectorXd add_delta(const Ref<const VectorXd>& x, boost::random::mt19937& rng)
 // -------------------------------------------------------- //
 //                 BOUNDARY FINDER FUNCTIONS                //
 // -------------------------------------------------------- //
-void testBoundaryFinder(std::string poly_filename, std::string vert_filename,
-                        std::string output_prefix, std::function<VectorXd(const Ref<const VectorXd>&)> func,
+void testBoundaryFinder(const std::string constraints_filename,
+                        const std::string vertices_filename,
+                        const std::string output_prefix, 
+                        const Polytopes::InequalityType type,  
+                        std::function<VectorXd(const Ref<const VectorXd>&)> func,
                         std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate)
 {
     /*
-     * Run BoundaryFinder on the projection of the given polytope onto the 
-     * first two coordinates. 
+     * Run the boundary-finding algorithm on the projection of the given
+     * polytope onto the first two coordinates. 
      */
     boost::random::mt19937 rng(1234567890);
-    const double tol = 1e-5;         // Tolerance for convergence
+    const double tol = 1e-8;         // Tolerance for convergence
 
-    BoundaryFinder finder(tol, rng, poly_filename, vert_filename);
+    // Sample 20 points from the interior of the (projected) polytope
+    MatrixXd init_input = Polytopes::sampleFromConvexPolytope<100>(vertices_filename, 20, 0, rng);
+    init_input = init_input.block(0, 0, 20, 2); 
+
+    BoundaryFinder<2> finder(tol, rng, constraints_filename, vertices_filename, type, func);
     finder.run(
-        func, mutate,
-        [](const Ref<const VectorXd>& v){ return false; },    // No filtering 
-        20, 20,    // 20 points within the cube, 20 points from the boundary
+        mutate,
+        [](const Ref<const VectorXd>& v){ return false; },    // No filtering
+        init_input,  
         10,        // Minimum of 10 mutation iterations
         100,       // Maximum of 100 mutation iterations
         3,         // Minimum of 3 pulling iterations
@@ -89,9 +97,9 @@ void testBoundaryFinder(std::string poly_filename, std::string vert_filename,
         50,        // Simplify boundary to 50 points 
         true,      // Verbose output
         10,        // Maximum of 10 quadratic programs per SQP iteration
-        1e-4,      // SQP convergence tolerance
+        1e-5,      // SQP convergence tolerance
         false,     // Suppress SQP output
-        output_prefix 
+        output_prefix
     );
 }
 
@@ -112,14 +120,14 @@ int main(int argc, char** argv)
     };
 
     // Square of length 2 in 2-D
-    std::stringstream square_poly, square_vert;
-    joinPath(square_poly, polytope_dir, "square-2.poly");
-    joinPath(square_vert, polytope_dir, "square-2.vert"); 
+    std::stringstream square_constraints, square_vertices;
+    joinPath(square_constraints, polytope_dir, "square-2.poly");
+    joinPath(square_vertices, polytope_dir, "square-2.vert"); 
 
     // Cube of length 2 in 4-D
-    std::stringstream cube_poly, cube_vert;
-    joinPath(cube_poly, polytope_dir, "cube-4.poly");
-    joinPath(cube_vert, polytope_dir, "cube-4.vert"); 
+    std::stringstream cube_constraints, cube_vertices;
+    joinPath(cube_constraints, polytope_dir, "cube-4.poly");
+    joinPath(cube_vertices, polytope_dir, "cube-4.vert"); 
 
     // Output directory 
     std::string output_dir = argv[2];
@@ -128,11 +136,13 @@ int main(int argc, char** argv)
     std::stringstream ss_out;
     joinPath(ss_out, output_dir, "square-2-func1");
     testBoundaryFinder(
-        square_poly.str(), square_vert.str(), ss_out.str(), func1, add_delta
+        square_constraints.str(), square_vertices.str(), ss_out.str(), 
+        Polytopes::GreaterThanOrEqualTo, func1, add_delta
     );
     joinPath(ss_out, output_dir, "cube-4-project"); 
     testBoundaryFinder(
-        cube_poly.str(), cube_vert.str(), ss_out.str(), project, add_delta
+        cube_constraints.str(), cube_vertices.str(), ss_out.str(), 
+        Polytopes::GreaterThanOrEqualTo, project, add_delta
     );
 
     return 0;
