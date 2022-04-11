@@ -25,6 +25,7 @@
 #include "quasiNewton.hpp"
 
 using namespace Eigen;
+using boost::multiprecision::mpq_rational; 
 typedef CGAL::Gmpzf ET;
 typedef CGAL::Quadratic_program<double> Program;
 typedef CGAL::Quadratic_program_solution<ET> Solution;
@@ -125,8 +126,8 @@ class SQPOptimizer
         {
             this->D = D;
             this->N = D;    // One constraint for each variable
-            MatrixXd A = MatrixXd::Identity(D, D); 
-            VectorXd b = VectorXd::Zero(D); 
+            Matrix<mpq_rational, Dynamic, Dynamic> A = Matrix<mpq_rational, Dynamic, Dynamic>::Identity(D, D); 
+            Matrix<mpq_rational, Dynamic, 1> b = Matrix<mpq_rational, Dynamic, 1>::Zero(D); 
             this->constraints = new Polytopes::LinearConstraints<mpq_rational>(
                 Polytopes::InequalityType::GreaterThanOrEqualTo, A, b
             ); 
@@ -170,11 +171,11 @@ class SQPOptimizer
          * Constructor with linear constraints specified via a `LinearConstraints`
          * instance. 
          */
-        SQPOptimizer(const LinearConstraints<mpq_rational>* constraints)
+        SQPOptimizer(Polytopes::LinearConstraints<mpq_rational>* constraints)
         {
             this->constraints = constraints;
-            this->D = constraints->getD(); 
-            this->N = constraints->getN(); 
+            this->D = this->constraints->getD(); 
+            this->N = this->constraints->getN(); 
             this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);  
         }
 
