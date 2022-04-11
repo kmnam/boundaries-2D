@@ -67,6 +67,7 @@ VectorXd add_delta(const Ref<const VectorXd>& x, boost::random::mt19937& rng)
 // -------------------------------------------------------- //
 //                 BOUNDARY FINDER FUNCTIONS                //
 // -------------------------------------------------------- //
+template <int Dim>
 void testBoundaryFinder(BoundaryFinder<Dim>* finder,
                         const Ref<const MatrixXd>& init_input, 
                         const std::string output_prefix, 
@@ -76,7 +77,7 @@ void testBoundaryFinder(BoundaryFinder<Dim>* finder,
      * Run the boundary-finding algorithm on the projection of the given
      * polytope onto the first two coordinates. 
      */
-    finder.run(
+    finder->run(
         mutate,
         [](const Ref<const VectorXd>& v){ return false; },    // No filtering
         init_input,  
@@ -127,21 +128,23 @@ int main(int argc, char** argv)
     // Run boundary-finding algorithm on the image of func1() on the square 
     std::stringstream ss_out;
     joinPath(ss_out, output_dir, "square-2-func1");
-    BoundaryFinder<2>* finder1 = new BoundaryFinder(
+    BoundaryFinder<2>* finder1 = new BoundaryFinder<2>(
         tol, rng, square_constraints.str(), square_vertices.str(), 
-        Polytopes::GreaterThanOrEqualTo, func1
+        Polytopes::GreaterThanOrEqualTo, *func1
     );
     MatrixXd init_input1 = Polytopes::sampleFromConvexPolytope<100>(square_vertices.str(), 20, 0, rng); 
     testBoundaryFinder(finder1, init_input1, ss_out.str(), add_delta);
    
     // Run boundary-finding algorithm on the image of project() on the cube 
     joinPath(ss_out, output_dir, "cube-4-project"); 
-    BoundaryFinder<4>* finder2 = new BoundaryFinder(
+    BoundaryFinder<4>* finder2 = new BoundaryFinder<4>(
         tol, rng, cube_constraints.str(), cube_vertices.str(), 
-        Polytopes::GreaterThanOrEqualTo, project
+        Polytopes::GreaterThanOrEqualTo, *project
     );
     MatrixXd init_input2 = Polytopes::sampleFromConvexPolytope<100>(cube_vertices.str(), 20, 0, rng); 
     testBoundaryFinder(finder2, init_input2, ss_out.str(), add_delta); 
 
+    delete finder1; 
+    delete finder2; 
     return 0;
 }
