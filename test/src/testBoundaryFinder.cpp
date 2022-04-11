@@ -67,25 +67,15 @@ VectorXd add_delta(const Ref<const VectorXd>& x, boost::random::mt19937& rng)
 // -------------------------------------------------------- //
 //                 BOUNDARY FINDER FUNCTIONS                //
 // -------------------------------------------------------- //
-void testBoundaryFinder(const std::string constraints_filename,
-                        const std::string vertices_filename,
+void testBoundaryFinder(BoundaryFinder<Dim>* finder,
+                        const Ref<const MatrixXd>& init_input, 
                         const std::string output_prefix, 
-                        const Polytopes::InequalityType type,  
-                        std::function<VectorXd(const Ref<const VectorXd>&)> func,
                         std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate)
 {
     /*
      * Run the boundary-finding algorithm on the projection of the given
      * polytope onto the first two coordinates. 
      */
-    boost::random::mt19937 rng(1234567890);
-    const double tol = 1e-8;         // Tolerance for convergence
-
-    // Sample 20 points from the interior of the (projected) polytope
-    MatrixXd init_input = Polytopes::sampleFromConvexPolytope<100>(vertices_filename, 20, 0, rng);
-    init_input = init_input.block(0, 0, 20, 2); 
-
-    BoundaryFinder<2> finder(tol, rng, constraints_filename, vertices_filename, type, func);
     finder.run(
         mutate,
         [](const Ref<const VectorXd>& v){ return false; },    // No filtering
@@ -105,6 +95,8 @@ void testBoundaryFinder(const std::string constraints_filename,
 
 int main(int argc, char** argv)
 {
+    const double tol = 1e-8; 
+    boost::random::mt19937 rng(1234567890); 
     std::string polytope_dir = argv[1];
 
     // Function for writing paths to input files 
@@ -132,18 +124,24 @@ int main(int argc, char** argv)
     // Output directory 
     std::string output_dir = argv[2];
     
-    // Run boundary-finding algorithm
+    // Run boundary-finding algorithm on the image of func1() on the square 
     std::stringstream ss_out;
     joinPath(ss_out, output_dir, "square-2-func1");
-    testBoundaryFinder(
-        square_constraints.str(), square_vertices.str(), ss_out.str(), 
-        Polytopes::GreaterThanOrEqualTo, func1, add_delta
+    BoundaryFinder<2>* finder1 = new BoundaryFinder(
+        tol, rng, square_constraints.str(), square_vertices.str(), 
+        Polytopes::GreaterThanOrEqualTo, func1
     );
+    MatrixXd init_input1 = Polytopes::sampleFromConvexPolytope<100>(square_vertices.str(), 20, 0, rng); 
+    testBoundaryFinder(finder1, init_input1, ss_out.str(), add_delta);
+   
+    // Run boundary-finding algorithm on the image of project() on the cube 
     joinPath(ss_out, output_dir, "cube-4-project"); 
-    testBoundaryFinder(
-        cube_constraints.str(), cube_vertices.str(), ss_out.str(), 
-        Polytopes::GreaterThanOrEqualTo, project, add_delta
+    BoundaryFinder<4>* finder2 = new BoundaryFinder(
+        tol, rng, cube_constraints.str(), cube_vertices.str(), 
+        Polytopes::GreaterThanOrEqualTo, project
     );
+    MatrixXd init_input2 = Polytopes::sampleFromConvexPolytope<100>(cube_vertices.str(), 20, 0, rng); 
+    testBoundaryFinder(finder2, init_input2, ss_out.str(), add_delta); 
 
     return 0;
 }
