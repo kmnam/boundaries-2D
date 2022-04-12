@@ -14,7 +14,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     4/11/2022
+ *     4/12/2022
  */
 using namespace Eigen;
 
@@ -86,10 +86,11 @@ void testBoundaryFinder(BoundaryFinder<Dim>* finder,
         3,         // Minimum of 3 pulling iterations
         20,        // Maximum of 20 pulling iterations
         50,        // Simplify boundary to 50 points 
-        true,      // Verbose output
         10,        // Maximum of 10 quadratic programs per SQP iteration
         1e-5,      // SQP convergence tolerance
+        true,      // Verbose output
         false,     // Suppress SQP output
+        true,      // Use line-search SQP
         output_prefix
     );
 }

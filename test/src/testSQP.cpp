@@ -6,13 +6,14 @@
 #include "../../include/SQP.hpp"
 
 /**
- * Test module for the `SQPOptimizer<double>` class.
+ * Test module for the `SQPOptimizer<double>` and `LineSearchSQPOptimizer<double>`
+ * classes.
  *
  * **Authors:**
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     4/11/2022
+ *     4/12/2022
  */
 using namespace Eigen;
 
@@ -184,6 +185,27 @@ BOOST_AUTO_TEST_CASE(test_SQP_f3)
     x << 1.0, 1.0;
     l << 0.0, 0.0; 
     VectorXd solution = opt->run(f3, x, l, 10, 1e-8, BFGS, true);
+    BOOST_TEST(abs(solution(0) - 0.0) < tol);
+    BOOST_TEST(abs(solution(1) - 0.0) < tol); 
+    delete opt;
+}
+
+BOOST_AUTO_TEST_CASE(test_linesearch_SQP_f3)
+{
+    /*
+     * Run the line-search SQP optimizer on f3().
+     */
+    using std::abs;
+    const double tol = 1e-8;
+
+    MatrixXd A = MatrixXd::Identity(2, 2);
+    VectorXd b = VectorXd::Zero(2);
+    LineSearchSQPOptimizer<double>* opt = new LineSearchSQPOptimizer<double>(2, 2, A, b);
+    VectorXd x(2); 
+    VectorXd l(2); 
+    x << 1.0, 1.0;
+    l << 0.0, 0.0; 
+    VectorXd solution = opt->run(f3, x, l, 0.25, 0.5, 10, 1e-8, BFGS, true);
     BOOST_TEST(abs(solution(0) - 0.0) < tol);
     BOOST_TEST(abs(solution(1) - 0.0) < tol); 
     delete opt;
