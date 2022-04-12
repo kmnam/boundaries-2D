@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     3/2/2022
+ *     4/12/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -602,7 +602,7 @@ class BoundaryFinder
 
             // Define an SQPOptimizer instance to be utilized 
             Polytopes::InequalityType type = this->constraints.getInequalityType(); 
-            SQPOptimizer<double> optimizer(
+            SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(
                 InputDim, nc,
                 (type == Polytopes::InequalityType::LessThanOrEqualTo ? -A : A),
                 (type == Polytopes::InequalityType::LessThanOrEqualTo ? -b : b)
@@ -621,9 +621,7 @@ class BoundaryFinder
                 VectorXd x_init = this->input.row(this->vertices[i]);
                 VectorXd l_init = VectorXd::Ones(nc)
                     - this->constraints.active(x_init.cast<mpq_rational>()).template cast<double>();
-                VectorXd xl_init(InputDim + nc); 
-                xl_init << x_init, l_init;
-                VectorXd q = optimizer.run(obj, xl_init, max_iter, sqp_tol, BFGS, sqp_verbose);
+                VectorXd q = optimizer->run(obj, x_init, l_init, max_iter, sqp_tol, BFGS, sqp_verbose);
                 VectorXd z = this->func(q); 
                 
                 // Check that the mutation did not give rise to an already 
@@ -639,6 +637,7 @@ class BoundaryFinder
                 }
             }
 
+            delete optimizer;
             return (std::abs(change) < this->area_tol * (area - change));
         }
 
