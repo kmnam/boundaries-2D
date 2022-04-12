@@ -35,7 +35,8 @@ typedef K::Vector_2                                            Vector_2;
 
 constexpr int MAX_NUM_MUTATION_ATTEMPTS = 20;
 constexpr int NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE = 5;
-constexpr int INTERNAL_PRECISION = 100; 
+constexpr int INTERNAL_PRECISION = 100;
+constexpr double MINDIST_BETWEEN_POINTS = 1e-8; 
 
 /**
  * A class that implements an importance sampling algorithm for iteratively
@@ -67,7 +68,10 @@ class BoundaryFinder
         Polytopes::LinearConstraints<mpq_rational> constraints;
 
         // Delaunay triangulation of the convex polytopic domain 
-        Delaunay_triangulation tri; 
+        Delaunay_triangulation tri;
+
+        // Current boundary of output points in 2-D space
+        AlphaShape2DProperties curr_bound; 
 
         // Indices of the output points along the boundary 
         std::vector<int> vertices;
@@ -217,17 +221,23 @@ class BoundaryFinder
 
         /**
          * Initialize the sampling run by evaluating the stored mapping 
-         * at the given set of points in the input polytope.
+         * at the given set of points in the input polytope, and computing
+         * the initial boundary.
          *
-         * @param filter Boolean function for filtering output points in the 
-         *               plane as desired.
-         * @param input  Initial set of points in the input polytope at which 
-         *               to evaluate the stored mapping., type 
+         * @param filter       Boolean function for filtering output points in 
+         *                     the plane as desired.
+         * @param input        Initial set of points in the input polytope at 
+         *                     which to evaluate the stored mapping.
+         * @param max_edges    Maximum number of edges to be contained in the
+         *                     boundary. 
+         * @param write_prefix Prefix of output file name to which to write 
+         *                     the boundary obtained in this iteration.
          * @throws std::invalid_argument if the input points do not have the 
          *                               correct dimension.  
          */
         void initialize(std::function<bool(const Ref<const VectorXd>&)> filter, 
-                        const Ref<const MatrixXd>& input) 
+                        const Ref<const MatrixXd>& input, const unsigned max_edges, 
+                        const std::string write_prefix = "") 
         {
             // Check that the input points have the correct dimensionality 
             if (input.cols() != InputDim)
@@ -244,7 +254,9 @@ class BoundaryFinder
                 
                 // Check that the output point is not subject to filtering and 
                 // is not too close to the others 
-                if (!filter(y) && (this->N == 0 || (this->points.rowwise() - y.transpose()).rowwise().norm().minCoeff() > 1e-10))
+                if (!filter(y)
+                    && (this->N == 0 || (this->points.rowwise() - y.transpose()).rowwise().norm().minCoeff() > MINDIST_BETWEEN_POINTS)
+                )
                 {
                     this->N++;
                     this->input.conservativeResize(this->N, InputDim); 
@@ -253,6 +265,103 @@ class BoundaryFinder
                     this->points.row(this->N-1) = y;
                 }
             }
+
+            // Store the output coordinates in vectors 
+            std::vector<double> x, y;
+            x.resize(this->N);
+            y.resize(this->N);
+            VectorXd::Map(&x[0], this->N) = this->points.col(0);
+            VectorXd::Map(&y[0], this->N) = this->points.col(1);
+
+            // Get new boundary (assuming that the shape is simply connected)
+            Boundary2D boundary(x, y);
+            try
+            {
+                // This line may throw:
+                // - CGAL::Assertion_exception (while instantiating the alpha shape) 
+                // - CGAL::Precondition_exception (while instantiating the polygon 
+                //   for simplification) 
+                // - std::runtime_error (if polygon is not simple)
+                this->curr_bound = boundary.getSimplyConnectedBoundary<true>(max_edges);
+            }
+            catch (CGAL::Assertion_exception& e) 
+            {
+                // Try with tag == false
+                //
+                // This may throw (another) CGAL::Assertion_exception (while
+                // instantiating the alpha shape) 
+                try 
+                {
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+            catch (CGAL::Precondition_exception& e)
+            {
+                // Try with tag == false
+                //
+                // This may throw a CGAL::Assertion_exception (while instantiating
+                // the alpha shape) 
+                try 
+                {
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+            catch (std::runtime_error& e)
+            {
+                // Try with tag == false
+                //
+                // This may throw a CGAL::Assertion_exception (while instantiating
+                // the alpha shape) 
+                try 
+                {
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+
+            // Re-orient the points so that the boundary is traversed clockwise
+            this->curr_bound.orient(CGAL::RIGHT_TURN);
+            this->vertices = this->curr_bound.vertices;
+
+            // Write boundary information to file if desired
+            if (write_prefix.compare(""))
+            {
+                // Write the boundary points, vertices, and edges 
+                std::stringstream ss;
+                ss << write_prefix << "-init.txt";
+                this->curr_bound.write(ss.str());
+
+                // Write the input vectors passed into the given function to
+                // yield the boundary points
+                std::ofstream outfile;
+                outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
+                if (outfile.is_open())
+                {
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
+                    for (unsigned i = 0; i < this->input.rows(); ++i)
+                    {
+                        outfile << "INPUT\t"; 
+                        for (unsigned j = 0; j < this->input.cols() - 1; ++j)
+                            outfile << this->input(i, j) << '\t'; 
+                        outfile << this->input(i, this->input.cols() - 1) << std::endl;
+                    }
+                }
+                outfile.close(); 
+            }
+
+            // Compute enclosed area and test for convergence
+            this->curr_area = this->curr_bound.area;
         }
 
         /**
@@ -295,10 +404,46 @@ class BoundaryFinder
             VectorXd::Map(&x[0], this->N) = this->points.col(0);
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
 
-            // Get boundary of the output points in 2-D space (assuming that 
-            // the shape is simply connected)
+            // For each of the points in the boundary, mutate the corresponding
+            // model parameters once, and evaluate the stored mapping at these 
+            // mutated parameter values
+            for (unsigned i = 0; i < this->vertices.size(); ++i)
+            {
+                bool filtered = true;
+                double mindist = 0.0;
+                unsigned j = 0;
+                VectorXd q, z; 
+                while ((filtered || mindist < MINDIST_BETWEEN_POINTS) && j < MAX_NUM_MUTATION_ATTEMPTS)
+                {
+                    // Evaluate the given function at a randomly generated 
+                    // parameter point
+                    VectorXd p = this->input.row(this->vertices[i]); 
+                    q = this->constraints.template nearestL2<double>(mutate(p, this->rng)).template cast<double>();
+                    z = this->func(q);
+                    filtered = filter(z);
+                    
+                    // Check that the mutation did not give rise to an already 
+                    // computed point 
+                    mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
+
+                    j++;
+                }
+                if (!filtered && mindist > MINDIST_BETWEEN_POINTS)
+                {
+                    this->N++;
+                    this->input.conservativeResize(this->N, InputDim); 
+                    this->points.conservativeResize(this->N, 2);
+                    this->input.row(this->N-1) = q;
+                    this->points.row(this->N-1) = z;
+                }
+            }
+
+            // Get new boundary (assuming that the shape is simply connected)
+            x.resize(this->N);
+            y.resize(this->N);
+            VectorXd::Map(&x[0], this->N) = this->points.col(0);
+            VectorXd::Map(&y[0], this->N) = this->points.col(1);
             Boundary2D boundary(x, y);
-            AlphaShape2DProperties bound_data;
             try
             {
                 // This line may throw:
@@ -306,7 +451,7 @@ class BoundaryFinder
                 // - CGAL::Precondition_exception (while instantiating the polygon 
                 //   for simplification) 
                 // - std::runtime_error (if polygon is not simple)
-                bound_data = boundary.getSimplyConnectedBoundary<true>(max_edges);
+                this->curr_bound = boundary.getSimplyConnectedBoundary<true>(max_edges);
             }
             catch (CGAL::Assertion_exception& e) 
             {
@@ -316,7 +461,7 @@ class BoundaryFinder
                 // instantiating the alpha shape) 
                 try 
                 {
-                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(max_edges);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -331,7 +476,7 @@ class BoundaryFinder
                 // the alpha shape) 
                 try 
                 {
-                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(max_edges);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -346,7 +491,7 @@ class BoundaryFinder
                 // the alpha shape) 
                 try 
                 {
-                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(max_edges);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -355,8 +500,8 @@ class BoundaryFinder
             }
 
             // Re-orient the points so that the boundary is traversed clockwise
-            bound_data.orient(CGAL::RIGHT_TURN);
-            this->vertices = bound_data.vertices;
+            this->curr_bound.orient(CGAL::RIGHT_TURN);
+            this->vertices = this->curr_bound.vertices;
 
             // Write boundary information to file if desired
             if (write_prefix.compare(""))
@@ -364,9 +509,9 @@ class BoundaryFinder
                 // Write the boundary points, vertices, and edges 
                 std::stringstream ss;
                 ss << write_prefix << "-pass" << iter << ".txt";
-                bound_data.write(ss.str());
+                this->curr_bound.write(ss.str());
 
-                // Write the input vectors passed into the stored mapping to 
+                // Write the input vectors passed into the given function to
                 // yield the boundary points
                 std::ofstream outfile;
                 outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
@@ -385,50 +530,16 @@ class BoundaryFinder
             }
 
             // Compute enclosed area and test for convergence
-            double area = bound_data.area;
+            double area = this->curr_bound.area;
             double change = area - this->curr_area;
             this->curr_area = area;
             if (verbose)
             {
                 std::cout << "[STEP] Iteration " << iter
                           << "; enclosed area: " << area
-                          << "; " << this->vertices.size() << " boundary points"
+                          << "; " << this->vertices.size() << " boundary points" 
                           << "; " << this->points.rows() << " total points" 
                           << "; change in area: " << change << std::endl;
-            }
-            
-            // For each of the points in the boundary, mutate the corresponding
-            // model parameters once, and evaluate the stored mapping at these 
-            // mutated parameter values
-            for (unsigned i = 0; i < this->vertices.size(); ++i)
-            {
-                bool filtered = true;
-                double mindist = 0.0;
-                unsigned j = 0;
-                VectorXd q, z; 
-                while ((filtered || mindist < 1e-10) && j < MAX_NUM_MUTATION_ATTEMPTS)
-                {
-                    // Evaluate the given function at a randomly generated 
-                    // parameter point
-                    VectorXd p = this->input.row(this->vertices[i]); 
-                    q = this->constraints.template nearestL2<double>(mutate(p, this->rng)).template cast<double>();
-                    z = this->func(q);
-                    filtered = filter(z);
-                    
-                    // Check that the mutation did not give rise to an already 
-                    // computed point 
-                    mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
-
-                    j++;
-                }
-                if (!filtered && mindist > 1e-10)
-                {
-                    this->N++;
-                    this->input.conservativeResize(this->N, InputDim); 
-                    this->points.conservativeResize(this->N, 2);
-                    this->input.row(this->N-1) = q;
-                    this->points.row(this->N-1) = z;
-                }
             }
 
             return (std::abs(change) < this->area_tol * (area - change));
@@ -476,113 +587,11 @@ class BoundaryFinder
             VectorXd::Map(&x[0], this->N) = this->points.col(0);
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
 
-            // Get boundary of the points (assuming that the shape is simply
-            // connected)
-            Boundary2D boundary(x, y);
-            AlphaShape2DProperties bound_data;
-            try
-            {
-                // This line may throw:
-                // - CGAL::Assertion_exception (while instantiating the alpha shape) 
-                // - CGAL::Precondition_exception (while instantiating the polygon 
-                //   for simplification) 
-                // - std::runtime_error (if polygon is not simple)
-                bound_data = boundary.getSimplyConnectedBoundary<true>(max_edges);
-            }
-            catch (CGAL::Assertion_exception& e) 
-            {
-                // Try with tag == false
-                //
-                // This may throw (another) CGAL::Assertion_exception (while
-                // instantiating the alpha shape) 
-                try 
-                {
-                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
-                }
-                catch (CGAL::Assertion_exception& e)
-                {
-                    throw; 
-                }
-            }
-            catch (CGAL::Precondition_exception& e)
-            {
-                // Try with tag == false
-                //
-                // This may throw a CGAL::Assertion_exception (while instantiating
-                // the alpha shape) 
-                try 
-                {
-                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
-                }
-                catch (CGAL::Assertion_exception& e)
-                {
-                    throw; 
-                }
-            }
-            catch (std::runtime_error& e)
-            {
-                // Try with tag == false
-                //
-                // This may throw a CGAL::Assertion_exception (while instantiating
-                // the alpha shape) 
-                try 
-                {
-                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
-                }
-                catch (CGAL::Assertion_exception& e)
-                {
-                    throw; 
-                }
-            }
-
-            // Re-orient the points so that the boundary is traversed clockwise
-            bound_data.orient(CGAL::RIGHT_TURN);
-            this->vertices = bound_data.vertices;
-
-            // Write boundary information to file if desired
-            if (write_prefix.compare(""))
-            {
-                // Write the boundary points, vertices, and edges 
-                std::stringstream ss;
-                ss << write_prefix << "-pass" << iter << ".txt";
-                bound_data.write(ss.str());
-
-                // Write the input vectors passed into the given function to
-                // yield the boundary points
-                std::ofstream outfile;
-                outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
-                if (outfile.is_open())
-                {
-                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
-                    for (unsigned i = 0; i < this->input.rows(); ++i)
-                    {
-                        outfile << "INPUT\t"; 
-                        for (unsigned j = 0; j < this->input.cols() - 1; ++j)
-                            outfile << this->input(i, j) << '\t'; 
-                        outfile << this->input(i, this->input.cols() - 1) << std::endl;
-                    }
-                }
-                outfile.close(); 
-            }
-
-            // Compute enclosed area and test for convergence
-            double area = bound_data.area;
-            double change = area - this->curr_area;
-            this->curr_area = area;
-            if (verbose)
-            {
-                std::cout << "[PULL] Iteration " << iter
-                          << "; enclosed area: " << area
-                          << "; " << this->vertices.size() << " boundary points" 
-                          << "; " << this->points.rows() << " total points" 
-                          << "; change in area: " << change << std::endl;
-            }
-
             // Obtain the outward vertex normals along the boundary and,
             // for each vertex in the boundary, "pull" along its outward
             // normal by distance delta
             MatrixXd pulled(this->vertices.size(), 2);
-            std::vector<Vector_2> normals = bound_data.outwardVertexNormals();
+            std::vector<Vector_2> normals = this->curr_bound.outwardVertexNormals();
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
                 Vector_2 v(x[this->vertices[i]], y[this->vertices[i]]);
@@ -610,9 +619,7 @@ class BoundaryFinder
             if (use_line_search_sqp)
             {
                 LineSearchSQPOptimizer<double>* optimizer = new LineSearchSQPOptimizer<double>(
-                    InputDim, nc,
-                    (type == Polytopes::InequalityType::LessThanOrEqualTo ? -A : A),
-                    (type == Polytopes::InequalityType::LessThanOrEqualTo ? -b : b)
+                    InputDim, nc, type, A, b 
                 ); 
 
                 // For each vertex in the boundary, minimize the distance to the
@@ -639,7 +646,7 @@ class BoundaryFinder
                     // Check that the mutation did not give rise to an already 
                     // computed point
                     double mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
-                    if (!filter(z) && mindist > 1e-10)
+                    if (!filter(z) && mindist > MINDIST_BETWEEN_POINTS)
                     {
                         this->N++;
                         this->input.conservativeResize(this->N, InputDim); 
@@ -653,11 +660,7 @@ class BoundaryFinder
             }
             else
             {
-                SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(
-                    InputDim, nc,
-                    (type == Polytopes::InequalityType::LessThanOrEqualTo ? -A : A),
-                    (type == Polytopes::InequalityType::LessThanOrEqualTo ? -b : b)
-                ); 
+                SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(InputDim, nc, type, A, b); 
 
                 // For each vertex in the boundary, minimize the distance to the
                 // pulled vertex with a feasible parameter point
@@ -678,7 +681,7 @@ class BoundaryFinder
                     // Check that the mutation did not give rise to an already 
                     // computed point
                     double mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
-                    if (!filter(z) && mindist > 1e-10)
+                    if (!filter(z) && mindist > MINDIST_BETWEEN_POINTS)
                     {
                         this->N++;
                         this->input.conservativeResize(this->N, InputDim); 
@@ -689,6 +692,110 @@ class BoundaryFinder
                 }
 
                 delete optimizer;
+            }
+
+            // Get new boundary (assuming that the shape is simply connected)
+            x.resize(this->N);
+            y.resize(this->N);
+            VectorXd::Map(&x[0], this->N) = this->points.col(0);
+            VectorXd::Map(&y[0], this->N) = this->points.col(1);
+            Boundary2D boundary(x, y);
+            try
+            {
+                // This line may throw:
+                // - CGAL::Assertion_exception (while instantiating the alpha shape) 
+                // - CGAL::Precondition_exception (while instantiating the polygon 
+                //   for simplification) 
+                // - std::runtime_error (if polygon is not simple)
+                this->curr_bound = boundary.getSimplyConnectedBoundary<true>(max_edges);
+            }
+            catch (CGAL::Assertion_exception& e) 
+            {
+                // Try with tag == false
+                //
+                // This may throw (another) CGAL::Assertion_exception (while
+                // instantiating the alpha shape) 
+                try 
+                {
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+            catch (CGAL::Precondition_exception& e)
+            {
+                // Try with tag == false
+                //
+                // This may throw a CGAL::Assertion_exception (while instantiating
+                // the alpha shape) 
+                try 
+                {
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+            catch (std::runtime_error& e)
+            {
+                // Try with tag == false
+                //
+                // This may throw a CGAL::Assertion_exception (while instantiating
+                // the alpha shape) 
+                try 
+                {
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(max_edges);
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+
+            // Re-orient the points so that the boundary is traversed clockwise
+            this->curr_bound.orient(CGAL::RIGHT_TURN);
+            this->vertices = this->curr_bound.vertices;
+
+            // Write boundary information to file if desired
+            if (write_prefix.compare(""))
+            {
+                // Write the boundary points, vertices, and edges 
+                std::stringstream ss;
+                ss << write_prefix << "-pass" << iter << ".txt";
+                this->curr_bound.write(ss.str());
+
+                // Write the input vectors passed into the given function to
+                // yield the boundary points
+                std::ofstream outfile;
+                outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
+                if (outfile.is_open())
+                {
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
+                    for (unsigned i = 0; i < this->input.rows(); ++i)
+                    {
+                        outfile << "INPUT\t"; 
+                        for (unsigned j = 0; j < this->input.cols() - 1; ++j)
+                            outfile << this->input(i, j) << '\t'; 
+                        outfile << this->input(i, this->input.cols() - 1) << std::endl;
+                    }
+                }
+                outfile.close(); 
+            }
+
+            // Compute enclosed area and test for convergence
+            double area = this->curr_bound.area;
+            double change = area - this->curr_area;
+            this->curr_area = area;
+            if (verbose)
+            {
+                std::cout << "[PULL] Iteration " << iter
+                          << "; enclosed area: " << area
+                          << "; " << this->vertices.size() << " boundary points" 
+                          << "; " << this->points.rows() << " total points" 
+                          << "; change in area: " << change << std::endl;
             }
 
             return (std::abs(change) < this->area_tol * (area - change));
@@ -730,7 +837,7 @@ class BoundaryFinder
                  const std::string write_prefix = "")
         {
             // Initialize the sampling run ...
-            this->initialize(filter, init_input);
+            this->initialize(filter, init_input, max_edges, write_prefix);
 
             // ... then step through the boundary-finding algorithm up to the
             // maximum number of iterations ...
@@ -752,13 +859,13 @@ class BoundaryFinder
             unsigned j = 0;
             terminate = false;
             n_converged = 0;
+            double delta = 0.1 * std::sqrt(this->curr_area);
             while (j < min_pull_iter || (j < max_pull_iter && !terminate))
             {
-                // Set delta = 0.1 * std::sqrt(this->curr_area) 
+                if (verbose) std::cout << "Pulling by delta = " << delta << std::endl;  
                 bool result = this->pull(
-                    filter, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
-                    i + j, max_edges, verbose, sqp_verbose, use_line_search_sqp,
-                    write_prefix
+                    filter, delta, sqp_max_iter, sqp_tol, i + j, max_edges,
+                    verbose, sqp_verbose, use_line_search_sqp, write_prefix
                 );
                 if (!result)
                     n_converged = 0;
@@ -766,82 +873,16 @@ class BoundaryFinder
                     n_converged++; 
                 terminate = (n_converged >= NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE);
                 j++;
+                delta = 0.1 * std::sqrt(this->curr_area);
             }
 
-            // Compute the boundary one last time
-            std::vector<double> x, y;
-            x.resize(this->N);
-            y.resize(this->N);
-            VectorXd::Map(&x[0], this->N) = this->points.col(0);
-            VectorXd::Map(&y[0], this->N) = this->points.col(1);
-            Boundary2D boundary(x, y);
-            AlphaShape2DProperties bound_data;
-            try
-            {
-                // This line may throw:
-                // - CGAL::Assertion_exception (while instantiating the alpha shape) 
-                // - CGAL::Precondition_exception (while instantiating the polygon 
-                //   for simplification) 
-                // - std::runtime_error (if polygon is not simple)
-                bound_data = boundary.getSimplyConnectedBoundary<true>(max_edges);
-            }
-            catch (CGAL::Assertion_exception& e) 
-            {
-                // Try with tag == false
-                //
-                // This may throw (another) CGAL::Assertion_exception (while
-                // instantiating the alpha shape) 
-                try 
-                {
-                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
-                }
-                catch (CGAL::Assertion_exception& e)
-                {
-                    throw; 
-                }
-            }
-            catch (CGAL::Precondition_exception& e)
-            {
-                // Try with tag == false
-                //
-                // This may throw a CGAL::Assertion_exception (while instantiating
-                // the alpha shape) 
-                try 
-                {
-                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
-                }
-                catch (CGAL::Assertion_exception& e)
-                {
-                    throw; 
-                }
-            }
-            catch (std::runtime_error& e)
-            {
-                // Try with tag == false
-                //
-                // This may throw a CGAL::Assertion_exception (while instantiating
-                // the alpha shape) 
-                try 
-                {
-                    bound_data = boundary.getSimplyConnectedBoundary<false>(max_edges);
-                }
-                catch (CGAL::Assertion_exception& e)
-                {
-                    throw; 
-                }
-            }
-
-            // Re-orient the points so that the boundary is traversed clockwise
-            bound_data.orient(CGAL::RIGHT_TURN);
-            this->vertices = bound_data.vertices;
-
-            // Write boundary information to file if desired
+            // Write final boundary information to file if desired
             if (write_prefix.compare(""))
             {
                 // Write the boundary points, vertices, and edges 
                 std::stringstream ss;
                 ss << write_prefix << "-final.txt";
-                bound_data.write(ss.str());
+                this->curr_bound.write(ss.str());
 
                 // Write the input vectors passed into the given function to
                 // yield the boundary points
@@ -860,24 +901,13 @@ class BoundaryFinder
                 }
                 outfile.close(); 
             }
-
-            // Compute enclosed area and test for convergence if algorithm
-            // did not already terminate
-            if (!terminate)
+            if (verbose)
             {
-                double area = bound_data.area;
-                double change = area - this->curr_area;
-                this->curr_area = area;
-                if (verbose)
-                {
-                    std::cout << "[FINAL] Iteration " << i + j
-                              << "; enclosed area: " << area
-                              << "; " << this->vertices.size() << " boundary points"
-                              << "; " << this->points.rows() << " total points" 
-                              << "; change in area: " << change << std::endl;
-                }
-                if (std::abs(change) < this->area_tol)
-                    terminate = true;
+                std::cout << "[FINAL] Iteration " << i + j
+                          << "; enclosed area: " << this->curr_area
+                          << "; " << this->vertices.size() << " boundary points"
+                          << "; " << this->points.rows() << " total points" 
+                          << std::endl;
             }
 
             // Did the loop terminate without achieving convergence?
