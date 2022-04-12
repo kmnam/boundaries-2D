@@ -64,37 +64,6 @@ VectorXd add_delta(const Ref<const VectorXd>& x, boost::random::mt19937& rng)
     return y;
 }
 
-// -------------------------------------------------------- //
-//                 BOUNDARY FINDER FUNCTIONS                //
-// -------------------------------------------------------- //
-template <int Dim>
-void testBoundaryFinder(BoundaryFinder<Dim>* finder,
-                        const Ref<const MatrixXd>& init_input, 
-                        const std::string output_prefix, 
-                        std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate)
-{
-    /*
-     * Run the boundary-finding algorithm on the projection of the given
-     * polytope onto the first two coordinates. 
-     */
-    finder->run(
-        mutate,
-        [](const Ref<const VectorXd>& v){ return false; },    // No filtering
-        init_input,  
-        10,        // Minimum of 10 mutation iterations
-        100,       // Maximum of 100 mutation iterations
-        3,         // Minimum of 3 pulling iterations
-        20,        // Maximum of 20 pulling iterations
-        50,        // Simplify boundary to 50 points 
-        10,        // Maximum of 10 quadratic programs per SQP iteration
-        1e-5,      // SQP convergence tolerance
-        true,      // Verbose output
-        false,     // Suppress SQP output
-        true,      // Use line-search SQP
-        output_prefix
-    );
-}
-
 int main(int argc, char** argv)
 {
     const double tol = 1e-8; 
@@ -128,24 +97,88 @@ int main(int argc, char** argv)
     
     // Run boundary-finding algorithm on the image of func1() on the square 
     std::stringstream ss_out;
-    joinPath(ss_out, output_dir, "square-2-func1");
+    joinPath(ss_out, output_dir, "square-2-mutate-func1");
     std::function<VectorXd(const Ref<const VectorXd>&)> obj1 = func1; 
     BoundaryFinder<2>* finder1 = new BoundaryFinder<2>(
         tol, rng, square_constraints.str(), square_vertices.str(), 
         Polytopes::GreaterThanOrEqualTo, obj1
     );
-    MatrixXd init_input1 = Polytopes::sampleFromConvexPolytope<100>(square_vertices.str(), 20, 0, rng); 
-    testBoundaryFinder(finder1, init_input1, ss_out.str(), add_delta);
+    MatrixXd init_input1 = Polytopes::sampleFromConvexPolytope<100>(square_vertices.str(), 100, 0, rng); 
+    finder1->run(   // Only use <= 10 mutations ... 
+        add_delta,
+        [](const Ref<const VectorXd>& v){ return false; },    // No filtering
+        init_input1,  
+        0,         // Minimum of 0 mutation iterations
+        10,        // Maximum of 10 mutation iterations
+        0,         // Minimum of 0 pulling iterations
+        0,         // Maximum of 0 pulling iterations
+        10,        // Simplify boundary to 10 points 
+        10,        // Maximum of 10 quadratic programs per SQP iteration
+        1e-5,      // SQP convergence tolerance
+        true,      // Verbose output
+        true,      // Verbose SQP output
+        true,      // Use line-search SQP
+        ss_out.str() 
+    );
+    joinPath(ss_out, output_dir, "square-2-pull-func1"); 
+    finder1->run(   // Only use <= 10 pulling iterations ... 
+        add_delta,
+        [](const Ref<const VectorXd>& v){ return false; },    // No filtering
+        init_input1,  
+        0,         // Minimum of 0 mutation iterations
+        0,         // Maximum of 0 mutation iterations
+        0,         // Minimum of 0 pulling iterations
+        10,        // Maximum of 10 pulling iterations
+        10,        // Simplify boundary to 10 points 
+        10,        // Maximum of 10 quadratic programs per SQP iteration
+        1e-5,      // SQP convergence tolerance
+        true,      // Verbose output
+        true,      // Verbose SQP output 
+        true,      // Use line-search SQP
+        ss_out.str()
+    );
    
-    // Run boundary-finding algorithm on the image of project() on the cube 
-    joinPath(ss_out, output_dir, "cube-4-project");
+    // Run boundary-finding algorithm on the image of project() on the cube
+    joinPath(ss_out, output_dir, "cube-4-mutate-project");
     std::function<VectorXd(const Ref<const VectorXd>&)> obj2 = project;  
     BoundaryFinder<4>* finder2 = new BoundaryFinder<4>(
         tol, rng, cube_constraints.str(), cube_vertices.str(), 
         Polytopes::GreaterThanOrEqualTo, obj2
     );
-    MatrixXd init_input2 = Polytopes::sampleFromConvexPolytope<100>(cube_vertices.str(), 20, 0, rng); 
-    testBoundaryFinder(finder2, init_input2, ss_out.str(), add_delta); 
+    MatrixXd init_input2 = Polytopes::sampleFromConvexPolytope<100>(cube_vertices.str(), 100, 0, rng);
+    finder2->run(   // Only use <= 10 mutations ... 
+        add_delta,
+        [](const Ref<const VectorXd>& v){ return false; },    // No filtering
+        init_input2,  
+        0,         // Minimum of 0 mutation iterations
+        10,        // Maximum of 10 mutation iterations
+        0,         // Minimum of 0 pulling iterations
+        0,         // Maximum of 0 pulling iterations
+        10,        // Simplify boundary to 10 points 
+        10,        // Maximum of 10 quadratic programs per SQP iteration
+        1e-5,      // SQP convergence tolerance
+        true,      // Verbose output
+        true,      // Verbose SQP output
+        true,      // Use line-search SQP
+        ss_out.str() 
+    );
+    joinPath(ss_out, output_dir, "cube-4-pull-project");
+    finder2->run(   // Only use <= 10 pulling iterations ... 
+        add_delta,
+        [](const Ref<const VectorXd>& v){ return false; },    // No filtering
+        init_input2,  
+        0,         // Minimum of 0 mutation iterations
+        0,         // Maximum of 0 mutation iterations
+        0,         // Minimum of 0 pulling iterations
+        10,        // Maximum of 10 pulling iterations
+        10,        // Simplify boundary to 10 points 
+        10,        // Maximum of 10 quadratic programs per SQP iteration
+        1e-5,      // SQP convergence tolerance
+        true,      // Verbose output
+        true,      // Verbose SQP output 
+        true,      // Use line-search SQP
+        ss_out.str()
+    );
 
     delete finder1; 
     delete finder2; 
