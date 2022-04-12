@@ -443,27 +443,31 @@ class BoundaryFinder
          *
          * Note that this method assumes that the boundary is simply connected.
          *
-         * @param filter       Boolean function for filtering output points in the 
-         *                     plane as desired.
-         * @param delta        Distance by which the output points along the 
-         *                     boundary should be pulled. 
-         * @param max_iter     Maximum number of iterations for SQP. 
-         * @param sqp_tol      Tolerance for assessing convergence in SQP.
-         * @param iter         Iteration number.  
-         * @param max_edges    Maximum number of edges to be contained in the
-         *                     boundary. 
-         * @param verbose      If true, output intermittent messages to `stdout`.
-         * @param sqp_verbose  If true, output intermittent messages during 
-         *                     SQP to `stdout`. 
-         * @param write_prefix Prefix of output file name to which to write 
-         *                     the boundary obtained in this iteration.
+         * @param filter              Boolean function for filtering output
+         *                            points in the plane as desired.
+         * @param delta               Distance by which the output points along
+         *                            the boundary should be pulled. 
+         * @param max_iter            Maximum number of iterations for SQP. 
+         * @param sqp_tol             Tolerance for assessing convergence in SQP.
+         * @param iter                Iteration number.  
+         * @param max_edges           Maximum number of edges to be contained
+         *                            in the boundary. 
+         * @param verbose             If true, output intermittent messages
+         *                            to `stdout`.
+         * @param sqp_verbose         If true, output intermittent messages 
+         *                            during SQP to `stdout`.
+         * @param use_line_search_sqp If true, use line-search SQP. 
+         * @param write_prefix        Prefix of output file name to which to write 
+         *                            the boundary obtained in this iteration.
          * @returns True if the area enclosed by the boundary (obtained prior 
          *          to mutation) has converged to within `this->area_tol`. 
          */
         bool pull(std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const double delta, const unsigned max_iter, const double sqp_tol,
-                  const unsigned iter, const unsigned max_edges, const bool verbose,
-                  const bool sqp_verbose, const std::string write_prefix = "")
+                  const unsigned iter, const unsigned max_edges,
+                  const bool verbose = false, const bool sqp_verbose = false,
+                  const bool use_line_search_sqp = true,
+                  const std::string write_prefix = "")
         {
             // Store point coordinates in two vectors
             std::vector<double> x, y;
@@ -600,44 +604,93 @@ class BoundaryFinder
             VectorXd b = this->constraints.getb().template cast<double>();
             unsigned nc = A.rows();
 
-            // Define an SQPOptimizer instance to be utilized 
-            Polytopes::InequalityType type = this->constraints.getInequalityType(); 
-            SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(
-                InputDim, nc,
-                (type == Polytopes::InequalityType::LessThanOrEqualTo ? -A : A),
-                (type == Polytopes::InequalityType::LessThanOrEqualTo ? -b : b)
-            ); 
-
-            // For each vertex in the boundary, minimize the distance to the
-            // pulled vertex with a feasible parameter point
-            for (unsigned i = 0; i < this->vertices.size(); ++i)
+            // Define an SQPOptimizer or LineSearchSQPOptimizer instance
+            // to be utilized 
+            Polytopes::InequalityType type = this->constraints.getInequalityType();
+            if (use_line_search_sqp)
             {
-                // Minimize the appropriate objective function
-                VectorXd target = pulled.row(i); 
-                auto obj = [this, target](const Ref<const VectorXd>& x)
+                LineSearchSQPOptimizer<double>* optimizer = new LineSearchSQPOptimizer<double>(
+                    InputDim, nc,
+                    (type == Polytopes::InequalityType::LessThanOrEqualTo ? -A : A),
+                    (type == Polytopes::InequalityType::LessThanOrEqualTo ? -b : b)
+                ); 
+
+                // For each vertex in the boundary, minimize the distance to the
+                // pulled vertex with a feasible parameter point
+                for (unsigned i = 0; i < this->vertices.size(); ++i)
                 {
-                    return (target - this->func(x)).squaredNorm();
-                };
-                VectorXd x_init = this->input.row(this->vertices[i]);
-                VectorXd l_init = VectorXd::Ones(nc)
-                    - this->constraints.active(x_init.cast<mpq_rational>()).template cast<double>();
-                VectorXd q = optimizer->run(obj, x_init, l_init, max_iter, sqp_tol, BFGS, sqp_verbose);
-                VectorXd z = this->func(q); 
-                
-                // Check that the mutation did not give rise to an already 
-                // computed point
-                double mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
-                if (!filter(z) && mindist > 1e-10)
-                {
-                    this->N++;
-                    this->input.conservativeResize(this->N, InputDim); 
-                    this->points.conservativeResize(this->N, 2);
-                    this->input.row(this->N-1) = q;
-                    this->points.row(this->N-1) = z;
+                    // Minimize the appropriate objective function
+                    VectorXd target = pulled.row(i); 
+                    auto obj = [this, target](const Ref<const VectorXd>& x)
+                    {
+                        return (target - this->func(x)).squaredNorm();
+                    };
+                    VectorXd x_init = this->input.row(this->vertices[i]);
+                    VectorXd l_init = VectorXd::Ones(nc)
+                        - this->constraints.active(x_init.cast<mpq_rational>()).template cast<double>();
+                    double eta = 0.25; 
+                    double tau = 0.5; 
+                    VectorXd q = optimizer->run(
+                        obj, x_init, l_init, eta, tau, max_iter, sqp_tol, BFGS,
+                        sqp_verbose
+                    );
+                    VectorXd z = this->func(q); 
+                    
+                    // Check that the mutation did not give rise to an already 
+                    // computed point
+                    double mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
+                    if (!filter(z) && mindist > 1e-10)
+                    {
+                        this->N++;
+                        this->input.conservativeResize(this->N, InputDim); 
+                        this->points.conservativeResize(this->N, 2);
+                        this->input.row(this->N-1) = q;
+                        this->points.row(this->N-1) = z;
+                    }
                 }
+
+                delete optimizer;
+            }
+            else
+            {
+                SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(
+                    InputDim, nc,
+                    (type == Polytopes::InequalityType::LessThanOrEqualTo ? -A : A),
+                    (type == Polytopes::InequalityType::LessThanOrEqualTo ? -b : b)
+                ); 
+
+                // For each vertex in the boundary, minimize the distance to the
+                // pulled vertex with a feasible parameter point
+                for (unsigned i = 0; i < this->vertices.size(); ++i)
+                {
+                    // Minimize the appropriate objective function
+                    VectorXd target = pulled.row(i); 
+                    auto obj = [this, target](const Ref<const VectorXd>& x)
+                    {
+                        return (target - this->func(x)).squaredNorm();
+                    };
+                    VectorXd x_init = this->input.row(this->vertices[i]);
+                    VectorXd l_init = VectorXd::Ones(nc)
+                        - this->constraints.active(x_init.cast<mpq_rational>()).template cast<double>();
+                    VectorXd q = optimizer->run(obj, x_init, l_init, max_iter, sqp_tol, BFGS, sqp_verbose);
+                    VectorXd z = this->func(q); 
+                    
+                    // Check that the mutation did not give rise to an already 
+                    // computed point
+                    double mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
+                    if (!filter(z) && mindist > 1e-10)
+                    {
+                        this->N++;
+                        this->input.conservativeResize(this->N, InputDim); 
+                        this->points.conservativeResize(this->N, 2);
+                        this->input.row(this->N-1) = q;
+                        this->points.row(this->N-1) = z;
+                    }
+                }
+
+                delete optimizer;
             }
 
-            delete optimizer;
             return (std::abs(change) < this->area_tol * (area - change));
         }
 
@@ -671,9 +724,10 @@ class BoundaryFinder
                  const Ref<const MatrixXd>& init_input, 
                  const unsigned min_step_iter, const unsigned max_step_iter,
                  const unsigned min_pull_iter, const unsigned max_pull_iter,
-                 const unsigned max_edges, const bool verbose,
-                 const unsigned sqp_max_iter, const double sqp_tol,
-                 const bool sqp_verbose, const std::string write_prefix = "")
+                 const unsigned max_edges, const unsigned sqp_max_iter,
+                 const double sqp_tol, const bool verbose = false, 
+                 const bool sqp_verbose = false, const bool use_line_search_sqp = true,
+                 const std::string write_prefix = "")
         {
             // Initialize the sampling run ...
             this->initialize(filter, init_input);
@@ -703,7 +757,8 @@ class BoundaryFinder
                 // Set delta = 0.1 * std::sqrt(this->curr_area) 
                 bool result = this->pull(
                     filter, 0.1 * std::sqrt(this->curr_area), sqp_max_iter, sqp_tol,
-                    i + j, max_edges, verbose, sqp_verbose, write_prefix
+                    i + j, max_edges, verbose, sqp_verbose, use_line_search_sqp,
+                    write_prefix
                 );
                 if (!result)
                     n_converged = 0;
