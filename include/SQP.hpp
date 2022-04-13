@@ -11,7 +11,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     4/12/2022
+ *     4/13/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
