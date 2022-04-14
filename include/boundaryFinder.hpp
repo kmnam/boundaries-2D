@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     4/12/2022
+ *     4/14/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -556,7 +556,7 @@ class BoundaryFinder
          *
          * @param filter              Boolean function for filtering output
          *                            points in the plane as desired.
-         * @param delta               Distance by which the output points along
+         * @param epsilon             Distance by which the output points along
          *                            the boundary should be pulled. 
          * @param max_iter            Maximum number of iterations for SQP. 
          * @param sqp_tol             Tolerance for assessing convergence in SQP.
@@ -574,10 +574,10 @@ class BoundaryFinder
          *          to mutation) has converged to within `this->area_tol`. 
          */
         bool pull(std::function<bool(const Ref<const VectorXd>&)> filter, 
-                  const double delta, const unsigned max_iter, const double sqp_tol,
-                  const unsigned iter, const unsigned max_edges,
-                  const bool verbose = false, const bool sqp_verbose = false,
-                  const bool use_line_search_sqp = true,
+                  const double epsilon, const unsigned max_iter, const double sqp_tol,
+                  const unsigned iter, const unsigned max_edges, const double delta,
+                  const double beta, const bool verbose = false,
+                  const bool sqp_verbose = false, const bool use_line_search_sqp = true,
                   const std::string write_prefix = "")
         {
             // Store point coordinates in two vectors
@@ -589,13 +589,13 @@ class BoundaryFinder
 
             // Obtain the outward vertex normals along the boundary and,
             // for each vertex in the boundary, "pull" along its outward
-            // normal by distance delta
+            // normal by distance epsilon
             MatrixXd pulled(this->vertices.size(), 2);
             std::vector<Vector_2> normals = this->curr_bound.outwardVertexNormals();
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
                 Vector_2 v(x[this->vertices[i]], y[this->vertices[i]]);
-                Vector_2 v_pulled = v + delta * normals[i];
+                Vector_2 v_pulled = v + epsilon * normals[i];
                 pulled(i, 0) = CGAL::to_double(v_pulled.x());
                 pulled(i, 1) = CGAL::to_double(v_pulled.y());
 
@@ -620,7 +620,7 @@ class BoundaryFinder
             {
                 LineSearchSQPOptimizer<double>* optimizer = new LineSearchSQPOptimizer<double>(
                     InputDim, nc, type, A, b 
-                ); 
+                );
 
                 // For each vertex in the boundary, minimize the distance to the
                 // pulled vertex with a feasible parameter point
@@ -628,7 +628,7 @@ class BoundaryFinder
                 {
                     // Minimize the appropriate objective function
                     VectorXd target = pulled.row(i); 
-                    auto obj = [this, target](const Ref<const VectorXd>& x)
+                    auto obj = [this, &target](const Ref<const VectorXd>& x)
                     {
                         return (target - this->func(x)).squaredNorm();
                     };
@@ -636,10 +636,10 @@ class BoundaryFinder
                     VectorXd l_init = VectorXd::Ones(nc)
                         - this->constraints.active(x_init.cast<mpq_rational>()).template cast<double>();
                     double eta = 0.25; 
-                    double tau = 0.5; 
+                    double tau = 0.5;
                     VectorXd q = optimizer->run(
-                        obj, x_init, l_init, eta, tau, max_iter, sqp_tol, BFGS,
-                        sqp_verbose
+                        obj, x_init, l_init, eta, tau, delta, beta, max_iter,
+                        sqp_tol, BFGS, sqp_verbose
                     );
                     VectorXd z = this->func(q); 
                     
@@ -675,7 +675,10 @@ class BoundaryFinder
                     VectorXd x_init = this->input.row(this->vertices[i]);
                     VectorXd l_init = VectorXd::Ones(nc)
                         - this->constraints.active(x_init.cast<mpq_rational>()).template cast<double>();
-                    VectorXd q = optimizer->run(obj, x_init, l_init, max_iter, sqp_tol, BFGS, sqp_verbose);
+                    VectorXd q = optimizer->run(
+                        obj, x_init, l_init, delta, beta, max_iter, sqp_tol,
+                        BFGS, sqp_verbose
+                    );
                     VectorXd z = this->func(q); 
                     
                     // Check that the mutation did not give rise to an already 
@@ -832,8 +835,9 @@ class BoundaryFinder
                  const unsigned min_step_iter, const unsigned max_step_iter,
                  const unsigned min_pull_iter, const unsigned max_pull_iter,
                  const unsigned max_edges, const unsigned sqp_max_iter,
-                 const double sqp_tol, const bool verbose = false, 
-                 const bool sqp_verbose = false, const bool use_line_search_sqp = true,
+                 const double delta, const double beta, const double sqp_tol,
+                 const bool verbose = false, const bool sqp_verbose = false,
+                 const bool use_line_search_sqp = true,
                  const std::string write_prefix = "")
         {
             // Initialize the sampling run ...
@@ -859,13 +863,14 @@ class BoundaryFinder
             unsigned j = 0;
             terminate = false;
             n_converged = 0;
-            double delta = 0.1 * std::sqrt(this->curr_area);
+            double epsilon = 0.1 * std::sqrt(this->curr_area);
             while (j < min_pull_iter || (j < max_pull_iter && !terminate))
             {
-                if (verbose) std::cout << "Pulling by delta = " << delta << std::endl;  
+                if (verbose) std::cout << "Pulling by epsilon = " << epsilon << std::endl;  
                 bool result = this->pull(
-                    filter, delta, sqp_max_iter, sqp_tol, i + j, max_edges,
-                    verbose, sqp_verbose, use_line_search_sqp, write_prefix
+                    filter, epsilon, sqp_max_iter, sqp_tol, i + j, max_edges,
+                    delta, beta, verbose, sqp_verbose, use_line_search_sqp,
+                    write_prefix
                 );
                 if (!result)
                     n_converged = 0;
@@ -873,7 +878,7 @@ class BoundaryFinder
                     n_converged++; 
                 terminate = (n_converged >= NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE);
                 j++;
-                delta = 0.1 * std::sqrt(this->curr_area);
+                epsilon = 0.1 * std::sqrt(this->curr_area);
             }
 
             // Write final boundary information to file if desired

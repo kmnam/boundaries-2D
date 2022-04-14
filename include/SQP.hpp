@@ -503,38 +503,29 @@ class SQPOptimizer
                 std::cout << "Iteration " << iter << ": x = " << xl_new.head(this->D).transpose()
                           << "; " << "f(x) = " << func(xl_new.head(this->D)) << std::endl; 
             }
-
+            
             // Evaluate the Hessian of the Lagrangian (with respect to the input space)
             Matrix<T, Dynamic, 1> x_new = xl_new.head(this->D);
-            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta); 
+            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta);
             Matrix<T, Dynamic, 1> xl_mixed(xl);
             xl_mixed.tail(this->N) = mult; 
-            auto lagrangian = this->lagrangian(func);
-            T L_mixed = lagrangian(x, mult);
-            T L_new = lagrangian(x_new, mult);  
-            Matrix<T, Dynamic, 1> dL_mixed = lagrangianGradient(func, x, mult, delta); 
-            Matrix<T, Dynamic, 1> dL_new = lagrangianGradient(func, x_new, mult, delta); 
+            Matrix<T, Dynamic, 1> dL_mixed = this->lagrangianGradient(func, x, mult, delta); 
+            Matrix<T, Dynamic, 1> dL_new = this->lagrangianGradient(func, x_new, mult, delta);
             Matrix<T, Dynamic, Dynamic> d2L_new;
-            Matrix<T, Dynamic, 1> s, y; 
+            Matrix<T, Dynamic, 1> y = dL_new.head(this->D) - dL_mixed.head(this->D); 
             switch (quasi_newton)
             {
                 case BFGS:
-                    s = x_new - x;
-                    dL = dL_mixed.head(this->D);
-                    y = dL_new - dL; 
-                    d2L_new = updateBFGSDamped<T>(d2L, s, y);
+                    d2L_new = updateBFGSDamped<T>(d2L, sol, y);
                     break;
 
                 case SR1:
-                    s = x_new - x;
-                    dL = dL_mixed.head(this->D);
-                    y = dL_new - dL; 
-                    d2L_new = updateSR1<T>(d2L, s, y);
+                    d2L_new = updateSR1<T>(d2L, sol, y);
                     break;
 
                 default:
                     break;
-            } 
+            }
 
             // Return the new data
             StepData<T> new_data;
@@ -566,7 +557,7 @@ class SQPOptimizer
 
             // Evaluate the objective and its gradient
             T f = func(x_init);
-            Matrix<T, Dynamic, 1> grad = this->gradient(func, x_init, delta);   
+            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init, delta);   
             
             // Evaluate the Lagrangian and its gradient
             StepData<T> curr_data;
@@ -839,36 +830,27 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
             }
 
             // Evaluate the Hessian of the Lagrangian (with respect to the input space)
-            Matrix<T, Dynamic, 1> x_new = xl_new.head(this->D);
             Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta); 
             Matrix<T, Dynamic, 1> xl_mixed(xl);
             xl_mixed.tail(this->N) = mult; 
-            auto lagrangian = this->lagrangian(func);
-            T L_mixed = lagrangian(x, mult);
-            T L_new = lagrangian(x_new, mult);  
-            Matrix<T, Dynamic, 1> dL_mixed = lagrangianGradient(func, x, mult, delta); 
-            Matrix<T, Dynamic, 1> dL_new = lagrangianGradient(func, x_new, mult, delta); 
+            Matrix<T, Dynamic, 1> dL_mixed = this->lagrangianGradient(func, x, mult, delta); 
+            Matrix<T, Dynamic, 1> dL_new = this->lagrangianGradient(func, x_new, mult, delta); 
             Matrix<T, Dynamic, Dynamic> d2L_new;
-            Matrix<T, Dynamic, 1> s, y; 
+            Matrix<T, Dynamic, 1> s = x_new - x; 
+            Matrix<T, Dynamic, 1> y = dL_new.head(this->D) - dL_mixed.head(this->D); 
             switch (quasi_newton)
             {
                 case BFGS:
-                    s = x_new - x;
-                    dL = dL_mixed.head(this->D);
-                    y = dL_new - dL; 
                     d2L_new = updateBFGSDamped<T>(d2L, s, y);
                     break;
 
                 case SR1:
-                    s = x_new - x;
-                    dL = dL_mixed.head(this->D);
-                    y = dL_new - dL; 
                     d2L_new = updateSR1<T>(d2L, s, y);
                     break;
 
                 default:
                     break;
-            } 
+            }
 
             // Return the new data
             StepData<T> new_data;
@@ -901,7 +883,7 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
 
             // Evaluate the objective and its gradient
             T f = func(x_init);
-            Matrix<T, Dynamic, 1> grad = this->gradient(func, x_init, delta);   
+            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init, delta);   
             
             // Evaluate the Lagrangian and its gradient
             StepData<T> curr_data;
