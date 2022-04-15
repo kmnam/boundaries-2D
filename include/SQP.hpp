@@ -496,16 +496,18 @@ class SQPOptimizer
             Matrix<T, Dynamic, 1> xl_new(this->D + this->N);
             xl_new.head(this->D) = xl.head(this->D) + sol;
             xl_new.tail(this->N) = mult;
+            Matrix<T, Dynamic, 1> x_new = xl_new.head(this->D);
 
             // Print the new vector and value of the objective function
+            T f_new = func(x_new); 
             if (verbose)
             {
-                std::cout << "Iteration " << iter << ": x = " << xl_new.head(this->D).transpose()
-                          << "; " << "f(x) = " << func(xl_new.head(this->D)) << std::endl; 
+                std::cout << "Iteration " << iter << ": x = " << x_new.transpose() 
+                          << "; f(x) = " << f_new 
+                          << "; change = " << f_new - f << std::endl; 
             }
             
             // Evaluate the Hessian of the Lagrangian (with respect to the input space)
-            Matrix<T, Dynamic, 1> x_new = xl_new.head(this->D);
             Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta);
             Matrix<T, Dynamic, 1> xl_mixed(xl);
             xl_mixed.tail(this->N) = mult; 
@@ -529,6 +531,7 @@ class SQPOptimizer
 
             // Return the new data
             StepData<T> new_data;
+            new_data.f = f_new; 
             new_data.xl = xl_new;
             new_data.df = df_new;
             new_data.dL = dL_new;
@@ -548,16 +551,16 @@ class SQPOptimizer
                                   const T tol, const QuasiNewtonMethod quasi_newton,
                                   const bool verbose)
         {
+            // Evaluate the objective and its gradient
+            T f = func(x_init);
+            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init, delta);
+
             // Print the input vector and value of the objective function
             if (verbose)
             {
                 std::cout << "Initial vector: x = " << x_init.transpose()
-                          << "; " << "f(x) = " << func(x_init) << std::endl; 
+                          << "; " << "f(x) = " << f << std::endl; 
             }
-
-            // Evaluate the objective and its gradient
-            T f = func(x_init);
-            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init, delta);   
             
             // Evaluate the Lagrangian and its gradient
             StepData<T> curr_data;
@@ -823,10 +826,12 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
             xl_new.tail(this->N) = l + stepsize * mult;
             
             // Print the new vector and value of the objective function
+            T f_new = func(x_new); 
             if (verbose)
             {
-                std::cout << "Iteration " << iter << ": x = " << xl_new.head(this->D).transpose()
-                          << "; " << "f(x) = " << func(xl_new.head(this->D)) << std::endl; 
+                std::cout << "Iteration " << iter << ": x = " << x_new.transpose() 
+                          << "; f(x) = " << f_new 
+                          << "; change = " << f_new - f << std::endl; 
             }
 
             // Evaluate the Hessian of the Lagrangian (with respect to the input space)
@@ -854,6 +859,7 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
 
             // Return the new data
             StepData<T> new_data;
+            new_data.f = f_new; 
             new_data.xl = xl_new;
             new_data.df = df_new;
             new_data.dL = dL_new;
@@ -874,16 +880,16 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
                                   const QuasiNewtonMethod quasi_newton,
                                   const bool verbose)
         {
+            // Evaluate the objective and its gradient
+            T f = func(x_init);
+            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init, delta);
+
             // Print the input vector and value of the objective function
             if (verbose)
             {
                 std::cout << "Initial vector: x = " << x_init.transpose()
-                          << "; " << "f(x) = " << func(x_init) << std::endl; 
+                          << "; " << "f(x) = " << f << std::endl; 
             }
-
-            // Evaluate the objective and its gradient
-            T f = func(x_init);
-            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init, delta);   
             
             // Evaluate the Lagrangian and its gradient
             StepData<T> curr_data;
