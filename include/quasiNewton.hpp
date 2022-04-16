@@ -5,15 +5,16 @@
 /*
  * Implementations of a selection of quasi-Newton update formulas. 
  *
- * Authors:
+ * **Authors:**
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
- * Last updated:
- *     3/15/2021
+ *
+ * **Last updated:**
+ *     4/15/2022
  */
 using namespace Eigen;
 
 template <typename T>
-Matrix<T, Dynamic, Dynamic> updateBFGSInv(Matrix<T, Dynamic, Dynamic>& H,
+Matrix<T, Dynamic, Dynamic> updateBFGSInv(const Ref<const Matrix<T, Dynamic, Dynamic> >& H,
                                           const Ref<const Matrix<T, Dynamic, 1> >& s,
                                           const Ref<const Matrix<T, Dynamic, 1> >& y)
 {
@@ -27,7 +28,7 @@ Matrix<T, Dynamic, Dynamic> updateBFGSInv(Matrix<T, Dynamic, Dynamic>& H,
 }
 
 template <typename T>
-Matrix<T, Dynamic, Dynamic> updateBFGS(Matrix<T, Dynamic, Dynamic>& B,
+Matrix<T, Dynamic, Dynamic> updateBFGS(const Ref<const Matrix<T, Dynamic, Dynamic> >& B,
                                        const Ref<const Matrix<T, Dynamic, 1> >& s,
                                        const Ref<const Matrix<T, Dynamic, 1> >& y)
 {
@@ -38,14 +39,14 @@ Matrix<T, Dynamic, Dynamic> updateBFGS(Matrix<T, Dynamic, Dynamic>& B,
 }
 
 template <typename T>
-Matrix<T, Dynamic, Dynamic> updateBFGSDamped(Matrix<T, Dynamic, Dynamic>& B,
+Matrix<T, Dynamic, Dynamic> updateBFGSDamped(const Ref<const Matrix<T, Dynamic, Dynamic> >& B,
                                              const Ref<const Matrix<T, Dynamic, 1> >& s,
                                              const Ref<const Matrix<T, Dynamic, 1> >& y)
 {
     /*
      * Compute the damped BFGS update formula (Nocedal and Wright, Eqn. 18.16).
      */
-    double theta;
+    T theta;
     if (s.dot(y) >= 0.2 * s.dot(B * s))
         theta = 1.0;
     else
@@ -80,7 +81,7 @@ LDLT<Matrix<T, Dynamic, Dynamic> > updateBFGSCholesky(LDLT<Matrix<T, Dynamic, Dy
 }
 
 template <typename T>
-Matrix<T, Dynamic, Dynamic> updateSR1Inv(Matrix<T, Dynamic, Dynamic>& H,
+Matrix<T, Dynamic, Dynamic> updateSR1Inv(const Ref<const Matrix<T, Dynamic, Dynamic> >& H,
                                          const Ref<const Matrix<T, Dynamic, 1> >& s,
                                          const Ref<const Matrix<T, Dynamic, 1> >& y)
 {
@@ -91,7 +92,7 @@ Matrix<T, Dynamic, Dynamic> updateSR1Inv(Matrix<T, Dynamic, Dynamic>& H,
 }
 
 template <typename T>
-Matrix<T, Dynamic, Dynamic> updateSR1(Matrix<T, Dynamic, Dynamic>& B,
+Matrix<T, Dynamic, Dynamic> updateSR1(const Ref<const Matrix<T, Dynamic, Dynamic> >& B,
                                       const Ref<const Matrix<T, Dynamic, 1> >& s,
                                       const Ref<const Matrix<T, Dynamic, 1> >& y)
 {
