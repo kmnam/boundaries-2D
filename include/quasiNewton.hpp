@@ -28,18 +28,20 @@ Matrix<T, Dynamic, Dynamic> updateBFGSInv(const Ref<const Matrix<T, Dynamic, Dyn
 }
 
 template <typename T>
-Matrix<T, Dynamic, Dynamic> updateBFGS(const Ref<const Matrix<T, Dynamic, Dynamic> >& B,
+Matrix<T, Dynamic, Dynamic> updateBFGS(//const Ref<const Matrix<T, Dynamic, Dynamic> >& B, 
+                                       SelfAdjointView<Matrix<T, Dynamic, Dynamic>, Lower>& B, 
                                        const Ref<const Matrix<T, Dynamic, 1> >& s,
                                        const Ref<const Matrix<T, Dynamic, 1> >& y)
 {
     /*
      * Compute the BFGS update formula (Nocedal and Wright, Eqn. 6.19).
      */
-    return B.template selfadjointView<Lower>().rankUpdate(B * s, -1.0 / s.dot(B * s)).rankUpdate(y, 1.0 / y.dot(s));
+    return B.rankUpdate(B * s, -1.0 / s.dot(B * s)).rankUpdate(y, 1.0 / y.dot(s));
 }
 
 template <typename T>
-Matrix<T, Dynamic, Dynamic> updateBFGSDamped(const Ref<const Matrix<T, Dynamic, Dynamic> >& B,
+Matrix<T, Dynamic, Dynamic> updateBFGSDamped(//const Ref<const Matrix<T, Dynamic, Dynamic> >& B,
+                                             SelfAdjointView<Matrix<T, Dynamic, Dynamic>, Lower>& B,
                                              const Ref<const Matrix<T, Dynamic, 1> >& s,
                                              const Ref<const Matrix<T, Dynamic, 1> >& y)
 {
@@ -52,8 +54,8 @@ Matrix<T, Dynamic, Dynamic> updateBFGSDamped(const Ref<const Matrix<T, Dynamic, 
     else
         theta = (0.8 * s.dot(B * s)) / (s.dot(B * s) - s.dot(y));
 
-    Matrix<T, Dynamic, 1> r = theta * y + (1 - theta) * B * s; 
-    return B.template selfadjointView<Lower>().rankUpdate(B * s, -1.0 / s.dot(B * s)).rankUpdate(r, 1.0 / s.dot(r)); 
+    Matrix<T, Dynamic, 1> r = theta * y + (1 - theta) * B * s;
+    return B.rankUpdate(B * s, -1.0 / s.dot(B * s)).rankUpdate(r, 1.0 / s.dot(r)); 
 }
 
 template <typename T>
@@ -81,25 +83,27 @@ LDLT<Matrix<T, Dynamic, Dynamic> > updateBFGSCholesky(LDLT<Matrix<T, Dynamic, Dy
 }
 
 template <typename T>
-Matrix<T, Dynamic, Dynamic> updateSR1Inv(const Ref<const Matrix<T, Dynamic, Dynamic> >& H,
+Matrix<T, Dynamic, Dynamic> updateSR1Inv(//const Ref<const Matrix<T, Dynamic, Dynamic> >& H,
+                                         SelfAdjointView<Matrix<T, Dynamic, Dynamic>, Lower>& H, 
                                          const Ref<const Matrix<T, Dynamic, 1> >& s,
                                          const Ref<const Matrix<T, Dynamic, 1> >& y)
 {
     /*
      * Compute the SR1 update formula (Nocedal and Wright, Eqn. 6.25).
      */
-    return H.template selfadjointView<Lower>().rankUpdate(s - H * y, 1.0 / (s - H * y).dot(y));
+    return H.rankUpdate(s - H * y, 1.0 / (s - H * y).dot(y));
 }
 
 template <typename T>
-Matrix<T, Dynamic, Dynamic> updateSR1(const Ref<const Matrix<T, Dynamic, Dynamic> >& B,
+Matrix<T, Dynamic, Dynamic> updateSR1(//const Ref<const Matrix<T, Dynamic, Dynamic> >& B,
+                                      SelfAdjointView<Matrix<T, Dynamic, Dynamic>, Lower>& B, 
                                       const Ref<const Matrix<T, Dynamic, 1> >& s,
                                       const Ref<const Matrix<T, Dynamic, 1> >& y)
 {
     /*
      * Compute the SR1 update formula (Nocedal and Wright, Eqn. 6.24).
      */
-    return B.template selfadjointView<Lower>().rankUpdate(y - B * s, 1.0 / (y - B * s).dot(s));
+    return B.rankUpdate(y - B * s, 1.0 / (y - B * s).dot(s));
 }
 
 #endif

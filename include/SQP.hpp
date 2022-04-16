@@ -514,15 +514,16 @@ class SQPOptimizer
             Matrix<T, Dynamic, 1> dL_mixed = this->lagrangianGradient(func, x, mult, delta); 
             Matrix<T, Dynamic, 1> dL_new = this->lagrangianGradient(func, x_new, mult, delta);
             Matrix<T, Dynamic, Dynamic> d2L_new;
-            Matrix<T, Dynamic, 1> y = dL_new.head(this->D) - dL_mixed.head(this->D); 
+            Matrix<T, Dynamic, 1> y = dL_new.head(this->D) - dL_mixed.head(this->D);
+            auto d2L_ = d2L.template selfadjointView<Lower>(); 
             switch (quasi_newton)
             {
                 case BFGS:
-                    d2L_new = updateBFGSDamped<T>(d2L, sol, y);
+                    d2L_new = updateBFGSDamped<T>(d2L_, sol, y); 
                     break;
 
                 case SR1:
-                    d2L_new = updateSR1<T>(d2L, sol, y);
+                    d2L_new = updateSR1<T>(d2L_, sol, y); 
                     break;
 
                 default:
@@ -842,15 +843,16 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
             Matrix<T, Dynamic, 1> dL_new = this->lagrangianGradient(func, x_new, mult, delta); 
             Matrix<T, Dynamic, Dynamic> d2L_new;
             Matrix<T, Dynamic, 1> s = x_new - x; 
-            Matrix<T, Dynamic, 1> y = dL_new.head(this->D) - dL_mixed.head(this->D); 
+            Matrix<T, Dynamic, 1> y = dL_new.head(this->D) - dL_mixed.head(this->D);
+            auto d2L_ = d2L.template selfadjointView<Lower>(); 
             switch (quasi_newton)
             {
                 case BFGS:
-                    d2L_new = updateBFGSDamped<T>(d2L, s, y);
+                    d2L_new = updateBFGSDamped<T>(d2L_, s, y); 
                     break;
 
                 case SR1:
-                    d2L_new = updateSR1<T>(d2L, s, y);
+                    d2L_new = updateSR1<T>(d2L_, s, y); 
                     break;
 
                 default:
