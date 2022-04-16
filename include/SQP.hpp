@@ -242,25 +242,6 @@ class SQPOptimizer
         }
 
         /**
-         * Compute the Lagrangian of the given function and its gradient at the given
-         * vector, with `delta = 1e-7` for finite difference approximation.
-         */
-        std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&, const Ref<const Matrix<T, Dynamic, 1> >&)>
-            lagrangian(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func)
-        {
-            return [this, &func](const Ref<const Matrix<T, Dynamic, 1> >& x, const Ref<const Matrix<T, Dynamic, 1> >& l)
-                {
-                    Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
-                    Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
-                    Polytopes::InequalityType type = this->constraints->getInequalityType();  
-                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                        return func(x) - l.dot(A * x - b);
-                    else 
-                        return func(x) + l.dot(A * x - b);  
-                }; 
-        }
-
-        /**
          * Compute the Lagrangian of the gradient of the given function at the
          * given vector, with increment `delta` for finite difference approximation.
          */
@@ -272,13 +253,23 @@ class SQPOptimizer
             Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>();   // Convert from rationals to T
             Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();         // Convert from rationals to T
             Polytopes::InequalityType type = this->constraints->getInequalityType();
-            auto lagrangian = this->lagrangian(func);  
+            auto lagrangian = [this, &func](const Ref<const Matrix<T, Dynamic, 1> >& x,
+                                            const Ref<const Matrix<T, Dynamic, 1> >& l)
+                {
+                    Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
+                    Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
+                    Polytopes::InequalityType type = this->constraints->getInequalityType(); 
+                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
+                        return func(x) - l.dot(A * x - b);
+                    else 
+                        return func(x) + l.dot(A * x - b);  
+                }; 
 
             // Evaluate the Lagrangian at 2 * D values, with each coordinate 
             // perturbed by +/- delta
             Matrix<T, Dynamic, 1> dL(this->D + this->N);
             Matrix<T, Dynamic, 1> x_(x);
-            Matrix<T, Dynamic, 1> l_(l);  
+            Matrix<T, Dynamic, 1> l_(l);
             for (unsigned i = 0; i < this->D; ++i)
             {
                 x_(i) += delta;
@@ -570,7 +561,17 @@ class SQPOptimizer
             curr_data.xl.head(this->D) = x_init;
             curr_data.xl.tail(this->N) = l_init; 
             curr_data.df = df;
-            auto lagrangian = this->lagrangian(func);
+            auto lagrangian = [this, &func](const Ref<const Matrix<T, Dynamic, 1> >& x,
+                                            const Ref<const Matrix<T, Dynamic, 1> >& l)
+                {
+                    Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
+                    Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
+                    Polytopes::InequalityType type = this->constraints->getInequalityType(); 
+                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
+                        return func(x) - l.dot(A * x - b);
+                    else 
+                        return func(x) + l.dot(A * x - b);  
+                }; 
             T L = lagrangian(x_init, l_init); 
             Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(func, x_init, l_init, delta); 
             curr_data.dL = dL;
@@ -900,21 +901,31 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
             curr_data.xl.head(this->D) = x_init;
             curr_data.xl.tail(this->N) = l_init; 
             curr_data.df = df;
-            auto lagrangian = this->lagrangian(func);
-            T L = lagrangian(x_init, l_init); 
-            Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(func, x_init, l_init, delta); 
+            auto lagrangian = [this, &func](const Ref<const Matrix<T, Dynamic, 1> >& x,
+                                            const Ref<const Matrix<T, Dynamic, 1> >& l)
+                {
+                    Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
+                    Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
+                    Polytopes::InequalityType type = this->constraints->getInequalityType(); 
+                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
+                        return func(x) - l.dot(A * x - b);
+                    else 
+                        return func(x) + l.dot(A * x - b);  
+                }; 
+            T L = lagrangian(x_init, l_init);
+            Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(func, x_init, l_init, delta);
             curr_data.dL = dL;
             curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
 
             unsigned i = 0;
             T change = 2 * tol;
-            unsigned hessian_modify_max_iter = max_iter; 
+            unsigned hessian_modify_max_iter = max_iter;
             while (i < max_iter && change > tol)
             {
                 StepData<T> next_data = this->step(
                     func, i, quasi_newton, curr_data, eta, tau, delta, beta,
                     verbose, hessian_modify_max_iter
-                ); 
+                );
                 change = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).template cast<T>().norm();
                 i++;
                 curr_data.f = next_data.f; 
