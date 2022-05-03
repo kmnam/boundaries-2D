@@ -25,6 +25,7 @@
 #include <boost/random.hpp>
 #include <polytopes.hpp>
 #include <linearConstraints.hpp>
+#include <vertexEnum.hpp>
 #include "boundaries.hpp"
 #include "SQP.hpp"
 
@@ -108,7 +109,15 @@ class BoundaryFinder
 
             // Check that A has the correct number of columns 
             if (A.cols() != InputDim) 
-                throw std::invalid_argument("Invalid linear constraints specified");  
+                throw std::invalid_argument("Invalid linear constraints specified");
+
+            // Enumerate the vertices of the input polytope
+            Polytopes::PolyhedralDictionarySystem* dict = new Polytopes::PolyhedralDictionarySystem(type, A, b); 
+            Matrix<mpq_rational, Dynamic, Dynamic> vertices = dict->enumVertices(); 
+            delete dict; 
+
+            // Obtain the Delaunay triangulation of the input polytope 
+            Polytopes::triangulate(vertices, this->tri); 
         }
 
         /**
@@ -137,7 +146,17 @@ class BoundaryFinder
 
             // Check that A has the correct number of columns 
             if (this->constraints.getD() != InputDim)
-                throw std::invalid_argument("Invalid linear constraints specified");  
+                throw std::invalid_argument("Invalid linear constraints specified");
+
+            // Enumerate the vertices of the input polytope
+            Matrix<mpq_rational, Dynamic, Dynamic> A = this->constraints.getA(); 
+            Matrix<mpq_rational, Dynamic, 1> b = this->constraints.getb(); 
+            Polytopes::PolyhedralDictionarySystem* dict = new Polytopes::PolyhedralDictionarySystem(type, A, b); 
+            Matrix<mpq_rational, Dynamic, Dynamic> vertices = dict->enumVertices(); 
+            delete dict; 
+
+            // Obtain the Delaunay triangulation of the input polytope 
+            Polytopes::triangulate(vertices, this->tri); 
         }
 
         /**
