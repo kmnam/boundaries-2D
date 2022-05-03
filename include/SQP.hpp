@@ -11,7 +11,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     4/14/2022
+ *     5/3/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -123,11 +123,13 @@ class SQPOptimizer
 
     public:
         /**
-         * Straightforward constructor with `N` variables.
+         * Straightforward constructor with `D` variables.
          *
-         * Each variable is constrained to be greater than or equal to zero. 
+         * Each variable is constrained to be greater than or equal to zero.
+         *
+         * @param D Number of variables.
          */
-        SQPOptimizer(const unsigned N)
+        SQPOptimizer(const unsigned D)
         {
             this->D = D;
             this->N = D;    // One constraint for each variable
@@ -141,7 +143,14 @@ class SQPOptimizer
 
         /**
          * Constructor with constraint matrix and vector specified, and
-         * inequality set to greater-than-or-equal-to. 
+         * inequality set to greater-than-or-equal-to.
+         *
+         * @param D Number of variables.
+         * @param N Number of constraints.
+         * @param A Constraint matrix.
+         * @param b Constraint vector.
+         * @throws std::invalid_argument If the dimensions of `A` or `b` do not
+         *                               match those implied by `D` and `N`.
          */
         SQPOptimizer(const unsigned D, const unsigned N,
                      const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
@@ -161,7 +170,15 @@ class SQPOptimizer
 
         /**
          * Constructor with constraint matrix, vector, and inequality type
-         * specified. 
+         * specified.
+         *
+         * @param D    Number of variables.
+         * @param N    Number of constraints.
+         * @param type Inequality type.
+         * @param A    Constraint matrix.
+         * @param b    Constraint vector.
+         * @throws std::invalid_argument If the dimensions of `A` or `b` do not
+         *                               match those implied by `D` and `N`.
          */
         SQPOptimizer(const unsigned D, const unsigned N,
                      const Polytopes::InequalityType type, 
@@ -183,7 +200,10 @@ class SQPOptimizer
 
         /**
          * Constructor with linear constraints specified via a `LinearConstraints`
-         * instance. 
+         * instance.
+         *
+         * @param constraints Pointer to `LinearConstraints` instance containing
+         *                    the constraint matrix and vector.
          */
         SQPOptimizer(Polytopes::LinearConstraints<mpq_rational>* constraints)
         {
@@ -206,7 +226,13 @@ class SQPOptimizer
         }
 
         /**
-         * Update the stored linear constraints. 
+         * Update the stored linear constraints.
+         *
+         * @param A New constraint matrix.
+         * @param b New constraint vector.
+         * @throws std::invalid_argument If the dimensions of `A` or `b` do not
+         *                               match those implied by `this->D` and
+         *                               `this->N`.
          */
         void setConstraints(const Ref<const Matrix<mpq_rational, Dynamic, Dynamic> >& A,
                             const Ref<const Matrix<mpq_rational, Dynamic, 1> >& b)
@@ -218,7 +244,12 @@ class SQPOptimizer
 
         /**
          * Compute the gradient of the given function at the given vector, with 
-         * increment `delta` for finite difference approximation. 
+         * increment `delta` for finite difference approximation.
+         *
+         * @param func  Function whose gradient is to be approximated.
+         * @param x     Input vector.
+         * @param delta Increment for finite difference approximation.
+         * @returns Gradient approximation. 
          */
         Matrix<T, Dynamic, 1> gradient(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                                        const Ref<const Matrix<T, Dynamic, 1> >& x,
@@ -242,8 +273,15 @@ class SQPOptimizer
         }
 
         /**
-         * Compute the Lagrangian of the gradient of the given function at the
+         * Compute the gradient of the Lagrangian of the given function at the 
          * given vector, with increment `delta` for finite difference approximation.
+         *
+         * @param func  Input function.
+         * @param x     Input vector for `func`.
+         * @param l     Input vector for additional Lagrangian variables (one
+         *              for each constraint).
+         * @param delta Increment for finite difference approximation.
+         * @returns     Gradient approximation.
          */
         Matrix<T, Dynamic, 1> lagrangianGradient(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                                                  const Ref<const Matrix<T, Dynamic, 1> >& x,
