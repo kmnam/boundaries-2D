@@ -332,7 +332,13 @@ class SQPOptimizer
 
         /**
          * Compute the L1 merit function (Nocedal and Wright, Eq. 15.24) with
-         * respect to the given function and stored constraints.  
+         * respect to the given function and stored constraints.
+         *
+         * @param func Input function.
+         * @param x    Input vector.
+         * @param mu   Mu parameter for merit function (Nocedal and Wright, 
+         *             Eq. 15.24)
+         * @returns    Value of corresponding merit function.  
          */
         T meritL1(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func, 
                   const Ref<const Matrix<T, Dynamic, 1> >& x, const T mu)
@@ -354,6 +360,12 @@ class SQPOptimizer
         /**
          * Compute the L1 merit function (Nocedal and Wright, Eq. 15.24) with
          * respect to the given pre-computed function value and stored constraints.
+         *
+         * @param eval Pre-computed function value.
+         * @param x    Input vector.
+         * @param mu   Mu parameter for merit function (Nocedal and Wright, 
+         *             Eq. 15.24)
+         * @returns    Value of corresponding merit function.  
          */
         T meritL1(T eval, const Ref<const Matrix<T, Dynamic, 1> >& x, const T mu)
         {
