@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     4/14/2022
+ *     5/3/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -217,6 +217,14 @@ class BoundaryFinder
             return Polytopes::sampleFromConvexPolytope<INTERNAL_PRECISION, INTERNAL_PRECISION>(
                 this->tri, npoints, 0, this->rng
             );  
+        }
+
+        /**
+         * Return the currently stored boundary of output points.
+         */
+        AlphaShape2DProperties getBoundary()
+        {
+            return this->curr_bound; 
         }
 
         /**
