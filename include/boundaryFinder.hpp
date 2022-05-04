@@ -575,22 +575,27 @@ class BoundaryFinder
          *
          * Note that this method assumes that the boundary is simply connected.
          *
-         * @param filter              Boolean function for filtering output
-         *                            points in the plane as desired.
-         * @param epsilon             Distance by which the output points along
-         *                            the boundary should be pulled. 
-         * @param max_iter            Maximum number of iterations for SQP. 
-         * @param sqp_tol             Tolerance for assessing convergence in SQP.
-         * @param iter                Iteration number.  
-         * @param max_edges           Maximum number of edges to be contained
-         *                            in the boundary. 
-         * @param verbose             If true, output intermittent messages
-         *                            to `stdout`.
-         * @param sqp_verbose         If true, output intermittent messages 
-         *                            during SQP to `stdout`.
-         * @param use_line_search_sqp If true, use line-search SQP. 
-         * @param write_prefix        Prefix of output file name to which to write 
-         *                            the boundary obtained in this iteration.
+         * @param filter                  Boolean function for filtering output
+         *                                points in the plane as desired.
+         * @param epsilon                 Distance by which the output points 
+         *                                along the boundary should be pulled. 
+         * @param max_iter                Maximum number of iterations for SQP. 
+         * @param sqp_tol                 Tolerance for assessing convergence
+         *                                in SQP.
+         * @param iter                    Iteration number.  
+         * @param max_edges               Maximum number of edges to be contained
+         *                                in the boundary. 
+         * @param verbose                 If true, output intermittent messages
+         *                                to `stdout`.
+         * @param sqp_verbose             If true, output intermittent messages 
+         *                                during SQP to `stdout`.
+         * @param use_line_search_sqp     If true, use line-search SQP.
+         * @param hessian_modify_max_iter Maximum number of Hessian matrix
+         *                                modification iterations (for ensuring
+         *                                positive semi-definiteness).  
+         * @param write_prefix            Prefix of output file name to which to  
+         *                                write the boundary obtained in this
+         *                                iteration.
          * @returns True if the area enclosed by the boundary (obtained prior 
          *          to mutation) has converged to within `this->area_tol`. 
          */
@@ -850,7 +855,11 @@ class BoundaryFinder
          *                      per pull iteration. 
          * @param sqp_tol       Tolerance for assessing convergence in SQP.
          * @param sqp_verbose   If true, output intermittent messages during 
-         *                      SQP to `stdout`. 
+         *                      SQP to `stdout`.
+         * @param hessian_modify_max_iter
+         *                      Maximum number of Hessian matrix modification
+         *                      iterations (for ensuring positive semi-
+         *                      definiteness).  
          * @param write_prefix  Prefix of output file name to which to write 
          *                      the boundary obtained in this iteration.
          */
@@ -863,6 +872,7 @@ class BoundaryFinder
                  const double delta, const double beta, const double sqp_tol,
                  const bool verbose = false, const bool sqp_verbose = false,
                  const bool use_line_search_sqp = true,
+                 const unsigned hessian_modify_max_iter = 1000,
                  const std::string write_prefix = "")
         {
             // Initialize the sampling run ...
@@ -895,7 +905,7 @@ class BoundaryFinder
                 bool result = this->pull(
                     filter, epsilon, sqp_max_iter, sqp_tol, i + j, max_edges,
                     delta, beta, verbose, sqp_verbose, use_line_search_sqp,
-                    write_prefix
+                    hessian_modify_max_iter, write_prefix
                 );
                 if (!result)
                     n_converged = 0;
