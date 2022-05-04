@@ -433,8 +433,8 @@ class SQPOptimizer
              *
              * subject to: 
              *
-             *   A * p + (A * xk - b) >= 0   if the inequality type of the linear constraints is >=
-             *   A * p - (A * xk - b) >= 0   if the inequality type of the linear constraints is <=
+             *    A * p + (A * xk - b) >= 0   if the inequality type of the linear constraints is >=
+             *   -A * p - (A * xk - b) >= 0   if the inequality type of the linear constraints is <=
              *
              * where:
              *
@@ -461,9 +461,13 @@ class SQPOptimizer
                 for (unsigned j = 0; j < this->D; ++j)
                 {
                     // Sets A_ij (j-th coefficient of i-th constraint)
-                    this->program->set_a(j, i, static_cast<double>(A(i,j)));
+                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
+                        this->program->set_a(j, i, static_cast<double>(A(i,j)));
+                    else 
+                        this->program->set_a(j, i, -static_cast<double>(A(i,j))); 
                 }
-                // Sets b_i (i-th coordinate of -(A * xk - b))
+                // Sets b_i (i-th coordinate of -(A * xk - b) if inequality type is >=,
+                // i-th coordinate of (A * xk - b) if inequality type is <=)
                 this->program->set_b(i, static_cast<double>(c(i)));
             }
             // Sets constant part of objective (fk)
@@ -739,8 +743,8 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
              *
              * subject to: 
              *
-             *   A * p + (A * xk - b) >= 0   if the inequality type of the linear constraints is >=
-             *   A * p - (A * xk - b) >= 0   if the inequality type of the linear constraints is <=
+             *    A * p + (A * xk - b) >= 0   if the inequality type of the linear constraints is >=
+             *   -A * p - (A * xk - b) >= 0   if the inequality type of the linear constraints is <=
              *
              * where:
              *
@@ -767,13 +771,15 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
                 for (unsigned j = 0; j < this->D; ++j)
                 {
                     // Sets A_ij (j-th coefficient of i-th constraint)
-                    this->program->set_a(j, i, static_cast<double>(A(i,j)));
+                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
+                        this->program->set_a(j, i, static_cast<double>(A(i,j)));
+                    else 
+                        this->program->set_a(j, i, -static_cast<double>(A(i,j))); 
                 }
-                // Sets b_i (i-th coordinate of -(A * xk - b))
+                // Sets b_i (i-th coordinate of -(A * xk - b) if inequality type is >=,
+                // i-th coordinate of (A * xk - b) if inequality type is <=)
                 this->program->set_b(i, static_cast<double>(c(i)));
             }
-            // Sets constant part of objective (fk)
-            this->program->set_c0(static_cast<double>(f));
 
             // Solve the quadratic program ...
             Solution solution; 
@@ -867,7 +873,7 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
             while (merit_new > merit_old + eta * stepsize * dir_deriv)
             {
                 stepsize *= factor;
-                x_new = x + stepsize * sol; 
+                x_new = x + stepsize * sol;
                 merit_new = this->meritL1(func, x_new, mu);
                 factor /= 2;  
             }  
