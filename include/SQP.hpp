@@ -595,7 +595,8 @@ class SQPOptimizer
                                   const Ref<const Matrix<T, Dynamic, 1> >& l_init,
                                   const T delta, const T beta, const unsigned max_iter,
                                   const T tol, const QuasiNewtonMethod quasi_newton,
-                                  const bool verbose)
+                                  const bool verbose,
+                                  const unsigned hessian_modify_max_iter)
         {
             // Evaluate the objective and its gradient
             T f = func(x_init);
@@ -633,7 +634,6 @@ class SQPOptimizer
 
             unsigned i = 0;
             T change = 2 * tol; 
-            unsigned hessian_modify_max_iter = max_iter; 
             while (i < max_iter && change > tol)
             {
                 StepData<T> next_data = this->step(
@@ -937,7 +937,8 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
                                   const T eta, const T tau, const T delta, const T beta,
                                   const unsigned max_iter, const T tol,
                                   const QuasiNewtonMethod quasi_newton,
-                                  const bool verbose)
+                                  const bool verbose,
+                                  const unsigned hessian_modify_max_iter)
         {
             // Evaluate the objective and its gradient
             T f = func(x_init);
@@ -975,7 +976,6 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
 
             unsigned i = 0;
             T change = 2 * tol;
-            unsigned hessian_modify_max_iter = max_iter;
             while (i < max_iter && change > tol)
             {
                 StepData<T> next_data = this->step(

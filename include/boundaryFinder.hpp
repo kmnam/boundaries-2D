@@ -599,6 +599,7 @@ class BoundaryFinder
                   const unsigned iter, const unsigned max_edges, const double delta,
                   const double beta, const bool verbose = false,
                   const bool sqp_verbose = false, const bool use_line_search_sqp = true,
+                  const unsigned hessian_modify_max_iter = 1000,
                   const std::string write_prefix = "")
         {
             // Store point coordinates in two vectors
@@ -643,6 +644,8 @@ class BoundaryFinder
                 LineSearchSQPOptimizer<double>* optimizer = new LineSearchSQPOptimizer<double>(
                     D, nc, type, A, b 
                 );
+                const double eta = 0.25;
+                const double tau = 0.5;
 
                 // For each vertex in the boundary, minimize the distance to the
                 // pulled vertex with a feasible parameter point
@@ -657,11 +660,9 @@ class BoundaryFinder
                     VectorXd x_init = this->input.row(this->vertices[i]);
                     VectorXd l_init = VectorXd::Ones(nc)
                         - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
-                    double eta = 0.25; 
-                    double tau = 0.5;
                     VectorXd q = optimizer->run(
                         obj, x_init, l_init, eta, tau, delta, beta, max_iter,
-                        sqp_tol, BFGS, sqp_verbose
+                        sqp_tol, BFGS, sqp_verbose, hessian_modify_max_iter
                     );
                     VectorXd z = this->func(q); 
                     
@@ -701,7 +702,7 @@ class BoundaryFinder
                         - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
                     VectorXd q = optimizer->run(
                         obj, x_init, l_init, delta, beta, max_iter, sqp_tol,
-                        BFGS, sqp_verbose
+                        BFGS, sqp_verbose, hessian_modify_max_iter
                     );
                     VectorXd z = this->func(q); 
                     
