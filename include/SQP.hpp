@@ -27,6 +27,7 @@
 #include <boost/multiprecision/gmp.hpp>
 #include <linearConstraints.hpp>
 #include "quasiNewton.hpp"
+#include "duals.hpp"
 
 using namespace Eigen;
 using boost::multiprecision::mpq_rational; 
