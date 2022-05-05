@@ -307,12 +307,14 @@ class SQPOptimizer
                 x_(i) += delta; 
                 dL(i) = (f1 - f2) / (2 * delta);
             }
+            T f = func(x_); 
+            Matrix<T, Dynamic, 1> p = sign * (A * x_ - b); 
             for (unsigned i = 0; i < this->N; ++i)
             {
                 l_(i) += delta;
-                T f1 = func(x_) + sign * l_.dot(A * x_ - b); 
+                T f1 = f + l_.dot(p); 
                 l_(i) -= 2 * delta;
-                T f2 = func(x_) + sign * l_.dot(A * x_ - b);
+                T f2 = f + l_.dot(p); 
                 l_(i) += delta; 
                 dL(this->D + i) = (f1 - f2) / (2 * delta);
             }
@@ -656,7 +658,7 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
         /**
          * All inherited constructors from `SQPOptimizer`. 
          */
-        LineSearchSQPOptimizer(const unsigned N) : SQPOptimizer<T>(N)
+        LineSearchSQPOptimizer(const unsigned D) : SQPOptimizer<T>(D)
         {
         }
         
@@ -999,14 +1001,14 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
         /**
          * All inherited constructors from `SQPOptimizer`. 
          */
-        ForwardAutoDiffSQPOptimizer(const unsigned D) : SQPOptimizer(D)
+        ForwardAutoDiffSQPOptimizer(const unsigned D) : SQPOptimizer<T>(D)
         {
         }
 
         ForwardAutoDiffSQPOptimizer(const unsigned D, const unsigned N,
                                     const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
                                     const Ref<const Matrix<T, Dynamic, Dynamic> >& b)
-            : SQPOptimizer(D, N, A, b)
+            : SQPOptimizer<T>(D, N, A, b)
         {
         }
 
@@ -1014,12 +1016,12 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                                     const Polytopes::InequalityType type, 
                                     const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
                                     const Ref<const Matrix<T, Dynamic, 1> >& b)
-            : SQPOptimizer(D, N, type, A, b)
+            : SQPOptimizer<T>(D, N, type, A, b)
         {
         }
 
         ForwardAutoDiffSQPOptimizer(Polytopes::LinearConstraints<mpq_rational>* constraints)
-            : SQPOptimizer(constraints)
+            : SQPOptimizer<T>(constraints)
         {
         }
 
@@ -1070,8 +1072,8 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                                                  const Ref<const Matrix<T, Dynamic, 1> >& x,
                                                  const Ref<const Matrix<T, Dynamic, 1> >& l)
         {
-            Matrix<Dual<T>, Dynamic, Dynamic> A = this->constraints->getA().template cast<Dual<T> >(); // Convert from rationals to Dual<T>
-            Matrix<Dual<T>, Dynamic, 1> b = this->constraints->getb().template cast<Dual<T> >();       // Convert from rationals to Dual<T>
+            Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>();   // Convert from rationals to T
+            Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();         // Convert from rationals to T
             Polytopes::InequalityType type = this->constraints->getInequalityType();
             T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1); 
 
@@ -1093,13 +1095,15 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             for (unsigned i = 0; i < this->D; ++i)
             {
                 x_(i).b = 1; 
-                dL(i) = (func(x_) + sign * l_.dot(A * x_ - b)).b;
+                dL(i) = (func(x_) + sign * l_.dot((A * x_ - b).eval())).b;
                 x_(i).b = 0;
             }
+            Dual<T> f = func(x_); 
+            Matrix<Dual<T>, Dynamic, 1> p = sign * (A * x_ - b); 
             for (unsigned i = 0; i < this->N; ++i)
             {
                 l_(i).b = 1;
-                dL(this->D + i) = (func(x_) + sign * l_.dot(A * x_ - b)).b;
+                dL(this->D + i) = (f + l_.dot(p)).b;
                 l_(i).b = 0; 
             }
 
@@ -1159,8 +1163,8 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
          */
         StepData<T> step(std::function<Dual<T>(const Ref<const Matrix<Dual<T>, Dynamic, 1> >&)> func,
                          const unsigned iter, const QuasiNewtonMethod quasi_newton,
-                         StepData<T> prev_data, const T delta, const T beta, 
-                         const bool verbose, const unsigned hessian_modify_max_iter)
+                         StepData<T> prev_data, const T beta, const bool verbose,
+                         const unsigned hessian_modify_max_iter)
         {
             T f = prev_data.f; 
             Matrix<T, Dynamic, 1> xl = prev_data.xl;
@@ -1302,7 +1306,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             xl_new.head(this->D) = xl.head(this->D) + sol;
             xl_new.tail(this->N) = mult;
             Matrix<T, Dynamic, 1> x_new = xl_new.head(this->D);
-            Matrix<T, Dynamic, 1> x_new_(this->D); 
+            Matrix<Dual<T>, Dynamic, 1> x_new_(this->D); 
             for (unsigned i = 0; i < this->D; ++i)
             {
                 x_new_(i).a = x_new(i);
@@ -1312,7 +1316,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             // Print the new vector and value of the objective function
             // and its gradient
             T f_new = func(x_new_).a;
-            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta);
+            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new);
             if (verbose)
             {
                 std::cout << "Iteration " << iter << ": x = (";
@@ -1331,8 +1335,8 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             // Evaluate the Hessian of the Lagrangian (with respect to the input space)
             Matrix<T, Dynamic, 1> xl_mixed(xl);
             xl_mixed.tail(this->N) = mult; 
-            Matrix<T, Dynamic, 1> dL_mixed = this->lagrangianGradient(func, x, mult, delta); 
-            Matrix<T, Dynamic, 1> dL_new = this->lagrangianGradient(func, x_new, mult, delta);
+            Matrix<T, Dynamic, 1> dL_mixed = this->lagrangianGradient(func, x, mult); 
+            Matrix<T, Dynamic, 1> dL_new = this->lagrangianGradient(func, x_new, mult);
             Matrix<T, Dynamic, Dynamic> d2L_new;
             Matrix<T, Dynamic, 1> y = dL_new.head(this->D) - dL_mixed.head(this->D);
             auto d2L_ = d2L.template selfadjointView<Lower>(); 
@@ -1370,8 +1374,8 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
         Matrix<T, Dynamic, 1> run(std::function<Dual<T>(const Ref<const Matrix<Dual<T>, Dynamic, 1> >&)> func,
                                   const Ref<const Matrix<T, Dynamic, 1> >& x_init, 
                                   const Ref<const Matrix<T, Dynamic, 1> >& l_init,
-                                  const T delta, const T beta, const unsigned max_iter,
-                                  const T tol, const QuasiNewtonMethod quasi_newton,
+                                  const T beta, const unsigned max_iter, const T tol,
+                                  const QuasiNewtonMethod quasi_newton,
                                   const bool verbose,
                                   const unsigned hessian_modify_max_iter)
         {
@@ -1380,10 +1384,10 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             for (unsigned i = 0; i < this->D; ++i)
             {
                 x_init_(i).a = x_init(i);
-                x_init_(i).b = 0; 
+                x_init_(i).b = 0;  
             }
             T f = func(x_init_).a;
-            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init, delta);
+            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init);
 
             // Print the input vector and value of the objective function
             if (verbose)
@@ -1403,14 +1407,8 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
             Polytopes::InequalityType type = this->constraints->getInequalityType();
             T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1);  
-                {
-                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                        return func(x) - l.dot(A * x - b);
-                    else 
-                        return func(x) + l.dot(A * x - b);  
-                }; 
             T L = func(x_init_).a + sign * l_init.dot(A * x_init - b);
-            Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(func, x_init, l_init, delta); 
+            Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(func, x_init, l_init); 
             curr_data.dL = dL;
             curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
 
@@ -1419,7 +1417,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             while (i < max_iter && change > tol)
             {
                 StepData<T> next_data = this->step(
-                    func, i, quasi_newton, curr_data, delta, beta, verbose,
+                    func, i, quasi_newton, curr_data, beta, verbose,
                     hessian_modify_max_iter
                 ); 
                 change = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).template cast<T>().norm();
@@ -1433,7 +1431,5 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             return curr_data.xl.head(this->D).template cast<T>();
         }
 };
-
-
 
 #endif 
