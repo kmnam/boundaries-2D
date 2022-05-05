@@ -11,7 +11,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     5/3/2022
+ *     5/5/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -291,18 +291,8 @@ class SQPOptimizer
             Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>();   // Convert from rationals to T
             Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();         // Convert from rationals to T
             Polytopes::InequalityType type = this->constraints->getInequalityType();
-            auto lagrangian = [this, &func](const Ref<const Matrix<T, Dynamic, 1> >& x,
-                                            const Ref<const Matrix<T, Dynamic, 1> >& l)
-                {
-                    Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
-                    Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
-                    Polytopes::InequalityType type = this->constraints->getInequalityType(); 
-                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                        return func(x) - l.dot(A * x - b);
-                    else 
-                        return func(x) + l.dot(A * x - b);  
-                }; 
-
+            T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1); 
+            
             // Evaluate the Lagrangian at 2 * D values, with each coordinate 
             // perturbed by +/- delta
             Matrix<T, Dynamic, 1> dL(this->D + this->N);
@@ -311,18 +301,18 @@ class SQPOptimizer
             for (unsigned i = 0; i < this->D; ++i)
             {
                 x_(i) += delta;
-                T f1 = lagrangian(x_, l_);
+                T f1 = func(x_) + sign * l_.dot(A * x_ - b); 
                 x_(i) -= 2 * delta;
-                T f2 = lagrangian(x_, l_);
+                T f2 = func(x_) + sign * l_.dot(A * x_ - b); 
                 x_(i) += delta; 
                 dL(i) = (f1 - f2) / (2 * delta);
             }
             for (unsigned i = 0; i < this->N; ++i)
             {
                 l_(i) += delta;
-                T f1 = lagrangian(x_, l_);
+                T f1 = func(x_) + sign * l_.dot(A * x_ - b); 
                 l_(i) -= 2 * delta;
-                T f2 = lagrangian(x_, l_);
+                T f2 = func(x_) + sign * l_.dot(A * x_ - b);
                 l_(i) += delta; 
                 dL(this->D + i) = (f1 - f2) / (2 * delta);
             }
@@ -544,16 +534,25 @@ class SQPOptimizer
             Matrix<T, Dynamic, 1> x_new = xl_new.head(this->D);
 
             // Print the new vector and value of the objective function
-            T f_new = func(x_new); 
+            // and its gradient 
+            T f_new = func(x_new);
+            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta);
             if (verbose)
             {
-                std::cout << "Iteration " << iter << ": x = " << x_new.transpose() 
-                          << "; f(x) = " << f_new 
-                          << "; change = " << f_new - f << std::endl; 
+                std::cout << "Iteration " << iter << ": x = (";
+                for (int i = 0; i < x_new.size() - 1; ++i)
+                    std::cout << x_new(i) << ", "; 
+                std::cout << x_new(x_new.size() - 1)
+                          << "); f(x) = " << f_new 
+                          << "; change = " << f_new - f 
+                          << "; gradient = (";
+                for (int i = 0; i < df_new.size() - 1; ++i)
+                    std::cout << df_new(i) << ", ";
+                std::cout << df_new(df_new.size() - 1)
+                          << ")" << std::endl; 
             }
             
             // Evaluate the Hessian of the Lagrangian (with respect to the input space)
-            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta);
             Matrix<T, Dynamic, 1> xl_mixed(xl);
             xl_mixed.tail(this->N) = mult; 
             Matrix<T, Dynamic, 1> dL_mixed = this->lagrangianGradient(func, x, mult, delta); 
@@ -616,18 +615,11 @@ class SQPOptimizer
             curr_data.xl.head(this->D) = x_init;
             curr_data.xl.tail(this->N) = l_init; 
             curr_data.df = df;
-            auto lagrangian = [this, &func](const Ref<const Matrix<T, Dynamic, 1> >& x,
-                                            const Ref<const Matrix<T, Dynamic, 1> >& l)
-                {
-                    Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
-                    Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
-                    Polytopes::InequalityType type = this->constraints->getInequalityType(); 
-                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                        return func(x) - l.dot(A * x - b);
-                    else 
-                        return func(x) + l.dot(A * x - b);  
-                }; 
-            T L = lagrangian(x_init, l_init); 
+            Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
+            Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
+            Polytopes::InequalityType type = this->constraints->getInequalityType(); 
+            T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1);  
+            T L = func(x_init) + sign * l_init.dot(A * x_init - b); 
             Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(func, x_init, l_init, delta); 
             curr_data.dL = dL;
             curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
@@ -884,16 +876,24 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
             xl_new.tail(this->N) = l + stepsize * mult;
             
             // Print the new vector and value of the objective function
-            T f_new = func(x_new); 
+            T f_new = func(x_new);
+            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta); 
             if (verbose)
             {
-                std::cout << "Iteration " << iter << ": x = " << x_new.transpose() 
-                          << "; f(x) = " << f_new 
-                          << "; change = " << f_new - f << std::endl; 
+                std::cout << "Iteration " << iter << ": x = (";
+                for (int i = 0; i < x_new.size() - 1; ++i)
+                    std::cout << x_new(i) << ", "; 
+                std::cout << x_new(x_new.size() - 1)
+                          << "); f(x) = " << f_new 
+                          << "; change = " << f_new - f 
+                          << "; gradient = (";
+                for (int i = 0; i < df_new.size() - 1; ++i)
+                    std::cout << df_new(i) << ", ";
+                std::cout << df_new(df_new.size() - 1)
+                          << ")" << std::endl; 
             }
 
             // Evaluate the Hessian of the Lagrangian (with respect to the input space)
-            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta); 
             Matrix<T, Dynamic, 1> xl_mixed(xl);
             xl_mixed.tail(this->N) = mult; 
             Matrix<T, Dynamic, 1> dL_mixed = this->lagrangianGradient(func, x, mult, delta); 
@@ -958,18 +958,11 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
             curr_data.xl.head(this->D) = x_init;
             curr_data.xl.tail(this->N) = l_init; 
             curr_data.df = df;
-            auto lagrangian = [this, &func](const Ref<const Matrix<T, Dynamic, 1> >& x,
-                                            const Ref<const Matrix<T, Dynamic, 1> >& l)
-                {
-                    Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
-                    Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
-                    Polytopes::InequalityType type = this->constraints->getInequalityType(); 
-                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                        return func(x) - l.dot(A * x - b);
-                    else 
-                        return func(x) + l.dot(A * x - b);  
-                }; 
-            T L = lagrangian(x_init, l_init);
+            Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
+            Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
+            Polytopes::InequalityType type = this->constraints->getInequalityType();
+            T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1);  
+            T L = func(x_init) + sign * l_init.dot(A * x_init - b);  
             Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(func, x_init, l_init, delta);
             curr_data.dL = dL;
             curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
@@ -993,5 +986,454 @@ class LineSearchSQPOptimizer : public SQPOptimizer<T>
             return curr_data.xl.head(this->D).template cast<T>();
         }
 };
+
+/**
+ * An implementation of sequential quadratic programming for nonlinear
+ * optimization on convex polytopes (i.e., linear inequality constraints)
+ * with forward-mode automatic differentiation for gradient computation. 
+ */
+template <typename T>
+class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
+{
+    public:
+        /**
+         * All inherited constructors from `SQPOptimizer`. 
+         */
+        ForwardAutoDiffSQPOptimizer(const unsigned D) : SQPOptimizer(D)
+        {
+        }
+
+        ForwardAutoDiffSQPOptimizer(const unsigned D, const unsigned N,
+                                    const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
+                                    const Ref<const Matrix<T, Dynamic, Dynamic> >& b)
+            : SQPOptimizer(D, N, A, b)
+        {
+        }
+
+        ForwardAutoDiffSQPOptimizer(const unsigned D, const unsigned N,
+                                    const Polytopes::InequalityType type, 
+                                    const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
+                                    const Ref<const Matrix<T, Dynamic, 1> >& b)
+            : SQPOptimizer(D, N, type, A, b)
+        {
+        }
+
+        ForwardAutoDiffSQPOptimizer(Polytopes::LinearConstraints<mpq_rational>* constraints)
+            : SQPOptimizer(constraints)
+        {
+        }
+
+        /**
+         * Compute the gradient of the given function at the given vector. 
+         *
+         * Note that the input function should take in and return *dual* numbers. 
+         *
+         * @param func  Function whose gradient is to be approximated.
+         * @param x     Input vector.
+         * @returns Gradient approximation. 
+         */
+        Matrix<T, Dynamic, 1> gradient(std::function<Dual<T>(const Ref<const Matrix<Dual<T>, Dynamic, 1> >&)> func,
+                                       const Ref<const Matrix<T, Dynamic, 1> >& x)
+        {
+            // Evaluate the function at D dual vectors, with derivative vectors 
+            // initialized to standard unit vectors, one for each coordinate
+            Matrix<T, Dynamic, 1> grad(this->D); 
+            Matrix<Dual<T>, Dynamic, 1> x_(this->D);
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                x_(i).a = x(i); 
+                x_(i).b = 0; 
+            } 
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                x_(i).b = 1;
+                grad(i) = func(x_).b;
+                x_(i).b = 0;  
+            }
+
+            return grad;  
+        }
+
+        /**
+         * Compute the gradient of the Lagrangian of the given function at 
+         * the given vector.
+         *
+         * Note that the input function should take in and return *dual* numbers. 
+         *
+         * @param func  Input function.
+         * @param x     Input vector for `func`.
+         * @param l     Input vector for additional Lagrangian variables (one
+         *              for each constraint).
+         * @returns     Gradient approximation.
+         */
+        Matrix<T, Dynamic, 1> lagrangianGradient(std::function<Dual<T>(const Ref<const Matrix<Dual<T>, Dynamic, 1> >&)> func,
+                                                 const Ref<const Matrix<T, Dynamic, 1> >& x,
+                                                 const Ref<const Matrix<T, Dynamic, 1> >& l)
+        {
+            Matrix<Dual<T>, Dynamic, Dynamic> A = this->constraints->getA().template cast<Dual<T> >(); // Convert from rationals to Dual<T>
+            Matrix<Dual<T>, Dynamic, 1> b = this->constraints->getb().template cast<Dual<T> >();       // Convert from rationals to Dual<T>
+            Polytopes::InequalityType type = this->constraints->getInequalityType();
+            T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1); 
+
+            // Evaluate the function at D dual vectors, with derivative vectors 
+            // initialized to standard unit vectors, one for each coordinate
+            Matrix<T, Dynamic, 1> dL(this->D + this->N);
+            Matrix<Dual<T>, Dynamic, 1> x_(this->D);
+            Matrix<Dual<T>, Dynamic, 1> l_(this->N);
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                x_(i).a = x(i); 
+                x_(i).b = 0; 
+            }
+            for (unsigned i = 0; i < this->N; ++i)
+            {
+                l_(i).a = l(i);
+                l_(i).b = 0; 
+            }
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                x_(i).b = 1; 
+                dL(i) = (func(x_) + sign * l_.dot(A * x_ - b)).b;
+                x_(i).b = 0;
+            }
+            for (unsigned i = 0; i < this->N; ++i)
+            {
+                l_(i).b = 1;
+                dL(this->D + i) = (func(x_) + sign * l_.dot(A * x_ - b)).b;
+                l_(i).b = 0; 
+            }
+
+            return dL;
+        }
+
+        /**
+         * Compute the L1 merit function (Nocedal and Wright, Eq. 15.24) with
+         * respect to the given function and stored constraints.
+         *
+         * Note that the input function should take in and return *dual* numbers.
+         *
+         * @param func Input function.
+         * @param x    Input vector.
+         * @param mu   Mu parameter for merit function (Nocedal and Wright, 
+         *             Eq. 15.24)
+         * @returns    Value of corresponding merit function.  
+         */
+        T meritL1(std::function<Dual<T>(const Ref<const Matrix<Dual<T>, Dynamic, 1> >&)> func, 
+                  const Ref<const Matrix<T, Dynamic, 1> >& x, const T mu)
+        {
+            T total = 0;
+            Matrix<T, Dynamic, 1> y;  
+            if (this->constraints->getInequalityType() == Polytopes::InequalityType::GreaterThanOrEqualTo)
+                y = this->constraints->getA().template cast<T>() * x - this->constraints->getb().template cast<T>();
+            else
+                y = -this->constraints->getA().template cast<T>() * x + this->constraints->getb().template cast<T>();
+            for (unsigned i = 0; i < this->N; ++i)
+            {
+                if (y(i) < 0)
+                    total -= y(i); 
+            }
+            Matrix<Dual<T>, Dynamic, 1> x_(this->D); 
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                x_(i).a = x(i);
+                x_(i).b = 0;
+            }
+            return func(x_).a + mu * total; 
+        }
+
+        /**
+         * Run one step of the SQP algorithm.
+         *
+         * 1) Given an input vector `(x,l)`, compute `f(x)` and `df(x)/dx`. 
+         * 2) Compute the Lagrangian, `L(x,l) = f(x) - l.T * A * x`, where `A` is the
+         *    constraint matrix, and its Hessian matrix of second derivatives w.r.t. `x`.
+         *    - Use a quasi-Newton method to compute the Hessian if desired.
+         *    - If the Hessian is not positive-definite, perturb by a small multiple
+         *      of the identity until it is positive-definite. 
+         * 3) Define the quadratic subproblem according to the above quantities and
+         *    the constraints (see below). 
+         * 4) Solve the quadratic subproblem, check that the new vector satisfies the
+         *    constraints of the original problem, and output the new vector.
+         *
+         * Note that the input function should take in and return *dual* numbers.
+         */
+        StepData<T> step(std::function<Dual<T>(const Ref<const Matrix<Dual<T>, Dynamic, 1> >&)> func,
+                         const unsigned iter, const QuasiNewtonMethod quasi_newton,
+                         StepData<T> prev_data, const T delta, const T beta, 
+                         const bool verbose, const unsigned hessian_modify_max_iter)
+        {
+            T f = prev_data.f; 
+            Matrix<T, Dynamic, 1> xl = prev_data.xl;
+            Matrix<T, Dynamic, 1> x = xl.head(this->D);
+            Matrix<T, Dynamic, 1> df = prev_data.df;
+            Matrix<T, Dynamic, 1> dL = prev_data.dL;
+            Matrix<T, Dynamic, Dynamic> d2L = modify<T>(prev_data.d2L, hessian_modify_max_iter, beta);
+
+            // If any of the components have a non-finite coordinate, return as is
+            if (!x.array().isFinite().all() || !df.array().isFinite().all() || !dL.array().isFinite().all() || !d2L.array().isFinite().all())
+                return prev_data;
+
+            // Evaluate the constraints and their gradients
+            Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>();   // Convert from rationals to T
+            Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();         // Convert from rationals to T
+            Polytopes::InequalityType type = this->constraints->getInequalityType();
+            Matrix<T, Dynamic, 1> c;
+            if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
+                c = -(A * x - b);
+            else 
+                c = A * x - b; 
+
+            /** -------------------------------------------------------------- //
+             * Set up the quadratic program (Nocedal and Wright, Eq. 18.11):
+             * 
+             * Minimize:
+             *
+             *   p.T * D * p + c.T * p + c0
+             * = fk + Dfk.T * p + 0.5 * p.T * D2Lk * p
+             *
+             * subject to: 
+             *
+             *    A * p + (A * xk - b) >= 0   if the inequality type of the linear constraints is >=
+             *   -A * p - (A * xk - b) >= 0   if the inequality type of the linear constraints is <=
+             *
+             * where:
+             *
+             * p    = variables to be optimized -- vector to be added to current iterate
+             * xk   = current iterate 
+             * fk   = f(xk)
+             * Dfk  = gradient of f at xk
+             * D2Lk = (approximation of) Hessian of Lagrangian at xk 
+             * --------------------------------------------------------------- */
+            // Note that, with the damped BFGS update, the Hessian matrix approximation
+            // should be positive-definite
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                for (unsigned j = 0; j <= i; ++j)
+                {
+                    // Sets 2D_ij and 2D_ji (the quadratic part of objective)
+                    this->program->set_d(i, j, static_cast<double>(d2L(i,j)));
+                }
+                // Sets c_i (the linear part of objective)
+                this->program->set_c(i, static_cast<double>(df(i)));
+            }
+            for (unsigned i = 0; i < this->N; ++i)
+            {
+                for (unsigned j = 0; j < this->D; ++j)
+                {
+                    // Sets A_ij (j-th coefficient of i-th constraint)
+                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
+                        this->program->set_a(j, i, static_cast<double>(A(i,j)));
+                    else 
+                        this->program->set_a(j, i, -static_cast<double>(A(i,j))); 
+                }
+                // Sets b_i (i-th coordinate of -(A * xk - b) if inequality type is >=,
+                // i-th coordinate of (A * xk - b) if inequality type is <=)
+                this->program->set_b(i, static_cast<double>(c(i)));
+            }
+            // Sets constant part of objective (fk)
+            this->program->set_c0(static_cast<double>(f));
+
+            // Solve the quadratic program ...
+            Solution solution; 
+            try
+            {
+                solution = CGAL::solve_quadratic_program(*this->program, ET());
+            }
+            catch (CGAL::Assertion_exception& e) 
+            {
+                // ... if the program cannot be solved because the D matrix is not 
+                // positive-semi-definite (this should never be the case), then replace
+                // D with the identity matrix
+                try
+                {
+                    for (unsigned i = 0; i < this->D; ++i)
+                    {
+                        for (unsigned j = 0; j <= i; ++j)
+                        {
+                            this->program->set_d(i, j, 2.0);    // Sets 2D_ij and 2D_ji
+                        }
+                    }
+                    solution = CGAL::solve_quadratic_program(*this->program, ET());
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+
+            // The program should never be infeasible, since we assume that 
+            // the constraint matrix has full rank
+            std::stringstream ss; 
+            if (solution.is_infeasible())
+            {
+                ss << "Quadratic program is infeasible; check constraint matrix:\n" << A;
+                throw std::runtime_error(ss.str());
+            }
+            // The program should also never yield an unbounded solution, 
+            // since we assume that the constraint matrix specifies a 
+            // bounded polytope 
+            else if (solution.is_unbounded())
+            {
+                ss << "Quadratic program yielded unbounded solution; check constraint matrix:\n" << A;
+                throw std::runtime_error(ss.str());
+            }
+
+            // Collect the values of the solution into a vector 
+            Matrix<T, Dynamic, 1> sol(this->D);
+            unsigned i = 0;
+            for (auto it = solution.variable_values_begin(); it != solution.variable_values_end(); ++it)
+            {
+                sol(i) = static_cast<T>(CGAL::to_double(*it));
+                i++;
+            }
+
+            // Collect the values of the new Lagrange multipliers (i.e., the
+            // "optimality certificate")
+            Matrix<T, Dynamic, 1> mult(this->N);
+            i = 0;
+            for (auto it = solution.optimality_certificate_begin(); it != solution.optimality_certificate_end(); ++it)
+            {
+                mult(i) = static_cast<T>(CGAL::to_double(*it));
+                i++;
+            }
+
+            // Increment the input vector and update the Lagrange multipliers
+            Matrix<T, Dynamic, 1> xl_new(this->D + this->N);
+            xl_new.head(this->D) = xl.head(this->D) + sol;
+            xl_new.tail(this->N) = mult;
+            Matrix<T, Dynamic, 1> x_new = xl_new.head(this->D);
+            Matrix<T, Dynamic, 1> x_new_(this->D); 
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                x_new_(i).a = x_new(i);
+                x_new_(i).b = 0;  
+            }
+
+            // Print the new vector and value of the objective function
+            // and its gradient
+            T f_new = func(x_new_).a;
+            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta);
+            if (verbose)
+            {
+                std::cout << "Iteration " << iter << ": x = (";
+                for (int i = 0; i < x_new.size() - 1; ++i)
+                    std::cout << x_new(i) << ", "; 
+                std::cout << x_new(x_new.size() - 1)
+                          << "); f(x) = " << f_new 
+                          << "; change = " << f_new - f 
+                          << "; gradient = (";
+                for (int i = 0; i < df_new.size() - 1; ++i)
+                    std::cout << df_new(i) << ", ";
+                std::cout << df_new(df_new.size() - 1)
+                          << ")" << std::endl; 
+            }
+            
+            // Evaluate the Hessian of the Lagrangian (with respect to the input space)
+            Matrix<T, Dynamic, 1> xl_mixed(xl);
+            xl_mixed.tail(this->N) = mult; 
+            Matrix<T, Dynamic, 1> dL_mixed = this->lagrangianGradient(func, x, mult, delta); 
+            Matrix<T, Dynamic, 1> dL_new = this->lagrangianGradient(func, x_new, mult, delta);
+            Matrix<T, Dynamic, Dynamic> d2L_new;
+            Matrix<T, Dynamic, 1> y = dL_new.head(this->D) - dL_mixed.head(this->D);
+            auto d2L_ = d2L.template selfadjointView<Lower>(); 
+            switch (quasi_newton)
+            {
+                case BFGS:
+                    d2L_new = updateBFGSDamped<T>(d2L_, sol, y); 
+                    break;
+
+                case SR1:
+                    d2L_new = updateSR1<T>(d2L_, sol, y); 
+                    break;
+
+                default:
+                    break;
+            }
+
+            // Return the new data
+            StepData<T> new_data;
+            new_data.f = f_new; 
+            new_data.xl = xl_new;
+            new_data.df = df_new;
+            new_data.dL = dL_new;
+            new_data.d2L = d2L_new;
+            return new_data;
+        }
+
+        /**
+         * Run the optimization with the given objective function, initial
+         * vector for the objective function, initial vector of Lagrange 
+         * multipliers, and additional settings.
+         *
+         * Note that the input function should take in and return *dual* numbers.
+         */
+        Matrix<T, Dynamic, 1> run(std::function<Dual<T>(const Ref<const Matrix<Dual<T>, Dynamic, 1> >&)> func,
+                                  const Ref<const Matrix<T, Dynamic, 1> >& x_init, 
+                                  const Ref<const Matrix<T, Dynamic, 1> >& l_init,
+                                  const T delta, const T beta, const unsigned max_iter,
+                                  const T tol, const QuasiNewtonMethod quasi_newton,
+                                  const bool verbose,
+                                  const unsigned hessian_modify_max_iter)
+        {
+            // Evaluate the objective and its gradient
+            Matrix<Dual<T>, Dynamic, 1> x_init_(this->D); 
+            for (unsigned i = 0; i < this->D; ++i)
+            {
+                x_init_(i).a = x_init(i);
+                x_init_(i).b = 0; 
+            }
+            T f = func(x_init_).a;
+            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init, delta);
+
+            // Print the input vector and value of the objective function
+            if (verbose)
+            {
+                std::cout << "Initial vector: x = " << x_init.transpose()
+                          << "; " << "f(x) = " << f << std::endl; 
+            }
+            
+            // Evaluate the Lagrangian and its gradient
+            StepData<T> curr_data;
+            curr_data.f = f; 
+            curr_data.xl.conservativeResize(this->D + this->N);
+            curr_data.xl.head(this->D) = x_init;
+            curr_data.xl.tail(this->N) = l_init; 
+            curr_data.df = df;
+            Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
+            Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
+            Polytopes::InequalityType type = this->constraints->getInequalityType();
+            T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1);  
+                {
+                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
+                        return func(x) - l.dot(A * x - b);
+                    else 
+                        return func(x) + l.dot(A * x - b);  
+                }; 
+            T L = func(x_init_).a + sign * l_init.dot(A * x_init - b);
+            Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(func, x_init, l_init, delta); 
+            curr_data.dL = dL;
+            curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
+
+            unsigned i = 0;
+            T change = 2 * tol; 
+            while (i < max_iter && change > tol)
+            {
+                StepData<T> next_data = this->step(
+                    func, i, quasi_newton, curr_data, delta, beta, verbose,
+                    hessian_modify_max_iter
+                ); 
+                change = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).template cast<T>().norm();
+                i++;
+                curr_data.f = next_data.f; 
+                curr_data.xl = next_data.xl;
+                curr_data.df = next_data.df;
+                curr_data.dL = next_data.dL;
+                curr_data.d2L = next_data.d2L;
+            }
+            return curr_data.xl.head(this->D).template cast<T>();
+        }
+};
+
+
 
 #endif 
