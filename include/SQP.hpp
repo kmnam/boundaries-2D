@@ -623,7 +623,7 @@ class SQPOptimizer
                           << "... trying step-size = " << change 
                           << ": Armijo = " << satisfies_armijo;
                 if (!use_only_armijo)
-                    std::cout << ", curvature = " << satisfies_curvature
+                    std::cout << ", curvature = " << satisfies_curvature;
                 std::cout << std::endl; 
             }
             while (change > tol && !(satisfies_armijo && satisfies_curvature))
@@ -649,7 +649,7 @@ class SQPOptimizer
                     std::cout << "... trying step-size = " << change 
                               << ": Armijo = " << satisfies_armijo;
                     if (!use_only_armijo)
-                        std::cout << ", curvature = " << satisfies_curvature
+                        std::cout << ", curvature = " << satisfies_curvature;
                     std::cout << std::endl; 
                 }
             }  
@@ -1066,7 +1066,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                           << "... trying step-size = " << change 
                           << ": Armijo = " << satisfies_armijo;
                 if (!use_only_armijo)
-                    std::cout << ", curvature = " << satisfies_curvature
+                    std::cout << ", curvature = " << satisfies_curvature;
                 std::cout << std::endl; 
             }
             while (change > tol && !(satisfies_armijo && satisfies_curvature))
@@ -1097,7 +1097,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                     std::cout << "... trying step-size = " << change 
                               << ": Armijo = " << satisfies_armijo;
                     if (!use_only_armijo)
-                        std::cout << ", curvature = " << satisfies_curvature
+                        std::cout << ", curvature = " << satisfies_curvature;
                     std::cout << std::endl; 
                 }
             }  
