@@ -630,7 +630,7 @@ class SQPOptimizer
                     std::cout << ", curvature = " << satisfies_curvature;
                 std::cout << std::endl; 
             }
-            while (change_x > tol && abs(change_f) > tol && !(satisfies_armijo && satisfies_curvature))
+            while ((change_x > tol || abs(change_f) > tol) && !(satisfies_armijo && satisfies_curvature))
             {
                 stepsize *= factor;
                 factor /= 2;
@@ -758,7 +758,7 @@ class SQPOptimizer
             unsigned i = 0;
             T change_x = 2 * tol;
             T change_f = 2 * tol; 
-            while (i < max_iter && change_x > tol && change_f > tol)
+            while (i < max_iter && (change_x > tol || change_f > tol))
             {
                 StepData<T> next_data = this->step(
                     func, i, quasi_newton, curr_data, tau, delta, beta, tol, 
@@ -1084,7 +1084,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                     std::cout << ", curvature = " << satisfies_curvature;
                 std::cout << std::endl; 
             }
-            while (change_x > tol && abs(change_f) > tol && !(satisfies_armijo && satisfies_curvature))
+            while ((change_x > tol || abs(change_f) > tol) && !(satisfies_armijo && satisfies_curvature))
             {
                 stepsize *= factor;
                 factor /= 2;
@@ -1225,7 +1225,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             unsigned i = 0;
             T change_x = 2 * tol;
             T change_f = 2 * tol;  
-            while (i < max_iter && change_x > tol && change_f > tol)
+            while (i < max_iter && (change_x > tol || change_f > tol))
             {
                 StepData<T> next_data = this->step(
                     func, i, quasi_newton, curr_data, tau, beta, tol,
