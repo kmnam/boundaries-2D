@@ -406,16 +406,16 @@ class BoundaryFinder
          * @param iter         Iteration number. 
          * @param max_edges    Maximum number of edges to be contained in the
          *                     boundary. 
-         * @param verbose      If true, output intermittent messages to `stdout`.
          * @param write_prefix Prefix of output file name to which to write 
          *                     the boundary obtained in this iteration.
+         * @param verbose      If true, output intermittent messages to `stdout`.
          * @returns True if the area enclosed by the boundary (obtained prior 
          *          to mutation) has converged to within `this->area_tol`. 
          */
         bool step(std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
-                  const unsigned iter, const unsigned max_edges, const bool verbose,
-                  const std::string write_prefix = "")
+                  const unsigned iter, const unsigned max_edges,
+                  const std::string write_prefix, const bool verbose = true)
         {
             // Store the output coordinates in vectors 
             std::vector<double> x, y;
@@ -604,6 +604,10 @@ class BoundaryFinder
          * @param write_prefix            Prefix of output file name to which to  
          *                                write the boundary obtained in this
          *                                iteration.
+         * @param c1                      Pre-factor for testing Armijo's 
+         *                                condition during each SQP iteration.
+         * @param c2                      Pre-factor for testing the curvature 
+         *                                condition during each SQP iteration. 
          * @param verbose                 If true, output intermittent messages
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
@@ -617,7 +621,8 @@ class BoundaryFinder
                   const unsigned iter, const unsigned max_edges, const double tau,
                   const double delta, const double beta, const bool use_strong_wolfe,
                   const unsigned hessian_modify_max_iter,
-                  const std::string write_prefix, const bool verbose = false,
+                  const std::string write_prefix, const double c1 = 1e-4, 
+                  const double c2 = 0.9, const bool verbose = true,
                   const bool sqp_verbose = false)
         {
             // Store point coordinates in two vectors
@@ -663,7 +668,8 @@ class BoundaryFinder
                     - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
                 VectorXd q = optimizer->run(
                     obj, x_init, l_init, tau, delta, beta, max_iter, sqp_tol,
-                    BFGS, use_strong_wolfe, hessian_modify_max_iter, sqp_verbose
+                    BFGS, use_strong_wolfe, hessian_modify_max_iter, c1, c2,
+                    sqp_verbose
                 );
                 VectorXd z = this->func(q); 
                 
@@ -823,6 +829,10 @@ class BoundaryFinder
          * @param write_prefix            Prefix of output file name to which to  
          *                                write the boundary obtained in each
          *                                iteration.
+         * @param c1                      Pre-factor for testing Armijo's 
+         *                                condition during each SQP iteration.
+         * @param c2                      Pre-factor for testing the curvature 
+         *                                condition during each SQP iteration. 
          * @param verbose                 If true, output intermittent messages
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
@@ -837,7 +847,8 @@ class BoundaryFinder
                  const unsigned max_edges, const double tau, const double delta,
                  const double beta, const bool use_strong_wolfe,
                  const unsigned hessian_modify_max_iter,
-                 const std::string write_prefix, const bool verbose = false,
+                 const std::string write_prefix, const double c1 = 1e-4,
+                 const double c2 = 0.9, const bool verbose = true,
                  const bool sqp_verbose = false)
         {
             // Initialize the sampling run ...
@@ -850,7 +861,9 @@ class BoundaryFinder
             unsigned n_converged = 0;
             while (i < min_step_iter || (i < max_step_iter && !terminate))
             {
-                bool result = this->step(mutate, filter, i, max_edges, verbose, write_prefix);
+                bool result = this->step(
+                    mutate, filter, i, max_edges, write_prefix, verbose
+                );
                 if (!result)
                     n_converged = 0;
                 else
@@ -871,7 +884,8 @@ class BoundaryFinder
                 bool result = this->pull(
                     optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
                     max_edges, tau, delta, beta, use_strong_wolfe, 
-                    hessian_modify_max_iter, write_prefix, verbose, sqp_verbose
+                    hessian_modify_max_iter, write_prefix, c1, c2, verbose,
+                    sqp_verbose
                 );
                 if (!result)
                     n_converged = 0;

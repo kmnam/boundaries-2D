@@ -132,6 +132,7 @@ class SQPOptimizer
         Polytopes::LinearConstraints<mpq_rational>* constraints;    // Linear inequality constraints
         Program* program;                                           // Internal quadratic program to
                                                                     // be solved at each step
+        bool deallocate_constraints;           // Whether to deallocate constraints upon destruction  
 
         /**
          * Test whether the Armijo condition (Nocedal and Wright, Eq. 3.6a)
@@ -260,6 +261,7 @@ class SQPOptimizer
                 Polytopes::InequalityType::GreaterThanOrEqualTo, A, b
             ); 
             this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
+            this->deallocate_constraints = true; 
         }
 
         /**
@@ -275,7 +277,7 @@ class SQPOptimizer
          */
         SQPOptimizer(const unsigned D, const unsigned N,
                      const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
-                     const Ref<const Matrix<T, Dynamic, Dynamic> >& b)
+                     const Ref<const Matrix<T, Dynamic, 1> >& b)
         {
             this->D = D;
             this->N = N;
@@ -287,6 +289,7 @@ class SQPOptimizer
                 b.template cast<mpq_rational>()
             ); 
             this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
+            this->deallocate_constraints = true; 
         }
 
         /**
@@ -316,7 +319,8 @@ class SQPOptimizer
 
             // Note that the inequality type for the internal quadratic program
             // should always be greater-than-or-equal-to 
-            this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0); 
+            this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
+            this->deallocate_constraints = true; 
         }
 
         /**
@@ -334,15 +338,20 @@ class SQPOptimizer
             
             // Note that the inequality type for the internal quadratic program
             // should always be greater-than-or-equal-to 
-            this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0); 
+            this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
+            this->deallocate_constraints = false;
         }
 
         /**
          * Destructor; deallocates the `LinearConstraints` and `Program` instances.
+         *
+         * The former is not deallocated if its creation was not tied to the 
+         * lifetime of `this`.
          */
         ~SQPOptimizer()
         {
-            delete this->constraints;
+            if (this->deallocate_constraints)
+                delete this->constraints;
             delete this->program;
         }
 
@@ -448,7 +457,9 @@ class SQPOptimizer
                          const unsigned iter, const QuasiNewtonMethod quasi_newton,
                          StepData<T> prev_data, const T tau, const T delta,
                          const T beta, const T tol, const bool use_strong_wolfe,
-                         const unsigned hessian_modify_max_iter, const bool verbose)
+                         const unsigned hessian_modify_max_iter,
+                         const T c1 = 1e-4, const T c2 = 0.9,
+                         const bool verbose = false)
         {
             T f = prev_data.f; 
             Matrix<T, Dynamic, 1> xl = prev_data.xl;
@@ -588,8 +599,6 @@ class SQPOptimizer
             // choosing the largest stepsize that satisfies the Wolfe conditions
             Matrix<T, Dynamic, 1> x_new(this->D);
             T stepsize = 1;
-            T c1 = 1e-4;    // Recommended by Nocedal & Wright, page 33
-            T c2 = 0.9;     // Recommended by Nocedal & Wright, page 34
             T factor = tau;
             Matrix<T, Dynamic, 1> step = stepsize * p; 
             x_new = x + step; 
@@ -680,7 +689,8 @@ class SQPOptimizer
                                   const QuasiNewtonMethod quasi_newton,
                                   const bool use_strong_wolfe, 
                                   const unsigned hessian_modify_max_iter,
-                                  const bool verbose)
+                                  const T c1 = 1e-4, const T c2 = 0.9,
+                                  const bool verbose = false)
         {
             // Evaluate the objective and its gradient
             T f = func(x_init);
@@ -715,7 +725,7 @@ class SQPOptimizer
             {
                 StepData<T> next_data = this->step(
                     func, i, quasi_newton, curr_data, tau, delta, beta, tol, 
-                    use_strong_wolfe, hessian_modify_max_iter, verbose
+                    use_strong_wolfe, hessian_modify_max_iter, c1, c2, verbose
                 ); 
                 change = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm();
                 i++;
@@ -854,7 +864,9 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                          const unsigned iter, const QuasiNewtonMethod quasi_newton,
                          StepData<T> prev_data, const T tau, const T beta,
                          const T tol, const bool use_strong_wolfe,
-                         const unsigned hessian_modify_max_iter, const bool verbose)
+                         const unsigned hessian_modify_max_iter,
+                         const T c1 = 1e-4, const T c2 = 0.9,
+                         const bool verbose = false)
         {
             T f = prev_data.f; 
             Matrix<T, Dynamic, 1> xl = prev_data.xl;
@@ -994,8 +1006,6 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             // choosing the largest stepsize that satisfies the Wolfe conditions
             Matrix<T, Dynamic, 1> x_new(this->D);
             T stepsize = 1;
-            T c1 = 1e-4;    // Recommended by Nocedal & Wright, page 33
-            T c2 = 0.9;     // Recommended by Nocedal & Wright, page 34
             T factor = tau;
             Matrix<T, Dynamic, 1> step = stepsize * p;
             x_new = x + step;
@@ -1099,7 +1109,8 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                                   const QuasiNewtonMethod quasi_newton,
                                   const bool use_strong_wolfe, 
                                   const unsigned hessian_modify_max_iter,
-                                  const bool verbose)
+                                  const T c1 = 1e-4, const T c2 = 0.9,
+                                  const bool verbose = false)
         {
             // Evaluate the objective and its gradient
             Matrix<Dual<T>, Dynamic, 1> x_init_(this->D); 
@@ -1140,7 +1151,8 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             {
                 StepData<T> next_data = this->step(
                     func, i, quasi_newton, curr_data, tau, beta, tol,
-                    use_strong_wolfe, hessian_modify_max_iter, verbose
+                    use_strong_wolfe, hessian_modify_max_iter, c1, c2,
+                    verbose
                 ); 
                 change = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).template cast<T>().norm();
                 i++;
