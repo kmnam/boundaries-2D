@@ -16,7 +16,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     5/3/2022
+ *     5/6/2022
  */
 using boost::multiprecision::mpq_rational;
 
@@ -148,17 +148,19 @@ int main(int argc, char** argv)
     const int max_step_iter = 8; 
     const int min_pull_iter = 10;
     const int max_pull_iter = 20;
-    const bool verbose = true;
     const unsigned sqp_max_iter = 100;
+    const double sqp_tol = 1e-6;
+    const double tau = 0.5; 
     const double delta = 1e-8; 
     const double beta = 1e-4;
-    const double sqp_tol = 1e-6;
+    const bool use_strong_wolfe = false; 
+    const bool hessian_modify_max_iter = 1000;
+    const bool verbose = true;
     const bool sqp_verbose = true;
-    const bool use_line_search_sqp = true;
     finder->run(
         mutate, filter, init_input, min_step_iter, max_step_iter, min_pull_iter,
-        max_pull_iter, max_edges, sqp_max_iter, delta, beta, sqp_tol, verbose,
-        sqp_verbose, use_line_search_sqp, outprefix
+        max_pull_iter, sqp_max_iter, sqp_tol, max_edges, tau, delta, beta,
+        use_strong_wolfe, hessian_modify_max_iter, outprefix, verbose, sqp_verbose
     );
     MatrixXd final_input = finder->getInput(); 
 
