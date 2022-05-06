@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     5/4/2022
+ *     5/6/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -575,6 +575,10 @@ class BoundaryFinder
          *
          * Note that this method assumes that the boundary is simply connected.
          *
+         * @param optimizer               Pointer to existing `SQPOptimizer<double>`
+         *                                instance. This instance is assumed to
+         *                                contain correct information regarding
+         *                                the constraints.  
          * @param filter                  Boolean function for filtering output
          *                                points in the plane as desired.
          * @param epsilon                 Distance by which the output points 
@@ -584,28 +588,37 @@ class BoundaryFinder
          *                                in SQP.
          * @param iter                    Iteration number.  
          * @param max_edges               Maximum number of edges to be contained
-         *                                in the boundary. 
-         * @param verbose                 If true, output intermittent messages
-         *                                to `stdout`.
-         * @param sqp_verbose             If true, output intermittent messages 
-         *                                during SQP to `stdout`.
-         * @param use_line_search_sqp     If true, use line-search SQP.
+         *                                in the boundary.
+         * @param tau                     Rate at which step-sizes are decreased
+         *                                during each SQP iteration.
+         * @param delta                   Increment for finite-differences 
+         *                                approximation during each SQP iteration.
+         * @param beta                    Increment for Hessian matrix modification
+         *                                (for ensuring positive semi-definiteness).
+         * @param use_strong_wolfe        If true, use the strong Wolfe conditions
+         *                                to determine step-size during each 
+         *                                SQP iteration.  
          * @param hessian_modify_max_iter Maximum number of Hessian matrix
          *                                modification iterations (for ensuring
          *                                positive semi-definiteness).  
          * @param write_prefix            Prefix of output file name to which to  
          *                                write the boundary obtained in this
          *                                iteration.
+         * @param verbose                 If true, output intermittent messages
+         *                                to `stdout`.
+         * @param sqp_verbose             If true, output intermittent messages 
+         *                                during SQP to `stdout`.
          * @returns True if the area enclosed by the boundary (obtained prior 
          *          to mutation) has converged to within `this->area_tol`. 
          */
-        bool pull(std::function<bool(const Ref<const VectorXd>&)> filter, 
+        bool pull(SQPOptimizer<double>* optimizer, 
+                  std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const double epsilon, const unsigned max_iter, const double sqp_tol,
-                  const unsigned iter, const unsigned max_edges, const double delta,
-                  const double beta, const bool verbose = false,
-                  const bool sqp_verbose = false, const bool use_line_search_sqp = true,
-                  const unsigned hessian_modify_max_iter = 1000,
-                  const std::string write_prefix = "")
+                  const unsigned iter, const unsigned max_edges, const double tau,
+                  const double delta, const double beta, const bool use_strong_wolfe,
+                  const unsigned hessian_modify_max_iter,
+                  const std::string write_prefix, const bool verbose = false,
+                  const bool sqp_verbose = false)
         {
             // Store point coordinates in two vectors
             std::vector<double> x, y;
@@ -635,96 +648,36 @@ class BoundaryFinder
                 }
             }
 
-            // Pull out the constraint matrix and vector 
-            MatrixXd A = this->constraints->getA().template cast<double>();
-            VectorXd b = this->constraints->getb().template cast<double>();
-            unsigned nc = A.rows();
-
-            // Define an SQPOptimizer or LineSearchSQPOptimizer instance
-            // to be utilized 
-            Polytopes::InequalityType type = this->constraints->getInequalityType();
-            const int D = this->constraints->getD(); 
-            if (use_line_search_sqp)
+            // For each vertex in the boundary, minimize the distance to the
+            // pulled vertex with a feasible parameter point
+            for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
-                LineSearchSQPOptimizer<double>* optimizer = new LineSearchSQPOptimizer<double>(
-                    D, nc, type, A, b 
+                // Minimize the appropriate objective function
+                VectorXd target = pulled.row(i); 
+                auto obj = [this, target](const Ref<const VectorXd>& x)
+                {
+                    return (target - this->func(x)).squaredNorm();
+                };
+                VectorXd x_init = this->input.row(this->vertices[i]);
+                VectorXd l_init = VectorXd::Ones(this->constraints->getN())
+                    - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
+                VectorXd q = optimizer->run(
+                    obj, x_init, l_init, tau, delta, beta, max_iter, sqp_tol,
+                    BFGS, use_strong_wolfe, hessian_modify_max_iter, sqp_verbose
                 );
-                const double eta = 0.25;
-                const double tau = 0.5;
-
-                // For each vertex in the boundary, minimize the distance to the
-                // pulled vertex with a feasible parameter point
-                for (unsigned i = 0; i < this->vertices.size(); ++i)
+                VectorXd z = this->func(q); 
+                
+                // Check that the mutation did not give rise to an already 
+                // computed point
+                double mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
+                if (!filter(z) && mindist > MINDIST_BETWEEN_POINTS)
                 {
-                    // Minimize the appropriate objective function
-                    VectorXd target = pulled.row(i); 
-                    auto obj = [this, &target](const Ref<const VectorXd>& x)
-                    {
-                        return (target - this->func(x)).squaredNorm();
-                    };
-                    VectorXd x_init = this->input.row(this->vertices[i]);
-                    VectorXd l_init = VectorXd::Ones(nc)
-                        - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
-                    VectorXd q = optimizer->run(
-                        obj, x_init, l_init, eta, tau, delta, beta, max_iter,
-                        sqp_tol, BFGS, sqp_verbose, hessian_modify_max_iter
-                    );
-                    VectorXd z = this->func(q); 
-                    
-                    // Check that the mutation did not give rise to an already 
-                    // computed point
-                    double mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
-                    if (!filter(z) && mindist > MINDIST_BETWEEN_POINTS)
-                    {
-                        this->N++;
-                        this->input.conservativeResize(this->N, D); 
-                        this->points.conservativeResize(this->N, 2);
-                        this->input.row(this->N-1) = q;
-                        this->points.row(this->N-1) = z;
-                    }
+                    this->N++;
+                    this->input.conservativeResize(this->N, this->constraints->getD()); 
+                    this->points.conservativeResize(this->N, 2);
+                    this->input.row(this->N-1) = q;
+                    this->points.row(this->N-1) = z;
                 }
-
-                delete optimizer;
-            }
-            else
-            {
-                SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(
-                    D, nc, type, A, b
-                ); 
-
-                // For each vertex in the boundary, minimize the distance to the
-                // pulled vertex with a feasible parameter point
-                for (unsigned i = 0; i < this->vertices.size(); ++i)
-                {
-                    // Minimize the appropriate objective function
-                    VectorXd target = pulled.row(i); 
-                    auto obj = [this, target](const Ref<const VectorXd>& x)
-                    {
-                        return (target - this->func(x)).squaredNorm();
-                    };
-                    VectorXd x_init = this->input.row(this->vertices[i]);
-                    VectorXd l_init = VectorXd::Ones(nc)
-                        - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
-                    VectorXd q = optimizer->run(
-                        obj, x_init, l_init, delta, beta, max_iter, sqp_tol,
-                        BFGS, sqp_verbose, hessian_modify_max_iter
-                    );
-                    VectorXd z = this->func(q); 
-                    
-                    // Check that the mutation did not give rise to an already 
-                    // computed point
-                    double mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
-                    if (!filter(z) && mindist > MINDIST_BETWEEN_POINTS)
-                    {
-                        this->N++;
-                        this->input.conservativeResize(this->N, D); 
-                        this->points.conservativeResize(this->N, 2);
-                        this->input.row(this->N-1) = q;
-                        this->points.row(this->N-1) = z;
-                    }
-                }
-
-                delete optimizer;
             }
 
             // Get new boundary (assuming that the shape is simply connected)
@@ -838,42 +791,54 @@ class BoundaryFinder
          * Run the full boundary-sampling algorithm until convergence, up to
          * the maximum number of iterations.
          *
-         * @param mutate        Function for randomly mutating input points as
-         *                      desired.
-         * @param filter        Boolean function for filtering output points in the 
-         *                      plane as desired.
-         * @param init_input    Initial set of points in the input polytope at  
-         *                      which to evaluate the stored mapping.
-         * @param min_step_iter Minimum number of step iterations. 
-         * @param max_step_iter Maximum number of step iterations. 
-         * @param min_pull_iter Minimum number of pull iterations. 
-         * @param max_pull_iter Maximum number of pull iterations.
-         * @param max_edges     Maximum number of edges to be contained in the
-         *                      boundary. 
-         * @param verbose       If true, output intermittent messages to `stdout`.
-         * @param sqp_max_iter  Maximum number of SQP iterations to be performed
-         *                      per pull iteration. 
-         * @param sqp_tol       Tolerance for assessing convergence in SQP.
-         * @param sqp_verbose   If true, output intermittent messages during 
-         *                      SQP to `stdout`.
-         * @param hessian_modify_max_iter
-         *                      Maximum number of Hessian matrix modification
-         *                      iterations (for ensuring positive semi-
-         *                      definiteness).  
-         * @param write_prefix  Prefix of output file name to which to write 
-         *                      the boundary obtained in this iteration.
+         * @param mutate                  Function for randomly mutating input
+         *                                points as desired.
+         * @param filter                  Boolean function for filtering output
+         *                                points in the plane as desired.
+         * @param init_input              Initial set of points in the input
+         *                                polytope at which to evaluate the
+         *                                stored mapping.
+         * @param min_step_iter           Minimum number of step iterations. 
+         * @param max_step_iter           Maximum number of step iterations. 
+         * @param min_pull_iter           Minimum number of pull iterations. 
+         * @param max_pull_iter           Maximum number of pull iterations.
+         * @param sqp_max_iter            Maximum number of SQP iterations per
+         *                                pull iteration.
+         * @param sqp_tol                 Tolerance for assessing convergence
+         *                                in SQP.
+         * @param max_edges               Maximum number of edges to be contained
+         *                                in the boundary. 
+         * @param tau                     Rate at which step-sizes are decreased
+         *                                during each SQP iteration.
+         * @param delta                   Increment for finite-differences 
+         *                                approximation during each SQP iteration.
+         * @param beta                    Increment for Hessian matrix modification
+         *                                (for ensuring positive semi-definiteness).
+         * @param use_strong_wolfe        If true, use the strong Wolfe conditions
+         *                                to determine step-size during each 
+         *                                SQP iteration.  
+         * @param hessian_modify_max_iter Maximum number of Hessian matrix
+         *                                modification iterations (for ensuring
+         *                                positive semi-definiteness).  
+         * @param write_prefix            Prefix of output file name to which to  
+         *                                write the boundary obtained in each
+         *                                iteration.
+         * @param verbose                 If true, output intermittent messages
+         *                                to `stdout`.
+         * @param sqp_verbose             If true, output intermittent messages 
+         *                                during SQP to `stdout`.
          */
         void run(std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
                  std::function<bool(const Ref<const VectorXd>&)> filter, 
                  const Ref<const MatrixXd>& init_input, 
                  const unsigned min_step_iter, const unsigned max_step_iter,
                  const unsigned min_pull_iter, const unsigned max_pull_iter,
-                 const unsigned max_edges, const unsigned sqp_max_iter,
-                 const double delta, const double beta, const double sqp_tol,
-                 const bool verbose = false, const bool sqp_verbose = false,
-                 const bool use_line_search_sqp = true,
-                 const unsigned hessian_modify_max_iter = 1000,
-                 const std::string write_prefix = "")
+                 const unsigned sqp_max_iter, const double sqp_tol,
+                 const unsigned max_edges, const double tau, const double delta,
+                 const double beta, const bool use_strong_wolfe,
+                 const unsigned hessian_modify_max_iter,
+                 const std::string write_prefix, const bool verbose = false,
+                 const bool sqp_verbose = false)
         {
             // Initialize the sampling run ...
             this->initialize(filter, init_input, max_edges, write_prefix);
@@ -899,13 +864,14 @@ class BoundaryFinder
             terminate = false;
             n_converged = 0;
             double epsilon = 0.1 * std::sqrt(this->curr_area);
+            SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(this->constraints); 
             while (j < min_pull_iter || (j < max_pull_iter && !terminate))
             {
                 if (verbose) std::cout << "Pulling by epsilon = " << epsilon << std::endl;  
                 bool result = this->pull(
-                    filter, epsilon, sqp_max_iter, sqp_tol, i + j, max_edges,
-                    delta, beta, verbose, sqp_verbose, use_line_search_sqp,
-                    hessian_modify_max_iter, write_prefix
+                    optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
+                    max_edges, tau, delta, beta, use_strong_wolfe, 
+                    hessian_modify_max_iter, write_prefix, verbose, sqp_verbose
                 );
                 if (!result)
                     n_converged = 0;
@@ -915,6 +881,7 @@ class BoundaryFinder
                 j++;
                 epsilon = 0.1 * std::sqrt(this->curr_area);
             }
+            delete optimizer;
 
             // Write final boundary information to file if desired
             if (write_prefix.compare(""))
