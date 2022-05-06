@@ -460,6 +460,9 @@ class SQPOptimizer
                          const bool use_strong_wolfe, const unsigned hessian_modify_max_iter,
                          const T c1 = 1e-4, const T c2 = 0.9, const bool verbose = false)
         {
+            using std::abs;
+            using boost::multiprecision::abs;
+
             T f = prev_data.f; 
             Matrix<T, Dynamic, 1> xl = prev_data.xl;
             Matrix<T, Dynamic, 1> x = xl.head(this->D);
@@ -613,20 +616,21 @@ class SQPOptimizer
                     ? this->wolfeStrongCurvature(p, df, df_new, c2)
                     : this->wolfeCurvature(p, df, df_new, c2)
                 );
-            T change = step.norm();
+            T change_x = step.norm(); 
+            T change_f = f_new - f; 
             if (verbose)
             {
                 std::cout << "... stepping direction = (";
                 for (int i = 0; i < this->D - 1; ++i)
                     std::cout << p(i) << ", ";
                 std::cout << p(this->D - 1) << ")" << std::endl
-                          << "... trying step-size = " << change 
+                          << "... trying step-size = " << stepsize
                           << ": Armijo = " << satisfies_armijo;
                 if (!use_only_armijo)
                     std::cout << ", curvature = " << satisfies_curvature;
                 std::cout << std::endl; 
             }
-            while (change > tol && !(satisfies_armijo && satisfies_curvature))
+            while (change_x > tol && abs(change_f) > tol && !(satisfies_armijo && satisfies_curvature))
             {
                 stepsize *= factor;
                 factor /= 2;
@@ -643,10 +647,11 @@ class SQPOptimizer
                         ? this->wolfeStrongCurvature(p, df, df_new, c2)
                         : this->wolfeCurvature(p, df, df_new, c2)
                     );
-                change = step.norm();
+                change_x = step.norm();
+                change_f = f_new - f; 
                 if (verbose)
                 {
-                    std::cout << "... trying step-size = " << change 
+                    std::cout << "... trying step-size = " << stepsize 
                               << ": Armijo = " << satisfies_armijo;
                     if (!use_only_armijo)
                         std::cout << ", curvature = " << satisfies_curvature;
@@ -664,7 +669,8 @@ class SQPOptimizer
                     std::cout << x_new(i) << ", "; 
                 std::cout << x_new(x_new.size() - 1)
                           << "); f(x) = " << f_new 
-                          << "; change = " << f_new - f 
+                          << "; change in x = " << change_x 
+                          << "; change in f = " << change_f
                           << "; gradient = (";
                 for (int i = 0; i < df_new.size() - 1; ++i)
                     std::cout << df_new(i) << ", ";
@@ -719,6 +725,9 @@ class SQPOptimizer
                                   const T c1 = 1e-4, const T c2 = 0.9,
                                   const bool verbose = false)
         {
+            using std::abs;
+            using boost::multiprecision::abs; 
+
             // Evaluate the objective and its gradient
             T f = func(x_init);
             Matrix<T, Dynamic, 1> df = this->gradient(func, x_init, delta);
@@ -747,15 +756,17 @@ class SQPOptimizer
             curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
 
             unsigned i = 0;
-            T change = 2 * tol; 
-            while (i < max_iter && change > tol)
+            T change_x = 2 * tol;
+            T change_f = 2 * tol; 
+            while (i < max_iter && change_x > tol && change_f > tol)
             {
                 StepData<T> next_data = this->step(
                     func, i, quasi_newton, curr_data, tau, delta, beta, tol, 
                     use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
                     c1, c2, verbose
                 ); 
-                change = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm();
+                change_x = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm(); 
+                change_f = abs(curr_data.f - next_data.f); 
                 i++;
                 curr_data.f = next_data.f; 
                 curr_data.xl = next_data.xl;
@@ -897,6 +908,9 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                          const T c1 = 1e-4, const T c2 = 0.9,
                          const bool verbose = false)
         {
+            using std::abs;
+            using boost::multiprecision::abs;
+
             T f = prev_data.f; 
             Matrix<T, Dynamic, 1> xl = prev_data.xl;
             Matrix<T, Dynamic, 1> x = xl.head(this->D);
@@ -1056,20 +1070,21 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                     ? this->wolfeStrongCurvature(p, df, df_new, c2)
                     : this->wolfeCurvature(p, df, df_new, c2)
                 );
-            T change = step.norm();
+            T change_x = step.norm(); 
+            T change_f = f_new - f; 
             if (verbose)
             {
                 std::cout << "... stepping direction = (";
                 for (int i = 0; i < this->D - 1; ++i)
                     std::cout << p(i) << ", ";
                 std::cout << p(this->D - 1) << ")" << std::endl
-                          << "... trying step-size = " << change 
+                          << "... trying step-size = " << stepsize
                           << ": Armijo = " << satisfies_armijo;
                 if (!use_only_armijo)
                     std::cout << ", curvature = " << satisfies_curvature;
                 std::cout << std::endl; 
             }
-            while (change > tol && !(satisfies_armijo && satisfies_curvature))
+            while (change_x > tol && abs(change_f) > tol && !(satisfies_armijo && satisfies_curvature))
             {
                 stepsize *= factor;
                 factor /= 2;
@@ -1091,10 +1106,11 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                         ? this->wolfeStrongCurvature(p, df, df_new, c2)
                         : this->wolfeCurvature(p, df, df_new, c2)
                     );
-                change = step.norm();
+                change_x = step.norm();
+                change_f = f_new - f; 
                 if (verbose)
                 {
-                    std::cout << "... trying step-size = " << change 
+                    std::cout << "... trying step-size = " << stepsize
                               << ": Armijo = " << satisfies_armijo;
                     if (!use_only_armijo)
                         std::cout << ", curvature = " << satisfies_curvature;
@@ -1111,8 +1127,9 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                 for (int i = 0; i < x_new.size() - 1; ++i)
                     std::cout << x_new(i) << ", "; 
                 std::cout << x_new(x_new.size() - 1)
-                          << "); f(x) = " << f_new 
-                          << "; change = " << f_new - f 
+                          << "); f(x) = " << f_new
+                          << "; change in x = " << change_x 
+                          << "; change in f = " << change_f
                           << "; gradient = (";
                 for (int i = 0; i < df_new.size() - 1; ++i)
                     std::cout << df_new(i) << ", ";
@@ -1169,6 +1186,9 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                                   const T c1 = 1e-4, const T c2 = 0.9,
                                   const bool verbose = false)
         {
+            using std::abs;
+            using boost::multiprecision::abs; 
+
             // Evaluate the objective and its gradient
             Matrix<Dual<T>, Dynamic, 1> x_init_(this->D); 
             for (unsigned i = 0; i < this->D; ++i)
@@ -1203,15 +1223,17 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
 
             unsigned i = 0;
-            T change = 2 * tol; 
-            while (i < max_iter && change > tol)
+            T change_x = 2 * tol;
+            T change_f = 2 * tol;  
+            while (i < max_iter && change_x > tol && change_f > tol)
             {
                 StepData<T> next_data = this->step(
                     func, i, quasi_newton, curr_data, tau, beta, tol,
                     use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
                     c1, c2, verbose
                 ); 
-                change = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).template cast<T>().norm();
+                change_x = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm(); 
+                change_f = abs(curr_data.f - next_data.f); 
                 i++;
                 curr_data.f = next_data.f; 
                 curr_data.xl = next_data.xl;
