@@ -608,11 +608,11 @@ class SQPOptimizer
             x_new = x + step; 
             T f_new = func(x_new);
             Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta);  
-            bool satisfies_armijo = wolfeArmijo(p, stepsize, f, f_new, df, c1);  
+            bool satisfies_armijo = this->wolfeArmijo(p, stepsize, f, f_new, df, c1);  
             bool satisfies_curvature = (
                 use_strong_wolfe
-                ? wolfeStrongCurvature(p, df, df_new, c2)
-                : wolfeCurvature(p, df, df_new, c2)
+                ? this->wolfeStrongCurvature(p, df, df_new, c2)
+                : this->wolfeCurvature(p, df, df_new, c2)
             );
             T change = step.norm(); 
             while (change > tol && !(satisfies_armijo && satisfies_curvature))
@@ -623,11 +623,11 @@ class SQPOptimizer
                 x_new = x + step; 
                 f_new = func(x_new); 
                 df_new = this->gradient(func, x_new, delta); 
-                satisfies_armijo = wolfeArmijo(p, stepsize, f, f_new, df, c1); 
+                satisfies_armijo = this->wolfeArmijo(p, stepsize, f, f_new, df, c1); 
                 satisfies_curvature = (
                     use_strong_wolfe
-                    ? wolfeStrongCurvature(p, df, df_new, c2)
-                    : wolfeCurvature(p, df, df_new, c2)
+                    ? this->wolfeStrongCurvature(p, df, df_new, c2)
+                    : this->wolfeCurvature(p, df, df_new, c2)
                 );
                 change = step.norm(); 
             }  
@@ -743,359 +743,10 @@ class SQPOptimizer
 };
 
 /**
- * An implementation of *line-search* sequential quadratic programming for
+ * An implementation of line-search sequential quadratic programming for
  * nonlinear optimization on convex polytopes (i.e., linear inequality
- * constraints).
- */
-template <typename T>
-class LineSearchSQPOptimizer : public SQPOptimizer<T>
-{
-    public:
-        /**
-         * All inherited constructors from `SQPOptimizer`. 
-         */
-        LineSearchSQPOptimizer(const unsigned D) : SQPOptimizer<T>(D)
-        {
-        }
-        
-        LineSearchSQPOptimizer(const unsigned D, const unsigned N,
-                               const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
-                               const Ref<const Matrix<T, Dynamic, 1> >& b)
-            : SQPOptimizer<T>(D, N, A, b)
-        {
-        }
-
-        LineSearchSQPOptimizer(const unsigned D, const unsigned N,
-                               const Polytopes::InequalityType type, 
-                               const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
-                               const Ref<const Matrix<T, Dynamic, 1> >& b)
-            : SQPOptimizer<T>(D, N, type, A, b) 
-        {
-        }
-
-        LineSearchSQPOptimizer(Polytopes::LinearConstraints<mpq_rational>* constraints)
-            : SQPOptimizer<T>(constraints)
-        {
-        }
-
-        /**
-         * Run one step of the line-search SQP algorithm.
-         *
-         * 1) Given an input vector `(x,l)`, compute `f(x)` and `df(x)/dx`. 
-         * 2) Compute the Lagrangian, `L(x,l) = f(x) - l.T * A * x`, where `A` is the
-         *    constraint matrix, and its Hessian matrix of second derivatives w.r.t. `x`.
-         *    - Use a quasi-Newton method to compute the Hessian if desired.
-         *    - If the Hessian is not positive-definite, perturb by a small multiple
-         *      of the identity until it is positive-definite. 
-         * 3) Define the quadratic subproblem according to the above quantities and
-         *    the constraints (see below). 
-         * 4) Solve the quadratic subproblem.
-         * 5) Check that the newly incremented vector satisfies the merit function 
-         *    constraint, iteratively decreasing the increment until it does.  
-         * 6) Check that the new vector satisfies the constraints of the original
-         *    problem, and output the new vector.
-         */
-        StepData<T> step(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
-                         const unsigned iter, const QuasiNewtonMethod quasi_newton,
-                         StepData<T> prev_data, const T eta, const T tau, 
-                         const T delta, const T beta, const bool verbose,
-                         const unsigned hessian_modify_max_iter)
-        {
-            T f = prev_data.f; 
-            Matrix<T, Dynamic, 1> xl = prev_data.xl;
-            Matrix<T, Dynamic, 1> x = xl.head(this->D);
-            Matrix<T, Dynamic, 1> l = xl.tail(this->N); 
-            Matrix<T, Dynamic, 1> df = prev_data.df;
-            Matrix<T, Dynamic, 1> dL = prev_data.dL;
-            Matrix<T, Dynamic, Dynamic> d2L;
-            if (hessian_modify_max_iter > 0)
-                d2L = modify<T>(prev_data.d2L, hessian_modify_max_iter, beta);
-            else
-                d2L = prev_data.d2L;
-            T prev_mu = prev_data.mu; 
-
-            // If any of the components have a non-finite coordinate, return as is
-            if (!x.array().isFinite().all() || !df.array().isFinite().all() || !dL.array().isFinite().all() || !d2L.array().isFinite().all())
-                return prev_data;
-
-            // Evaluate the constraints and their gradients
-            Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>();   // Convert from rationals to T
-            Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();         // Convert from rationals to T
-            Polytopes::InequalityType type = this->constraints->getInequalityType();
-            Matrix<T, Dynamic, 1> c;
-            if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                c = -(A * x - b);
-            else 
-                c = A * x - b; 
-
-            /** -------------------------------------------------------------- //
-             * Set up the quadratic program (Nocedal and Wright, Eq. 18.11):
-             * 
-             * Minimize:
-             *
-             *   p.T * D * p + c.T * p + c0
-             * = fk + Dfk.T * p + 0.5 * p.T * D2Lk * p
-             *
-             * subject to: 
-             *
-             *    A * p + (A * xk - b) >= 0   if the inequality type of the linear constraints is >=
-             *   -A * p - (A * xk - b) >= 0   if the inequality type of the linear constraints is <=
-             *
-             * where:
-             *
-             * p    = variables to be optimized -- vector to be added to current iterate
-             * xk   = current iterate 
-             * fk   = f(xk)
-             * Dfk  = gradient of f at xk
-             * D2Lk = (approximation of) Hessian of Lagrangian at xk 
-             * --------------------------------------------------------------- */
-            // Note that, with the damped BFGS update, the Hessian matrix approximation
-            // should be positive-definite
-            for (unsigned i = 0; i < this->D; ++i)
-            {
-                for (unsigned j = 0; j <= i; ++j)
-                {
-                    // Sets 2D_ij and 2D_ji (the quadratic part of objective)
-                    this->program->set_d(i, j, static_cast<double>(d2L(i,j)));
-                }
-                // Sets c_i (the linear part of objective)
-                this->program->set_c(i, static_cast<double>(df(i)));
-            }
-            for (unsigned i = 0; i < this->N; ++i)
-            {
-                for (unsigned j = 0; j < this->D; ++j)
-                {
-                    // Sets A_ij (j-th coefficient of i-th constraint)
-                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                        this->program->set_a(j, i, static_cast<double>(A(i,j)));
-                    else 
-                        this->program->set_a(j, i, -static_cast<double>(A(i,j))); 
-                }
-                // Sets b_i (i-th coordinate of -(A * xk - b) if inequality type is >=,
-                // i-th coordinate of (A * xk - b) if inequality type is <=)
-                this->program->set_b(i, static_cast<double>(c(i)));
-            }
-
-            // Solve the quadratic program ...
-            Solution solution; 
-            try
-            {
-                solution = CGAL::solve_quadratic_program(*this->program, ET());
-            }
-            catch (CGAL::Assertion_exception& e) 
-            {
-                // ... if the program cannot be solved because the D matrix is not 
-                // positive-semi-definite (this should never be the case), then replace
-                // D with the identity matrix
-                try
-                {
-                    for (unsigned i = 0; i < this->D; ++i)
-                    {
-                        for (unsigned j = 0; j <= i; ++j)
-                        {
-                            this->program->set_d(i, j, 2.0);    // Sets 2D_ij and 2D_ji
-                        }
-                    }
-                    solution = CGAL::solve_quadratic_program(*this->program, ET());
-                }
-                catch (CGAL::Assertion_exception& e)
-                {
-                    throw; 
-                }
-            }
-
-            // The program should never be infeasible, since we assume that 
-            // the constraint matrix has full rank
-            std::stringstream ss; 
-            if (solution.is_infeasible())
-            {
-                ss << "Quadratic program is infeasible; check constraint matrix:\n" << A;
-                throw std::runtime_error(ss.str());
-            }
-            // The program should also never yield an unbounded solution, 
-            // since we assume that the constraint matrix specifies a 
-            // bounded polytope 
-            else if (solution.is_unbounded())
-            {
-                ss << "Quadratic program yielded unbounded solution; check constraint matrix:\n" << A;
-                throw std::runtime_error(ss.str());
-            }
-
-            // Collect the values of the solution into a vector 
-            Matrix<T, Dynamic, 1> sol(this->D);
-            unsigned i = 0;
-            for (auto it = solution.variable_values_begin(); it != solution.variable_values_end(); ++it)
-            {
-                sol(i) = static_cast<T>(CGAL::to_double(*it));
-                i++;
-            }
-
-            // Collect the values of the new Lagrange multipliers (i.e., the
-            // "optimality certificate")
-            Matrix<T, Dynamic, 1> mult(this->N);
-            i = 0;
-            for (auto it = solution.optimality_certificate_begin(); it != solution.optimality_certificate_end(); ++it)
-            {
-                mult(i) = static_cast<T>(CGAL::to_double(*it));
-                i++;
-            }
-
-            // Compute the difference in Lagrange multiplier values 
-            Matrix<T, Dynamic, 1> L_delta = mult - l; 
-
-            // Compute a value of mu that satisfies the inequality in Nocedal and
-            // Wright, Eq. 18.36
-            T q = sol.dot(d2L * sol); 
-            T sigma = (q > 0 ? 1 : 0);
-            T rho = 0.5; 
-            T epsilon = 1e-3;
-            T c_norm = c.array().abs().sum();
-            T df_dot_sol = df.dot(sol);
-            T lower_bound = (df_dot_sol + (sigma / 2) * q) / ((1 - rho) * c_norm); 
-            T mu = (prev_mu >= lower_bound ? prev_mu : (1 + epsilon) * lower_bound);
-
-            // Set initial stepsize
-            T stepsize = 1;
-
-            // Evaluate the merit function at the incremented input vector with the 
-            // current stepsize
-            Matrix<T, Dynamic, 1> x_new = x + stepsize * sol;
-            T merit_old = this->meritL1(func, x, mu); 
-            T merit_new = this->meritL1(func, x_new, mu);
-            T factor = tau / 2;
-            T dir_deriv = df_dot_sol - mu * c_norm;  
-            while (merit_new > merit_old + eta * stepsize * dir_deriv)
-            {
-                stepsize *= factor;
-                x_new = x + stepsize * sol;
-                merit_new = this->meritL1(func, x_new, mu);
-                factor /= 2;  
-            }  
-
-            // Increment the input vector and update the Lagrange multipliers
-            Matrix<T, Dynamic, 1> xl_new(this->D + this->N);
-            xl_new.head(this->D) = x_new; 
-            xl_new.tail(this->N) = l + stepsize * mult;
-            
-            // Print the new vector and value of the objective function
-            T f_new = func(x_new);
-            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta); 
-            if (verbose)
-            {
-                std::cout << "Iteration " << iter << ": x = (";
-                for (int i = 0; i < x_new.size() - 1; ++i)
-                    std::cout << x_new(i) << ", "; 
-                std::cout << x_new(x_new.size() - 1)
-                          << "); f(x) = " << f_new 
-                          << "; change = " << f_new - f 
-                          << "; gradient = (";
-                for (int i = 0; i < df_new.size() - 1; ++i)
-                    std::cout << df_new(i) << ", ";
-                std::cout << df_new(df_new.size() - 1)
-                          << ")" << std::endl; 
-            }
-
-            // Evaluate the Hessian of the Lagrangian (with respect to the input space)
-            Matrix<T, Dynamic, 1> xl_mixed(xl);
-            xl_mixed.tail(this->N) = mult; 
-            Matrix<T, Dynamic, 1> dL_mixed = this->lagrangianGradient(func, x, mult, delta); 
-            Matrix<T, Dynamic, 1> dL_new = this->lagrangianGradient(func, x_new, mult, delta); 
-            Matrix<T, Dynamic, Dynamic> d2L_new;
-            Matrix<T, Dynamic, 1> s = x_new - x; 
-            Matrix<T, Dynamic, 1> y = dL_new.head(this->D) - dL_mixed.head(this->D);
-            auto d2L_ = d2L.template selfadjointView<Lower>(); 
-            switch (quasi_newton)
-            {
-                case BFGS:
-                    d2L_new = updateBFGSDamped<T>(d2L_, s, y); 
-                    break;
-
-                case SR1:
-                    d2L_new = updateSR1<T>(d2L_, s, y); 
-                    break;
-
-                default:
-                    break;
-            }
-
-            // Return the new data
-            StepData<T> new_data;
-            new_data.f = f_new; 
-            new_data.xl = xl_new;
-            new_data.df = df_new;
-            new_data.dL = dL_new;
-            new_data.d2L = d2L_new;
-            new_data.mu = mu;
-            return new_data;
-        }
-
-        /**
-         * Run the optimization with the given objective function, initial
-         * vector for the objective function, initial vector of Lagrange 
-         * multipliers, and additional settings. 
-         */
-        Matrix<T, Dynamic, 1> run(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
-                                  const Ref<const Matrix<T, Dynamic, 1> >& x_init, 
-                                  const Ref<const Matrix<T, Dynamic, 1> >& l_init,
-                                  const T eta, const T tau, const T delta, const T beta,
-                                  const unsigned max_iter, const T tol,
-                                  const QuasiNewtonMethod quasi_newton,
-                                  const bool verbose,
-                                  const unsigned hessian_modify_max_iter)
-        {
-            // Evaluate the objective and its gradient
-            T f = func(x_init);
-            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init, delta);
-
-            // Print the input vector and value of the objective function
-            if (verbose)
-            {
-                std::cout << "Initial vector: x = " << x_init.transpose()
-                          << "; " << "f(x) = " << f << std::endl; 
-            }
-            
-            // Evaluate the Lagrangian and its gradient
-            StepData<T> curr_data;
-            curr_data.f = f; 
-            curr_data.xl.conservativeResize(this->D + this->N);
-            curr_data.xl.head(this->D) = x_init;
-            curr_data.xl.tail(this->N) = l_init; 
-            curr_data.df = df;
-            Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
-            Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
-            Polytopes::InequalityType type = this->constraints->getInequalityType();
-            T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1);  
-            T L = func(x_init) + sign * l_init.dot(A * x_init - b);  
-            Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(func, x_init, l_init, delta);
-            curr_data.dL = dL;
-            curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
-            curr_data.mu = 0;
-
-            unsigned i = 0;
-            T change = 2 * tol;
-            while (i < max_iter && change > tol)
-            {
-                StepData<T> next_data = this->step(
-                    func, i, quasi_newton, curr_data, eta, tau, delta, beta,
-                    verbose, hessian_modify_max_iter
-                );
-                change = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).template cast<T>().norm();
-                i++;
-                curr_data.f = next_data.f; 
-                curr_data.xl = next_data.xl;
-                curr_data.df = next_data.df;
-                curr_data.dL = next_data.dL;
-                curr_data.d2L = next_data.d2L;
-                curr_data.mu = next_data.mu;
-            }
-            return curr_data.xl.head(this->D).template cast<T>();
-        }
-};
-
-/**
- * An implementation of sequential quadratic programming for nonlinear
- * optimization on convex polytopes (i.e., linear inequality constraints)
- * with forward-mode automatic differentiation for gradient computation. 
+ * constraints) with forward-mode automatic differentiation for gradient
+ * computation. 
  */
 template <typename T>
 class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
@@ -1214,41 +865,6 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
         }
 
         /**
-         * Compute the L1 merit function (Nocedal and Wright, Eq. 15.24) with
-         * respect to the given function and stored constraints.
-         *
-         * Note that the input function should take in and return *dual* numbers.
-         *
-         * @param func Input function.
-         * @param x    Input vector.
-         * @param mu   Mu parameter for merit function (Nocedal and Wright, 
-         *             Eq. 15.24)
-         * @returns    Value of corresponding merit function.  
-         */
-        T meritL1(std::function<Dual<T>(const Ref<const Matrix<Dual<T>, Dynamic, 1> >&)> func, 
-                  const Ref<const Matrix<T, Dynamic, 1> >& x, const T mu)
-        {
-            T total = 0;
-            Matrix<T, Dynamic, 1> y;  
-            if (this->constraints->getInequalityType() == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                y = this->constraints->getA().template cast<T>() * x - this->constraints->getb().template cast<T>();
-            else
-                y = -this->constraints->getA().template cast<T>() * x + this->constraints->getb().template cast<T>();
-            for (unsigned i = 0; i < this->N; ++i)
-            {
-                if (y(i) < 0)
-                    total -= y(i); 
-            }
-            Matrix<Dual<T>, Dynamic, 1> x_(this->D); 
-            for (unsigned i = 0; i < this->D; ++i)
-            {
-                x_(i).a = x(i);
-                x_(i).b = 0;
-            }
-            return func(x_).a + mu * total; 
-        }
-
-        /**
          * Run one step of the SQP algorithm.
          *
          * 1) Given an input vector `(x,l)`, compute `f(x)` and `df(x)/dx`. 
@@ -1266,8 +882,9 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
          */
         StepData<T> step(std::function<Dual<T>(const Ref<const Matrix<Dual<T>, Dynamic, 1> >&)> func,
                          const unsigned iter, const QuasiNewtonMethod quasi_newton,
-                         StepData<T> prev_data, const T beta, const bool verbose,
-                         const unsigned hessian_modify_max_iter)
+                         StepData<T> prev_data, const T tau, const T beta,
+                         const T tol, const bool use_strong_wolfe,
+                         const unsigned hessian_modify_max_iter, const bool verbose)
         {
             T f = prev_data.f; 
             Matrix<T, Dynamic, 1> xl = prev_data.xl;
@@ -1386,40 +1003,73 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             }
 
             // Collect the values of the solution into a vector 
-            Matrix<T, Dynamic, 1> sol(this->D);
+            Matrix<T, Dynamic, 1> p(this->D);
             unsigned i = 0;
             for (auto it = solution.variable_values_begin(); it != solution.variable_values_end(); ++it)
             {
-                sol(i) = static_cast<T>(CGAL::to_double(*it));
+                p(i) = static_cast<T>(CGAL::to_double(*it));
                 i++;
             }
 
             // Collect the values of the new Lagrange multipliers (i.e., the
             // "optimality certificate")
-            Matrix<T, Dynamic, 1> mult(this->N);
+            Matrix<T, Dynamic, 1> xl_new(this->D + this->N);
             i = 0;
             for (auto it = solution.optimality_certificate_begin(); it != solution.optimality_certificate_end(); ++it)
             {
-                mult(i) = static_cast<T>(CGAL::to_double(*it));
+                xl_new(this->D + i) = static_cast<T>(CGAL::to_double(*it));
                 i++;
             }
 
-            // Increment the input vector and update the Lagrange multipliers
-            Matrix<T, Dynamic, 1> xl_new(this->D + this->N);
-            xl_new.head(this->D) = xl.head(this->D) + sol;
-            xl_new.tail(this->N) = mult;
-            Matrix<T, Dynamic, 1> x_new = xl_new.head(this->D);
-            Matrix<Dual<T>, Dynamic, 1> x_new_(this->D); 
-            for (unsigned i = 0; i < this->D; ++i)
+            // Try updates of decreasing stepsizes from the input vector, 
+            // choosing the largest stepsize that satisfies the Wolfe conditions
+            Matrix<T, Dynamic, 1> x_new(this->D);
+            T stepsize = 1;
+            T c1 = 1e-4;    // Recommended by Nocedal & Wright, page 33
+            T c2 = 0.9;     // Recommended by Nocedal & Wright, page 34
+            T factor = tau;
+            Matrix<T, Dynamic, 1> step = stepsize * p;
+            x_new = x + step;
+            Matrix<Dual<T>, Dynamic, 1> x_new_(this->D);
+            for (int i = 0; i < this->D; ++i)
             {
-                x_new_(i).a = x_new(i);
-                x_new_(i).b = 0;  
-            }
+                x_new_(i).a = x_new(i); 
+                x_new_(i).b = 0;
+            } 
+            T f_new = func(x_new_).a;
+            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new);  
+            bool satisfies_armijo = this->wolfeArmijo(p, stepsize, f, f_new, df, c1);  
+            bool satisfies_curvature = (
+                use_strong_wolfe
+                ? this->wolfeStrongCurvature(p, df, df_new, c2)
+                : this->wolfeCurvature(p, df, df_new, c2)
+            );
+            T change = step.norm(); 
+            while (change > tol && !(satisfies_armijo && satisfies_curvature))
+            {
+                stepsize *= factor;
+                factor /= 2;
+                step = stepsize * p; 
+                x_new = x + step;
+                for (int i = 0; i < this->D; ++i)
+                {
+                    x_new_(i).a = x_new(i); 
+                    x_new_(i).b = 0;
+                } 
+                f_new = func(x_new_).a; 
+                df_new = this->gradient(func, x_new); 
+                satisfies_armijo = this->wolfeArmijo(p, stepsize, f, f_new, df, c1); 
+                satisfies_curvature = (
+                    use_strong_wolfe
+                    ? this->wolfeStrongCurvature(p, df, df_new, c2)
+                    : this->wolfeCurvature(p, df, df_new, c2)
+                );
+                change = step.norm(); 
+            }  
+            xl_new.head(this->D) = x_new;
 
             // Print the new vector and value of the objective function
             // and its gradient
-            T f_new = func(x_new_).a;
-            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new);
             if (verbose)
             {
                 std::cout << "Iteration " << iter << ": x = (";
@@ -1436,21 +1086,19 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             }
             
             // Evaluate the Hessian of the Lagrangian (with respect to the input space)
-            Matrix<T, Dynamic, 1> xl_mixed(xl);
-            xl_mixed.tail(this->N) = mult; 
-            Matrix<T, Dynamic, 1> dL_mixed = this->lagrangianGradient(func, x, mult); 
-            Matrix<T, Dynamic, 1> dL_new = this->lagrangianGradient(func, x_new, mult);
+            Matrix<T, Dynamic, 1> dL_mixed = this->lagrangianGradient(func, x, xl_new.tail(this->N)); 
+            Matrix<T, Dynamic, 1> dL_new = this->lagrangianGradient(func, x_new, xl_new.tail(this->N));
             Matrix<T, Dynamic, Dynamic> d2L_new;
             Matrix<T, Dynamic, 1> y = dL_new.head(this->D) - dL_mixed.head(this->D);
             auto d2L_ = d2L.template selfadjointView<Lower>(); 
             switch (quasi_newton)
             {
                 case BFGS:
-                    d2L_new = updateBFGSDamped<T>(d2L_, sol, y); 
+                    d2L_new = updateBFGSDamped<T>(d2L_, step, y); 
                     break;
 
                 case SR1:
-                    d2L_new = updateSR1<T>(d2L_, sol, y); 
+                    d2L_new = updateSR1<T>(d2L_, step, y); 
                     break;
 
                 default:
@@ -1477,10 +1125,12 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
         Matrix<T, Dynamic, 1> run(std::function<Dual<T>(const Ref<const Matrix<Dual<T>, Dynamic, 1> >&)> func,
                                   const Ref<const Matrix<T, Dynamic, 1> >& x_init, 
                                   const Ref<const Matrix<T, Dynamic, 1> >& l_init,
-                                  const T beta, const unsigned max_iter, const T tol,
+                                  const T tau, const T beta,
+                                  const unsigned max_iter, const T tol,
                                   const QuasiNewtonMethod quasi_newton,
-                                  const bool verbose,
-                                  const unsigned hessian_modify_max_iter)
+                                  const bool use_strong_wolfe, 
+                                  const unsigned hessian_modify_max_iter,
+                                  const bool verbose)
         {
             // Evaluate the objective and its gradient
             Matrix<Dual<T>, Dynamic, 1> x_init_(this->D); 
@@ -1520,8 +1170,8 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             while (i < max_iter && change > tol)
             {
                 StepData<T> next_data = this->step(
-                    func, i, quasi_newton, curr_data, beta, verbose,
-                    hessian_modify_max_iter
+                    func, i, quasi_newton, curr_data, tau, beta, tol,
+                    use_strong_wolfe, hessian_modify_max_iter, verbose
                 ); 
                 change = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).template cast<T>().norm();
                 i++;
@@ -1534,362 +1184,5 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             return curr_data.xl.head(this->D).template cast<T>();
         }
 };
-
-/**
- * An implementation of *line-search* sequential quadratic programming for
- * nonlinear optimization on convex polytopes (i.e., linear inequality
- * constraints) with forward-mode automatic differentiation for gradient
- * computation. 
- */
-template <typename T>
-class ForwardAutoDiffLineSearchSQPOptimizer : public ForwardAutoDiffSQPOptimizer<T>
-{
-    public:
-        /**
-         * All inherited constructors from `ForwardAutoDiffSQPOptimizer`. 
-         */
-        ForwardAutoDiffLineSearchSQPOptimizer(const unsigned D)
-            : ForwardAutoDiffSQPOptimizer<T>(D)
-        {
-        }
-
-        ForwardAutoDiffLineSearchSQPOptimizer(const unsigned D, const unsigned N,
-                                              const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
-                                              const Ref<const Matrix<T, Dynamic, Dynamic> >& b)
-            : ForwardAutoDiffSQPOptimizer<T>(D, N, A, b)
-        {
-        }
-
-        ForwardAutoDiffLineSearchSQPOptimizer(const unsigned D, const unsigned N,
-                                              const Polytopes::InequalityType type, 
-                                              const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
-                                              const Ref<const Matrix<T, Dynamic, 1> >& b)
-            : ForwardAutoDiffSQPOptimizer<T>(D, N, type, A, b)
-        {
-        }
-
-        ForwardAutoDiffLineSearchSQPOptimizer(Polytopes::LinearConstraints<mpq_rational>* constraints)
-            : ForwardAutoDiffSQPOptimizer<T>(constraints)
-        {
-        }
-
-        /**
-         * Run one step of the line-search SQP algorithm.
-         *
-         * 1) Given an input vector `(x,l)`, compute `f(x)` and `df(x)/dx`. 
-         * 2) Compute the Lagrangian, `L(x,l) = f(x) - l.T * A * x`, where `A` is the
-         *    constraint matrix, and its Hessian matrix of second derivatives w.r.t. `x`.
-         *    - Use a quasi-Newton method to compute the Hessian if desired.
-         *    - If the Hessian is not positive-definite, perturb by a small multiple
-         *      of the identity until it is positive-definite. 
-         * 3) Define the quadratic subproblem according to the above quantities and
-         *    the constraints (see below). 
-         * 4) Solve the quadratic subproblem.
-         * 5) Check that the newly incremented vector satisfies the merit function 
-         *    constraint, iteratively decreasing the increment until it does.  
-         * 6) Check that the new vector satisfies the constraints of the original
-         *    problem, and output the new vector.
-         */
-        StepData<T> step(std::function<Dual<T>(const Ref<const Matrix<Dual<T>, Dynamic, 1> >&)> func,
-                         const unsigned iter, const QuasiNewtonMethod quasi_newton,
-                         StepData<T> prev_data, const T eta, const T tau, 
-                         const T beta, const bool verbose,
-                         const unsigned hessian_modify_max_iter)
-        {
-            T f = prev_data.f; 
-            Matrix<T, Dynamic, 1> xl = prev_data.xl;
-            Matrix<T, Dynamic, 1> x = xl.head(this->D);
-            Matrix<T, Dynamic, 1> l = xl.tail(this->N); 
-            Matrix<T, Dynamic, 1> df = prev_data.df;
-            Matrix<T, Dynamic, 1> dL = prev_data.dL;
-            Matrix<T, Dynamic, Dynamic> d2L = modify<T>(prev_data.d2L, hessian_modify_max_iter, beta);
-
-            // If any of the components have a non-finite coordinate, return as is
-            if (!x.array().isFinite().all() || !df.array().isFinite().all() || !dL.array().isFinite().all() || !d2L.array().isFinite().all())
-                return prev_data;
-
-            // Evaluate the constraints and their gradients
-            Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>();   // Convert from rationals to T
-            Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();         // Convert from rationals to T
-            Polytopes::InequalityType type = this->constraints->getInequalityType();
-            Matrix<T, Dynamic, 1> c;
-            if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                c = -(A * x - b);
-            else 
-                c = A * x - b; 
-
-            /** -------------------------------------------------------------- //
-             * Set up the quadratic program (Nocedal and Wright, Eq. 18.11):
-             * 
-             * Minimize:
-             *
-             *   p.T * D * p + c.T * p + c0
-             * = fk + Dfk.T * p + 0.5 * p.T * D2Lk * p
-             *
-             * subject to: 
-             *
-             *    A * p + (A * xk - b) >= 0   if the inequality type of the linear constraints is >=
-             *   -A * p - (A * xk - b) >= 0   if the inequality type of the linear constraints is <=
-             *
-             * where:
-             *
-             * p    = variables to be optimized -- vector to be added to current iterate
-             * xk   = current iterate 
-             * fk   = f(xk)
-             * Dfk  = gradient of f at xk
-             * D2Lk = (approximation of) Hessian of Lagrangian at xk 
-             * --------------------------------------------------------------- */
-            // Note that, with the damped BFGS update, the Hessian matrix approximation
-            // should be positive-definite
-            for (unsigned i = 0; i < this->D; ++i)
-            {
-                for (unsigned j = 0; j <= i; ++j)
-                {
-                    // Sets 2D_ij and 2D_ji (the quadratic part of objective)
-                    this->program->set_d(i, j, static_cast<double>(d2L(i,j)));
-                }
-                // Sets c_i (the linear part of objective)
-                this->program->set_c(i, static_cast<double>(df(i)));
-            }
-            for (unsigned i = 0; i < this->N; ++i)
-            {
-                for (unsigned j = 0; j < this->D; ++j)
-                {
-                    // Sets A_ij (j-th coefficient of i-th constraint)
-                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                        this->program->set_a(j, i, static_cast<double>(A(i,j)));
-                    else 
-                        this->program->set_a(j, i, -static_cast<double>(A(i,j))); 
-                }
-                // Sets b_i (i-th coordinate of -(A * xk - b) if inequality type is >=,
-                // i-th coordinate of (A * xk - b) if inequality type is <=)
-                this->program->set_b(i, static_cast<double>(c(i)));
-            }
-
-            // Solve the quadratic program ...
-            Solution solution; 
-            try
-            {
-                solution = CGAL::solve_quadratic_program(*this->program, ET());
-            }
-            catch (CGAL::Assertion_exception& e) 
-            {
-                // ... if the program cannot be solved because the D matrix is not 
-                // positive-semi-definite (this should never be the case), then replace
-                // D with the identity matrix
-                try
-                {
-                    for (unsigned i = 0; i < this->D; ++i)
-                    {
-                        for (unsigned j = 0; j <= i; ++j)
-                        {
-                            this->program->set_d(i, j, 2.0);    // Sets 2D_ij and 2D_ji
-                        }
-                    }
-                    solution = CGAL::solve_quadratic_program(*this->program, ET());
-                }
-                catch (CGAL::Assertion_exception& e)
-                {
-                    throw; 
-                }
-            }
-
-            // The program should never be infeasible, since we assume that 
-            // the constraint matrix has full rank
-            std::stringstream ss; 
-            if (solution.is_infeasible())
-            {
-                ss << "Quadratic program is infeasible; check constraint matrix:\n" << A;
-                throw std::runtime_error(ss.str());
-            }
-            // The program should also never yield an unbounded solution, 
-            // since we assume that the constraint matrix specifies a 
-            // bounded polytope 
-            else if (solution.is_unbounded())
-            {
-                ss << "Quadratic program yielded unbounded solution; check constraint matrix:\n" << A;
-                throw std::runtime_error(ss.str());
-            }
-
-            // Collect the values of the solution into a vector 
-            Matrix<T, Dynamic, 1> sol(this->D);
-            unsigned i = 0;
-            for (auto it = solution.variable_values_begin(); it != solution.variable_values_end(); ++it)
-            {
-                sol(i) = static_cast<T>(CGAL::to_double(*it));
-                i++;
-            }
-
-            // Collect the values of the new Lagrange multipliers (i.e., the
-            // "optimality certificate")
-            Matrix<T, Dynamic, 1> mult(this->N);
-            i = 0;
-            for (auto it = solution.optimality_certificate_begin(); it != solution.optimality_certificate_end(); ++it)
-            {
-                mult(i) = static_cast<T>(CGAL::to_double(*it));
-                i++;
-            }
-
-            // Compute the difference in Lagrange multiplier values 
-            Matrix<T, Dynamic, 1> L_delta = mult - l; 
-
-            // Compute a value of mu that satisfies the inequality in Nocedal and
-            // Wright, Eq. 18.36
-            T sigma = 1;
-            T rho = 0.5; 
-            T epsilon = 1e-3;
-            T c_norm = c.array().abs().sum();
-            T df_dot_sol = df.dot(sol);  
-            T mu = (
-                (1 + epsilon) * (df_dot_sol + (sigma / 2) * sol.dot(d2L * sol))
-                / ((1 - rho) * c_norm)
-            );
-
-            // Set initial stepsize
-            T stepsize = 1;
-
-            // Evaluate the merit function at the incremented input vector with the 
-            // current stepsize
-            Matrix<T, Dynamic, 1> x_new = x + stepsize * sol;
-            T merit_old = this->meritL1(func, x, mu); 
-            T merit_new = this->meritL1(func, x_new, mu);
-            T factor = tau / 2;
-            T dir_deriv = df_dot_sol - mu * c_norm;  
-            while (merit_new > merit_old + eta * stepsize * dir_deriv)
-            {
-                stepsize *= factor;
-                x_new = x + stepsize * sol;
-                merit_new = this->meritL1(func, x_new, mu);
-                factor /= 2;  
-            }  
-
-            // Increment the input vector and update the Lagrange multipliers
-            Matrix<T, Dynamic, 1> xl_new(this->D + this->N);
-            xl_new.head(this->D) = x_new; 
-            xl_new.tail(this->N) = l + stepsize * mult;
-            
-            // Print the new vector and value of the objective function
-            Matrix<Dual<T>, Dynamic, 1> x_new_(this->D);
-            for (unsigned i = 0; i < this->D; ++i)
-            {
-                x_new_(i).a = x_new(i);
-                x_new_(i).b = 0; 
-            } 
-            T f_new = func(x_new_).a;
-            Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new); 
-            if (verbose)
-            {
-                std::cout << "Iteration " << iter << ": x = (";
-                for (int i = 0; i < x_new.size() - 1; ++i)
-                    std::cout << x_new(i) << ", "; 
-                std::cout << x_new(x_new.size() - 1)
-                          << "); f(x) = " << f_new 
-                          << "; change = " << f_new - f 
-                          << "; gradient = (";
-                for (int i = 0; i < df_new.size() - 1; ++i)
-                    std::cout << df_new(i) << ", ";
-                std::cout << df_new(df_new.size() - 1)
-                          << ")" << std::endl; 
-            }
-
-            // Evaluate the Hessian of the Lagrangian (with respect to the input space)
-            Matrix<T, Dynamic, 1> xl_mixed(xl);
-            xl_mixed.tail(this->N) = mult; 
-            Matrix<T, Dynamic, 1> dL_mixed = this->lagrangianGradient(func, x, mult); 
-            Matrix<T, Dynamic, 1> dL_new = this->lagrangianGradient(func, x_new, mult); 
-            Matrix<T, Dynamic, Dynamic> d2L_new;
-            Matrix<T, Dynamic, 1> s = x_new - x; 
-            Matrix<T, Dynamic, 1> y = dL_new.head(this->D) - dL_mixed.head(this->D);
-            auto d2L_ = d2L.template selfadjointView<Lower>(); 
-            switch (quasi_newton)
-            {
-                case BFGS:
-                    d2L_new = updateBFGSDamped<T>(d2L_, s, y); 
-                    break;
-
-                case SR1:
-                    d2L_new = updateSR1<T>(d2L_, s, y); 
-                    break;
-
-                default:
-                    break;
-            }
-
-            // Return the new data
-            StepData<T> new_data;
-            new_data.f = f_new; 
-            new_data.xl = xl_new;
-            new_data.df = df_new;
-            new_data.dL = dL_new;
-            new_data.d2L = d2L_new;
-            return new_data;
-        }
-
-        /**
-         * Run the optimization with the given objective function, initial
-         * vector for the objective function, initial vector of Lagrange 
-         * multipliers, and additional settings. 
-         */
-        Matrix<T, Dynamic, 1> run(std::function<Dual<T>(const Ref<const Matrix<Dual<T>, Dynamic, 1> >&)> func,
-                                  const Ref<const Matrix<T, Dynamic, 1> >& x_init, 
-                                  const Ref<const Matrix<T, Dynamic, 1> >& l_init,
-                                  const T eta, const T tau, const T beta,
-                                  const unsigned max_iter, const T tol,
-                                  const QuasiNewtonMethod quasi_newton,
-                                  const bool verbose,
-                                  const unsigned hessian_modify_max_iter)
-        {
-            // Evaluate the objective and its gradient
-            Matrix<Dual<T>, Dynamic, 1> x_init_(this->D); 
-            for (unsigned i = 0; i < this->D; ++i)
-            {
-                x_init_(i).a = x_init(i);
-                x_init_(i).b = 0;  
-            }
-            T f = func(x_init_).a;
-            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init);
-
-            // Print the input vector and value of the objective function
-            if (verbose)
-            {
-                std::cout << "Initial vector: x = " << x_init.transpose()
-                          << "; " << "f(x) = " << f << std::endl; 
-            }
-            
-            // Evaluate the Lagrangian and its gradient
-            StepData<T> curr_data;
-            curr_data.f = f; 
-            curr_data.xl.conservativeResize(this->D + this->N);
-            curr_data.xl.head(this->D) = x_init;
-            curr_data.xl.tail(this->N) = l_init; 
-            curr_data.df = df;
-            Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
-            Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
-            Polytopes::InequalityType type = this->constraints->getInequalityType();
-            T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1);  
-            T L = func(x_init_).a + sign * l_init.dot(A * x_init - b);  
-            Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(func, x_init, l_init);
-            curr_data.dL = dL;
-            curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
-
-            unsigned i = 0;
-            T change = 2 * tol;
-            while (i < max_iter && change > tol)
-            {
-                StepData<T> next_data = this->step(
-                    func, i, quasi_newton, curr_data, eta, tau, beta,
-                    verbose, hessian_modify_max_iter
-                );
-                change = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).template cast<T>().norm();
-                i++;
-                curr_data.f = next_data.f; 
-                curr_data.xl = next_data.xl;
-                curr_data.df = next_data.df;
-                curr_data.dL = next_data.dL;
-                curr_data.d2L = next_data.d2L;
-            }
-            return curr_data.xl.head(this->D).template cast<T>();
-        }
-}; 
 
 #endif 
