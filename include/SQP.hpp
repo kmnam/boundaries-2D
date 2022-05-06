@@ -460,7 +460,7 @@ class SQPOptimizer
         StepData<T> step(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                          const unsigned iter, const QuasiNewtonMethod quasi_newton,
                          StepData<T> prev_data, const T tau, const T delta,
-                         const T beta, const bool use_strong_wolfe, 
+                         const T beta, const T tol, const bool use_strong_wolfe,
                          const unsigned hessian_modify_max_iter, const bool verbose)
         {
             T f = prev_data.f; 
@@ -601,10 +601,11 @@ class SQPOptimizer
             // choosing the largest stepsize that satisfies the Wolfe conditions
             Matrix<T, Dynamic, 1> x_new(this->D);
             T stepsize = 1;
-            T c1 = 1e-3;    // 1e-4 recommended by Nocedal & Wright, page 33
+            T c1 = 1e-4;    // Recommended by Nocedal & Wright, page 33
             T c2 = 0.9;     // Recommended by Nocedal & Wright, page 34
             T factor = tau;
-            x_new = x + stepsize * p;
+            Matrix<T, Dynamic, 1> step = stepsize * p; 
+            x_new = x + step; 
             T f_new = func(x_new);
             Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta);  
             bool satisfies_armijo = wolfeArmijo(p, stepsize, f, f_new, df, c1);  
@@ -612,12 +613,14 @@ class SQPOptimizer
                 use_strong_wolfe
                 ? wolfeStrongCurvature(p, df, df_new, c2)
                 : wolfeCurvature(p, df, df_new, c2)
-            );  
-            while (!(satisfies_armijo && satisfies_curvature))
+            );
+            T change = step.norm(); 
+            while (change < tol && !(satisfies_armijo && satisfies_curvature))
             {
                 stepsize *= factor;
-                factor /= 2;  
-                x_new = x + stepsize * p;
+                factor /= 2;
+                step = stepsize * p; 
+                x_new = x + step; 
                 f_new = func(x_new); 
                 df_new = this->gradient(func, x_new, delta); 
                 satisfies_armijo = wolfeArmijo(p, stepsize, f, f_new, df, c1); 
@@ -625,7 +628,8 @@ class SQPOptimizer
                     use_strong_wolfe
                     ? wolfeStrongCurvature(p, df, df_new, c2)
                     : wolfeCurvature(p, df, df_new, c2)
-                );  
+                );
+                change = step.norm(); 
             }  
             xl_new.head(this->D) = x_new;
 
@@ -655,11 +659,11 @@ class SQPOptimizer
             switch (quasi_newton)
             {
                 case BFGS:
-                    d2L_new = updateBFGSDamped<T>(d2L_, stepsize * p, y); 
+                    d2L_new = updateBFGSDamped<T>(d2L_, step, y);
                     break;
 
                 case SR1:
-                    d2L_new = updateSR1<T>(d2L_, stepsize * p, y); 
+                    d2L_new = updateSR1<T>(d2L_, step, y); 
                     break;
 
                 default:
@@ -723,10 +727,10 @@ class SQPOptimizer
             while (i < max_iter && change > tol)
             {
                 StepData<T> next_data = this->step(
-                    func, i, quasi_newton, curr_data, tau, delta, beta, 
+                    func, i, quasi_newton, curr_data, tau, delta, beta, tol, 
                     use_strong_wolfe, hessian_modify_max_iter, verbose
                 ); 
-                change = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).template cast<T>().norm();
+                change = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm();
                 i++;
                 curr_data.f = next_data.f; 
                 curr_data.xl = next_data.xl;
