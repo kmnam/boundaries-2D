@@ -615,7 +615,7 @@ class SQPOptimizer
                 : wolfeCurvature(p, df, df_new, c2)
             );
             T change = step.norm(); 
-            while (change < tol && !(satisfies_armijo && satisfies_curvature))
+            while (change > tol && !(satisfies_armijo && satisfies_curvature))
             {
                 stepsize *= factor;
                 factor /= 2;
