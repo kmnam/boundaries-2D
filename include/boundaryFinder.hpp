@@ -595,9 +595,13 @@ class BoundaryFinder
          *                                approximation during each SQP iteration.
          * @param beta                    Increment for Hessian matrix modification
          *                                (for ensuring positive semi-definiteness).
+         * @param use_only_armijo         If true, use only the Armijo condition
+         *                                to determine step-size during each 
+         *                                SQP iteration.
          * @param use_strong_wolfe        If true, use the strong Wolfe conditions
          *                                to determine step-size during each 
-         *                                SQP iteration.  
+         *                                SQP iteration. Disregarded if
+         *                                `use_only_armijo == true`.  
          * @param hessian_modify_max_iter Maximum number of Hessian matrix
          *                                modification iterations (for ensuring
          *                                positive semi-definiteness).  
@@ -619,8 +623,8 @@ class BoundaryFinder
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const double epsilon, const unsigned max_iter, const double sqp_tol,
                   const unsigned iter, const unsigned max_edges, const double tau,
-                  const double delta, const double beta, const bool use_strong_wolfe,
-                  const unsigned hessian_modify_max_iter,
+                  const double delta, const double beta, const bool use_only_armijo,
+                  const bool use_strong_wolfe, const unsigned hessian_modify_max_iter,
                   const std::string write_prefix, const double c1 = 1e-4, 
                   const double c2 = 0.9, const bool verbose = true,
                   const bool sqp_verbose = false)
@@ -668,8 +672,8 @@ class BoundaryFinder
                     - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
                 VectorXd q = optimizer->run(
                     obj, x_init, l_init, tau, delta, beta, max_iter, sqp_tol,
-                    BFGS, use_strong_wolfe, hessian_modify_max_iter, c1, c2,
-                    sqp_verbose
+                    BFGS, use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
+                    c1, c2, sqp_verbose
                 );
                 VectorXd z = this->func(q); 
                 
@@ -820,9 +824,13 @@ class BoundaryFinder
          *                                approximation during each SQP iteration.
          * @param beta                    Increment for Hessian matrix modification
          *                                (for ensuring positive semi-definiteness).
+         * @param use_only_armijo         If true, use only the Armijo condition
+         *                                to determine step-size during each 
+         *                                SQP iteration. 
          * @param use_strong_wolfe        If true, use the strong Wolfe conditions
          *                                to determine step-size during each 
-         *                                SQP iteration.  
+         *                                SQP iteration. Disregarded if 
+         *                                `use_only_armijo == true`. 
          * @param hessian_modify_max_iter Maximum number of Hessian matrix
          *                                modification iterations (for ensuring
          *                                positive semi-definiteness).  
@@ -845,8 +853,8 @@ class BoundaryFinder
                  const unsigned min_pull_iter, const unsigned max_pull_iter,
                  const unsigned sqp_max_iter, const double sqp_tol,
                  const unsigned max_edges, const double tau, const double delta,
-                 const double beta, const bool use_strong_wolfe,
-                 const unsigned hessian_modify_max_iter,
+                 const double beta, const bool use_only_armijo, 
+                 const bool use_strong_wolfe, const unsigned hessian_modify_max_iter,
                  const std::string write_prefix, const double c1 = 1e-4,
                  const double c2 = 0.9, const bool verbose = true,
                  const bool sqp_verbose = false)
@@ -883,7 +891,7 @@ class BoundaryFinder
                 if (verbose) std::cout << "Pulling by epsilon = " << epsilon << std::endl;  
                 bool result = this->pull(
                     optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
-                    max_edges, tau, delta, beta, use_strong_wolfe, 
+                    max_edges, tau, delta, beta, use_only_armijo, use_strong_wolfe, 
                     hessian_modify_max_iter, write_prefix, c1, c2, verbose,
                     sqp_verbose
                 );
