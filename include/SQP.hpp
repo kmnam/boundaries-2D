@@ -413,33 +413,20 @@ class SQPOptimizer
             Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();         // Convert from rationals to T
             Polytopes::InequalityType type = this->constraints->getInequalityType();
             T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1); 
-            
-            // Evaluate the Lagrangian at 2 * D values, with each coordinate 
-            // perturbed by +/- delta
-            Matrix<T, Dynamic, 1> dL(this->D + this->N);
-            Matrix<T, Dynamic, 1> x_(x);
-            Matrix<T, Dynamic, 1> l_(l);
-            for (unsigned i = 0; i < this->D; ++i)
-            {
-                x_(i) += delta;
-                T f1 = func(x_) + sign * l_.dot(A * x_ - b); 
-                x_(i) -= 2 * delta;
-                T f2 = func(x_) + sign * l_.dot(A * x_ - b); 
-                x_(i) += delta; 
-                dL(i) = (f1 - f2) / (2 * delta);
-            }
-            T f = func(x_); 
-            Matrix<T, Dynamic, 1> p = sign * (A * x_ - b); 
-            for (unsigned i = 0; i < this->N; ++i)
-            {
-                l_(i) += delta;
-                T f1 = f + l_.dot(p); 
-                l_(i) -= 2 * delta;
-                T f2 = f + l_.dot(p); 
-                l_(i) += delta; 
-                dL(this->D + i) = (f1 - f2) / (2 * delta);
-            }
 
+            // Evaluate the function at 2 * D values, with each coordinate
+            // perturbed by +/- delta, using gradient()
+            Matrix<T, Dynamic, 1> dL = Matrix<T, Dynamic, 1>::Zero(this->D + this->N);
+            Matrix<T, Dynamic, 1> df = this->gradient(func, x, delta); 
+            dL.head(this->D) += df;
+
+            // Incorporate the contributions of the *linear* constraints to 
+            // each partial derivative of the Lagrangian 
+            for (int i = 0; i < this->D; ++i)
+                dL(i) += sign * A.col(i).dot(l);
+            for (int i = 0; i < this->N; ++i)
+                dL(this->D + i) = sign * (A.row(i).dot(x) - b(i));  
+            
             return dL;
         }
 
@@ -614,7 +601,7 @@ class SQPOptimizer
                 ? this->wolfeStrongCurvature(p, df, df_new, c2)
                 : this->wolfeCurvature(p, df, df_new, c2)
             );
-            T change = step.norm(); 
+            T change = step.norm();
             while (change > tol && !(satisfies_armijo && satisfies_curvature))
             {
                 stepsize *= factor;
@@ -629,7 +616,7 @@ class SQPOptimizer
                     ? this->wolfeStrongCurvature(p, df, df_new, c2)
                     : this->wolfeCurvature(p, df, df_new, c2)
                 );
-                change = step.norm(); 
+                change = step.norm();
             }  
             xl_new.head(this->D) = x_new;
 
@@ -829,38 +816,21 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>();   // Convert from rationals to T
             Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();         // Convert from rationals to T
             Polytopes::InequalityType type = this->constraints->getInequalityType();
-            T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1); 
+            T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1);
 
-            // Evaluate the function at D dual vectors, with derivative vectors 
-            // initialized to standard unit vectors, one for each coordinate
-            Matrix<T, Dynamic, 1> dL(this->D + this->N);
-            Matrix<Dual<T>, Dynamic, 1> x_(this->D);
-            Matrix<Dual<T>, Dynamic, 1> l_(this->N);
-            for (unsigned i = 0; i < this->D; ++i)
-            {
-                x_(i).a = x(i); 
-                x_(i).b = 0; 
-            }
-            for (unsigned i = 0; i < this->N; ++i)
-            {
-                l_(i).a = l(i);
-                l_(i).b = 0; 
-            }
-            for (unsigned i = 0; i < this->D; ++i)
-            {
-                x_(i).b = 1; 
-                dL(i) = (func(x_) + sign * l_.dot((A * x_ - b).eval())).b;
-                x_(i).b = 0;
-            }
-            Dual<T> f = func(x_); 
-            Matrix<Dual<T>, Dynamic, 1> p = sign * (A * x_ - b); 
-            for (unsigned i = 0; i < this->N; ++i)
-            {
-                l_(i).b = 1;
-                dL(this->D + i) = (f + l_.dot(p)).b;
-                l_(i).b = 0; 
-            }
+            // Evaluate the function at 2 * D values, with each coordinate
+            // perturbed by +/- delta, using gradient()
+            Matrix<T, Dynamic, 1> dL = Matrix<T, Dynamic, 1>::Zero(this->D + this->N);
+            Matrix<T, Dynamic, 1> df = this->gradient(func, x); 
+            dL.head(this->D) += df;
 
+            // Incorporate the contributions of the *linear* constraints to 
+            // each partial derivative of the Lagrangian 
+            for (int i = 0; i < this->D; ++i)
+                dL(i) += sign * A.col(i).dot(l);
+            for (int i = 0; i < this->N; ++i)
+                dL(this->D + i) = sign * (A.row(i).dot(x) - b(i));  
+            
             return dL;
         }
 
@@ -954,8 +924,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                 // i-th coordinate of (A * xk - b) if inequality type is <=)
                 this->program->set_b(i, static_cast<double>(c(i)));
             }
-            // Sets constant part of objective (fk)
-            this->program->set_c0(static_cast<double>(f));
+            // Note that the constant part of the objective (fk) is unnecessary
 
             // Solve the quadratic program ...
             Solution solution; 
@@ -1044,7 +1013,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                 ? this->wolfeStrongCurvature(p, df, df_new, c2)
                 : this->wolfeCurvature(p, df, df_new, c2)
             );
-            T change = step.norm(); 
+            T change = step.norm();
             while (change > tol && !(satisfies_armijo && satisfies_curvature))
             {
                 stepsize *= factor;
