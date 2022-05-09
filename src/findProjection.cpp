@@ -10,7 +10,7 @@
 #include "../include/boundaryFinder.hpp"
 
 /*
- * Approximate the boundary of a convex polygon.
+ * Approximate the boundary of a 2-D projection of a convex polytope. 
  *
  * **Authors:**
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
@@ -33,13 +33,13 @@ int main(int argc, char** argv)
     std::string infilename, outprefix;
     bool simplify = false;
     int max_edges = 0; 
-    if (argc == 2)    // Only acceptable call here is "./findBoundary --help"
+    if (argc == 2)    // Only acceptable call here is "./findProjection --help"
     {
         std::string option(argv[1]);
         if (option == "-h" || option == "--help")
         {
             std::stringstream ss;
-            ss << "\nCommand:\n\t./findBoundary [-s NUM_EDGES] INPUT OUTPUT\n\n";
+            ss << "\nCommand:\n\t./findProjection [-s NUM_EDGES] INPUT OUTPUT\n\n";
             ss << "\t-s (optional): Simplify alpha shape to contain at most the given number of edges\n";
             ss << "\tINPUT: Input file\n";
             ss << "\tOUTPUT: Output file prefix\n\n";
@@ -50,12 +50,12 @@ int main(int argc, char** argv)
         {
             std::stringstream ss;
             ss << "Unrecognized input command\n\n";
-            ss << "Help:\n\t./findBoundary --help\n\n";
+            ss << "Help:\n\t./findProjection --help\n\n";
             std::cerr << ss.str();
             return -1;
         }
     }
-    else if (argc == 3)    // Only acceptable call here is "./findBoundary INPUT OUTPUT"
+    else if (argc == 3)    // Only acceptable call here is "./findProjection INPUT OUTPUT"
     {
         infilename = argv[1];
         outprefix = argv[2];
@@ -64,11 +64,11 @@ int main(int argc, char** argv)
     {
         std::stringstream ss;
         ss << "Unrecognized input command\n\n";
-        ss << "Help:\n\t./findBoundary --help\n\n";
+        ss << "Help:\n\t./findProjection --help\n\n";
         std::cerr << ss.str();
         return -1;
     }
-    else if (argc == 5)    // Only acceptable call here is "./findBoundary -s NUM_EDGES INPUT OUTPUT"
+    else if (argc == 5)    // Only acceptable call here is "./findProjection -s NUM_EDGES INPUT OUTPUT"
     {
         std::string option(argv[1]);
         if (option == "-s")
@@ -83,7 +83,7 @@ int main(int argc, char** argv)
             {
                 std::stringstream ss; 
                 ss << "Non-numeric argument to -s flag\n\n";
-                ss << "Help:\n\t./findBoundary --help\n\n";
+                ss << "Help:\n\t./findProjection --help\n\n";
                 std::cerr << ss.str();
                 return -1;  
             }
@@ -92,7 +92,7 @@ int main(int argc, char** argv)
         {
             std::stringstream ss;
             ss << "Unrecognized flag: " << option << "\n\n";
-            ss << "Help:\n\t./findBoundary --help\n\n";
+            ss << "Help:\n\t./findProjection --help\n\n";
             std::cerr << ss.str();
             return -1;
         }
@@ -103,7 +103,7 @@ int main(int argc, char** argv)
     {
         std::stringstream ss;
         ss << "Unrecognized input command\n\n";
-        ss << "Help:\n\t./findBoundary --help\n\n";
+        ss << "Help:\n\t./findProjection --help\n\n";
         std::cerr << ss.str();
         return -1;
     }
@@ -116,7 +116,7 @@ int main(int argc, char** argv)
     constraints->parse(infilename);
     std::function<VectorXd(const Ref<const VectorXd>&)> func = [](const Ref<const VectorXd>& x)
     {
-        return x;
+        return x(Eigen::seqN(0, 2));
     }; 
     BoundaryFinder* finder = new BoundaryFinder(
         area_tol, rng, infilename,
