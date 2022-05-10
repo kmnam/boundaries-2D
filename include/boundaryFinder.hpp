@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     5/6/2022
+ *     5/10/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -31,13 +31,13 @@
 
 using namespace Eigen;
 
-typedef CGAL::Exact_predicates_inexact_constructions_kernel             K;
-typedef K::Vector_2                                                     Vector_2;
+typedef CGAL::Exact_predicates_inexact_constructions_kernel    K;
+typedef K::Vector_2                                            Vector_2;
 
 constexpr int MAX_NUM_MUTATION_ATTEMPTS = 20;
 constexpr int NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE = 5;
 constexpr int INTERNAL_PRECISION = 100;
-constexpr double MINDIST_BETWEEN_POINTS = 1e-8; 
+constexpr double MINDIST_BETWEEN_POINTS = 1e-8;
 
 /**
  * A class that implements an importance sampling algorithm for iteratively
@@ -217,6 +217,27 @@ class BoundaryFinder
         }
 
         /**
+         * Return the vertices of the input polytope, by traversing over them
+         * in the stored Delaunay triangulation.  
+         */
+        MatrixXd getVertices()
+        {
+            const int d = this->constraints->getD(); 
+            const int n = this->tri->number_of_vertices(); 
+            MatrixXd vertices(n, d);
+            int i = 0; 
+            for (auto it = this->tri->finite_vertices_begin(); it != this->tri->finite_vertices_end(); ++it)
+            {
+                // Get the coordinates of the i-th vertex 
+                Delaunay_triangulation::Point p = it->point();
+                for (unsigned j = 0; j < d; ++j)
+                    vertices(i, j) = CGAL::to_double(p[j]); 
+            }
+
+            return vertices; 
+        }
+
+        /**
          * Randomly sample the given number of points from the uniform density 
          * on the input polytope.
          *
@@ -256,7 +277,7 @@ class BoundaryFinder
          */
         void initialize(std::function<bool(const Ref<const VectorXd>&)> filter, 
                         const Ref<const MatrixXd>& input, const unsigned max_edges, 
-                        const std::string write_prefix = "") 
+                        const std::string write_prefix) 
         {
             // Check that the input points have the correct dimensionality
             const int D = this->constraints->getD();  
@@ -662,7 +683,7 @@ class BoundaryFinder
             for (unsigned i = 0; i < this->vertices.size(); ++i)
             {
                 // Minimize the appropriate objective function
-                VectorXd target = pulled.row(i); 
+                VectorXd target = pulled.row(i);
                 auto obj = [this, target](const Ref<const VectorXd>& x)
                 {
                     return (target - this->func(x)).squaredNorm();
@@ -864,10 +885,10 @@ class BoundaryFinder
 
             // ... then step through the boundary-finding algorithm up to the
             // maximum number of iterations ...
-            unsigned i = 0;
+            unsigned i = 1;
             bool terminate = false;
             unsigned n_converged = 0;
-            while (i < min_step_iter || (i < max_step_iter && !terminate))
+            while (i - 1 < min_step_iter || (i - 1 < max_step_iter && !terminate))
             {
                 bool result = this->step(
                     mutate, filter, i, max_edges, write_prefix, verbose
@@ -930,15 +951,7 @@ class BoundaryFinder
                 }
                 outfile.close(); 
             }
-            if (verbose)
-            {
-                std::cout << "[FINAL] Iteration " << i + j
-                          << "; enclosed area: " << this->curr_area
-                          << "; " << this->vertices.size() << " boundary points"
-                          << "; " << this->points.rows() << " total points" 
-                          << std::endl;
-            }
-
+            
             // Did the loop terminate without achieving convergence?
             if (!terminate)
             {
