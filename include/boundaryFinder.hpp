@@ -403,6 +403,13 @@ class BoundaryFinder
 
             // Compute enclosed area and test for convergence
             this->curr_area = this->curr_bound.area;
+            if (verbose)
+            {
+                std::cout << "[INIT] Initializing; enclosed area: " << this->curr_area
+                          << "; " << this->vertices.size() << " boundary points" 
+                          << "; " << this->points.rows() << " total points"
+                          << std::endl;  
+            }
         }
 
         /**
