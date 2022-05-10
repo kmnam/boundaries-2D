@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     2/9/2022
+ *     5/10/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -74,8 +74,13 @@ struct AlphaShape2DProperties
             v = Vector_2(this->x[p] - this->x[q], this->y[p] - this->y[q]);
             w = Vector_2(this->x[r] - this->x[q], this->y[r] - this->y[q]);
 
-            // Get the angle between the two vectors 
-            double angle = std::acos(CGAL::scalar_product(v, w) / std::sqrt(v.squared_length() * w.squared_length()));
+            // Get the angle between the two vectors
+            double arg = CGAL::scalar_product(v, w) / std::sqrt(v.squared_length() * w.squared_length());
+            if (arg > 1)         // Check that the argument passed to acos() is between -1 and 1
+                arg = 1; 
+            else if (arg < -1)
+                arg = -1; 
+            double angle = std::acos(arg);
             Orientation v_to_w = CGAL::orientation(-v, w);
 
             // Case 1: The boundary is oriented by right turns and -v and w
