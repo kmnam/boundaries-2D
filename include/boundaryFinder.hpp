@@ -272,12 +272,13 @@ class BoundaryFinder
          *                     boundary. 
          * @param write_prefix Prefix of output file name to which to write 
          *                     the boundary obtained in this iteration.
+         * @param verbose      If true, output intermittent messages to `stdout`.
          * @throws std::invalid_argument if the input points do not have the 
          *                               correct dimension.  
          */
         void initialize(std::function<bool(const Ref<const VectorXd>&)> filter, 
                         const Ref<const MatrixXd>& input, const unsigned max_edges, 
-                        const std::string write_prefix) 
+                        const std::string write_prefix, const bool verbose = true)
         {
             // Check that the input points have the correct dimensionality
             const int D = this->constraints->getD();  
@@ -888,7 +889,7 @@ class BoundaryFinder
                  const bool sqp_verbose = false)
         {
             // Initialize the sampling run ...
-            this->initialize(filter, init_input, max_edges, write_prefix);
+            this->initialize(filter, init_input, max_edges, write_prefix, verbose);
 
             // ... then step through the boundary-finding algorithm up to the
             // maximum number of iterations ...
