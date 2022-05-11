@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     5/10/2022
+ *     5/11/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -232,31 +232,38 @@ struct AlphaShape2DProperties
             this->y = y;
             this->vertices = vertices;
             this->edges = edges;
-            this->np = x.size();
-            this->nv = vertices.size();
+            this->np = this->x.size();
+            this->nv = this->vertices.size();
             this->alpha = alpha;
             this->area = area;
             this->is_simple_cycle = is_simple_cycle; 
 
             // Find the vertex with minimum y-coordinate, breaking any 
             // ties with whichever point has the smallest x-coordinate
-            this->min = 0;
-            double xmin = this->x[this->vertices[0]];
-            double ymin = this->y[this->vertices[0]];
-            for (unsigned i = 1; i < this->nv; ++i)
+            if (this->nv > 0)
             {
-                if (this->y[this->vertices[i]] < ymin)
+                this->min = 0;
+                double xmin = this->x[this->vertices[0]];
+                double ymin = this->y[this->vertices[0]];
+                for (unsigned i = 1; i < this->nv; ++i)
                 {
-                    this->min = i;
-                    xmin = this->x[this->vertices[i]];
-                    ymin = this->y[this->vertices[i]];
+                    if (this->y[this->vertices[i]] < ymin)
+                    {
+                        this->min = i;
+                        xmin = this->x[this->vertices[i]];
+                        ymin = this->y[this->vertices[i]];
+                    }
+                    else if (this->y[this->vertices[i]] == ymin && this->x[this->vertices[i]] < xmin)
+                    {
+                        this->min = i;
+                        xmin = this->x[this->vertices[i]];
+                        ymin = this->y[this->vertices[i]];
+                    }
                 }
-                else if (this->y[this->vertices[i]] == ymin && this->x[this->vertices[i]] < xmin)
-                {
-                    this->min = i;
-                    xmin = this->x[this->vertices[i]];
-                    ymin = this->y[this->vertices[i]];
-                }
+            }
+            else 
+            {
+                this->min = std::numeric_limits<double>::quiet_NaN();  
             }
 
             // Check that the edges and vertices were specified in order
@@ -277,31 +284,38 @@ struct AlphaShape2DProperties
                     );
             }
 
-            // Find the orientation of the edges
-            Point_2 p, q, r;
-            int nv = this->vertices.size();
-            if (this->min == 0)
+            // Find the orientation of the edges (given there are at least
+            // three vertices)
+            if (this->nv >= 3)
             {
-                p = Point_2(this->x[this->vertices[this->nv-1]], this->y[this->vertices[this->nv-1]]);
-                q = Point_2(this->x[this->vertices[0]], this->y[this->vertices[0]]);
-                r = Point_2(this->x[this->vertices[1]], this->y[this->vertices[1]]);
+                Point_2 p, q, r;
+                if (this->min == 0)
+                {
+                    p = Point_2(this->x[this->vertices[this->nv-1]], this->y[this->vertices[this->nv-1]]);
+                    q = Point_2(this->x[this->vertices[0]], this->y[this->vertices[0]]);
+                    r = Point_2(this->x[this->vertices[1]], this->y[this->vertices[1]]);
+                }
+                else
+                {
+                    p = Point_2(
+                        this->x[this->vertices[(this->min-1) % this->nv]],
+                        this->y[this->vertices[(this->min-1) % this->nv]]
+                    );
+                    q = Point_2(
+                        this->x[this->vertices[this->min]],
+                        this->y[this->vertices[this->min]]
+                    );
+                    r = Point_2(
+                        this->x[this->vertices[(this->min+1) % this->nv]],
+                        this->y[this->vertices[(this->min+1) % this->nv]]
+                    );
+                }
+                this->orientation = CGAL::orientation(p, q, r);
             }
-            else
+            else    // If there are fewer than three vertices, set to LEFT_TURN
             {
-                p = Point_2(
-                    this->x[this->vertices[(this->min-1) % this->nv]],
-                    this->y[this->vertices[(this->min-1) % this->nv]]
-                );
-                q = Point_2(
-                    this->x[this->vertices[this->min]],
-                    this->y[this->vertices[this->min]]
-                );
-                r = Point_2(
-                    this->x[this->vertices[(this->min+1) % this->nv]],
-                    this->y[this->vertices[(this->min+1) % this->nv]]
-                );
+                this->orientation = CGAL::LEFT_TURN;
             }
-            this->orientation = CGAL::orientation(p, q, r);
         }
         
         /**
@@ -325,8 +339,9 @@ struct AlphaShape2DProperties
             if (orientation != CGAL::LEFT_TURN && orientation != CGAL::RIGHT_TURN)
                 throw std::invalid_argument("Invalid orientation specified");
 
-            // If the given orientation is the opposite of the current orientation ...
-            if (orientation != this->orientation)
+            // If the given orientation is the opposite of the current orientation
+            // and there are three or more vertices ...
+            if (orientation != this->orientation && this->nv >= 3)
             {
                 std::vector<int> vertices;
                 std::vector<std::pair<int, int> > edges; 
@@ -348,12 +363,22 @@ struct AlphaShape2DProperties
          * Return the outward normal vectors from all vertices along the alpha
          * shape.
          *
-         * @returns `std::vector` of outward normal vectors.  
+         * @returns `std::vector` of outward normal vectors.
+         * @throws std::runtime_error If the alpha shape has fewer than three
+         *                            vertices. 
          */
         std::vector<Vector_2> outwardVertexNormals()
         {
             int p, q, r;
             std::vector<Vector_2> normals;
+
+            // Throw an exception if there are fewer than three vertices
+            if (this->nv < 3)
+            {
+                throw std::runtime_error(
+                    "Outward normal vectors undefined for alpha shape with < 3 vertices"
+                );  
+            } 
 
             // Obtain the outward normal vector at each vertex 
             p = this->vertices[this->nv-1];
@@ -408,7 +433,6 @@ struct AlphaShape2DProperties
             outfile.close();
         }
 };
-
 
 /**
  * A class that, given a set of points in the plane, computes a suitable
