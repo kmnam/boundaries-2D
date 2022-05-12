@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     5/10/2022
+ *     5/12/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -428,8 +428,8 @@ class BoundaryFinder
          *
          * Note that this method assumes that the boundary is simply connected.
          *
-         * @param mutate       Function for randomly mutating input points as
-         *                     desired.
+         * @param dist         Random distribution from which to sample increments
+         *                     by which to mutate each input point coordinate.
          * @param filter       Boolean function for filtering output points in the 
          *                     plane as desired.
          * @param iter         Iteration number. 
@@ -441,7 +441,7 @@ class BoundaryFinder
          * @returns True if the area enclosed by the boundary (obtained prior 
          *          to mutation) has converged to within `this->area_tol`. 
          */
-        bool step(std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
+        bool step(boost::random::uniform_real_distribution<double>& dist,
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const unsigned iter, const unsigned max_edges,
                   const std::string write_prefix, const bool verbose = true)
@@ -462,20 +462,25 @@ class BoundaryFinder
                 bool filtered = true;
                 double mindist = 0.0;
                 unsigned j = 0;
-                VectorXd q, z; 
+                VectorXd p = this->input.row(this->vertices[i]);
+                VectorXd q, z;
                 while ((filtered || mindist < MINDIST_BETWEEN_POINTS) && j < MAX_NUM_MUTATION_ATTEMPTS)
                 {
                     // Evaluate the given function at a randomly generated 
                     // parameter point
-                    VectorXd p = this->input.row(this->vertices[i]); 
-                    q = this->constraints->template nearestL2<double>(mutate(p, this->rng)).template cast<double>();
+                    VectorXd m(p);
+                    for (int k = 0; k < D; ++k)
+                        m(k) += dist(this->rng); 
+                    q = this->constraints->template nearestL2<double>(m).template cast<double>();
                     z = this->func(q);
+
+                    // Check that the mutation does not give rise to a
+                    // filtered point 
                     filtered = filter(z);
                     
-                    // Check that the mutation did not give rise to an already 
-                    // computed point 
+                    // Check that the mutation does not give rise to an
+                    // already encountered point 
                     mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
-
                     j++;
                 }
                 if (!filtered && mindist > MINDIST_BETWEEN_POINTS)
@@ -830,8 +835,8 @@ class BoundaryFinder
          * Run the full boundary-sampling algorithm until convergence, up to
          * the maximum number of iterations.
          *
-         * @param mutate                  Function for randomly mutating input
-         *                                points as desired.
+         * @param mutate_delta            Maximum increment by which any input 
+         *                                point coordinate may be mutated.
          * @param filter                  Boolean function for filtering output
          *                                points in the plane as desired.
          * @param init_input              Initial set of points in the input
@@ -875,7 +880,7 @@ class BoundaryFinder
          * @param sqp_verbose             If true, output intermittent messages 
          *                                during SQP to `stdout`.
          */
-        void run(std::function<VectorXd(const Ref<const VectorXd>&, boost::random::mt19937&)> mutate, 
+        void run(const double mutate_delta,
                  std::function<bool(const Ref<const VectorXd>&)> filter, 
                  const Ref<const MatrixXd>& init_input, 
                  const unsigned min_step_iter, const unsigned max_step_iter,
@@ -896,11 +901,10 @@ class BoundaryFinder
             unsigned i = 1;
             bool terminate = false;
             unsigned n_converged = 0;
+            boost::random::uniform_real_distribution<double> dist(-mutate_delta, mutate_delta);  
             while (i - 1 < min_step_iter || (i - 1 < max_step_iter && !terminate))
             {
-                bool result = this->step(
-                    mutate, filter, i, max_edges, write_prefix, verbose
-                );
+                bool result = this->step(dist, filter, i, max_edges, write_prefix, verbose);
                 if (!result)
                     n_converged = 0;
                 else
