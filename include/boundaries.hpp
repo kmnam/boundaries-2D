@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     5/11/2022
+ *     5/12/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -152,10 +152,10 @@ struct AlphaShape2DProperties
         std::vector<std::pair<int, int> > edges;
         
         /** Number of points in the point-set. */  
-        unsigned np;
+        int np;
 
         /** Number of vertices in the alpha shape. */ 
-        unsigned nv;
+        int nv;
 
         /** Value of alpha. */ 
         double alpha;
@@ -167,7 +167,7 @@ struct AlphaShape2DProperties
         bool is_simple_cycle;
 
         /** Index of point with minimum y-coordinate. */  
-        unsigned min;
+        int min;
 
         /** Orientation of edges in the alpha shape. */ 
         Orientation orientation;
@@ -245,7 +245,7 @@ struct AlphaShape2DProperties
                 this->min = 0;
                 double xmin = this->x[this->vertices[0]];
                 double ymin = this->y[this->vertices[0]];
-                for (unsigned i = 1; i < this->nv; ++i)
+                for (int i = 1; i < this->nv; ++i)
                 {
                     if (this->y[this->vertices[i]] < ymin)
                     {
@@ -348,7 +348,7 @@ struct AlphaShape2DProperties
 
                 vertices.push_back(this->vertices[0]);
                 edges.push_back(std::make_pair(this->vertices[0], this->vertices[this->nv-1]));
-                for (unsigned i = this->nv - 1; i > 0; --i)
+                for (int i = this->nv - 1; i > 0; --i)
                 {
                     vertices.push_back(this->vertices[i]);
                     edges.push_back(std::make_pair(this->vertices[i], this->vertices[i-1]));
@@ -385,7 +385,7 @@ struct AlphaShape2DProperties
             q = this->vertices[0];
             r = this->vertices[1];
             normals.push_back(this->outwardVertexNormal(p, q, r));
-            for (unsigned i = 1; i < this->nv; ++i)
+            for (int i = 1; i < this->nv; ++i)
             {
                 p = this->vertices[(i-1) % this->nv];
                 q = this->vertices[i];
@@ -421,7 +421,7 @@ struct AlphaShape2DProperties
             outfile << "AREA\t" << this->area << std::endl;
 
             // Write each point in the full point-set 
-            for (unsigned i = 0; i < this->np; ++i)
+            for (int i = 0; i < this->np; ++i)
                 outfile << "POINT\t" << this->x[i] << "\t" << this->y[i] << std::endl;
 
             // Write each vertex and edge in the alpha shape 
@@ -602,7 +602,7 @@ class Boundary2D
             }
 
             // Have we traversed the entire alpha shape and returned to the starting 
-            // vertex, and does every vertex lie either along or within the simple cycle? 
+            // vertex, and does every vertex lie either along or within the simple cycle?
             int nvisited = visited.sum(); 
             if (nvisited == nvertices && returned)
             {
@@ -731,7 +731,7 @@ class Boundary2D
 
             // Instantiate a vector of Point objects
             std::vector<Point_2> points;
-            for (unsigned i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n; ++i)
             {
                 double xi = this->x[i]; 
                 double yi = this->y[i]; 
@@ -929,7 +929,7 @@ class Boundary2D
 
             // Instantiate a vector of Point objects
             std::vector<Point_2> points;
-            for (unsigned i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n; ++i)
             {
                 double xi = this->x[i]; 
                 double yi = this->y[i]; 
@@ -1097,7 +1097,7 @@ class Boundary2D
 
             // Instantiate a vector of Point objects
             std::vector<Point_2> points;
-            for (unsigned i = 0; i < this->n; ++i)
+            for (int i = 0; i < this->n; ++i)
             {
                 double xi = this->x[i]; 
                 double yi = this->y[i]; 
@@ -1265,7 +1265,7 @@ class Boundary2D
                     int vj = vertex_indices_in_order[i+1]; 
                     edge_indices_in_order.emplace_back(std::make_pair(vi, vj)); 
                 }
-                int vi = *vertex_indices_in_order.end();
+                int vi = *std::prev(vertex_indices_in_order.end());
                 int vj = *vertex_indices_in_order.begin();
                 edge_indices_in_order.emplace_back(std::make_pair(vi, vj)); 
                 nvertices = vertex_indices_in_order.size(); 
