@@ -16,7 +16,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     5/12/2022
+ *     5/15/2022
  */
 using boost::multiprecision::mpq_rational;
 
@@ -46,7 +46,6 @@ T getMaxDist(const Ref<const Matrix<T, Dynamic, Dynamic> >& vertices)
 int main(int argc, char** argv)
 {
     boost::random::mt19937 rng(1234567890);
-    boost::random::uniform_int_distribution<> dist(1, 10000000); 
 
     // Check and parse input arguments
     std::string infilename, outprefix;
