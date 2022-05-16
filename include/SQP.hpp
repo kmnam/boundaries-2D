@@ -762,7 +762,7 @@ class SQPOptimizer
             while (i < max_iter && (change_x > x_tol || change_f > tol))
             {
                 StepData<T> next_data = this->step(
-                    func, i, quasi_newton, curr_data, tau, delta, beta, tol, 
+                    func, i, quasi_newton, curr_data, tau, delta, beta, tol, x_tol,
                     use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
                     c1, c2, verbose
                 ); 
