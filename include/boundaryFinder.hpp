@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     5/12/2022
+ *     5/16/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -706,8 +706,8 @@ class BoundaryFinder
                     - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
                 VectorXd q = optimizer->run(
                     obj, x_init, l_init, tau, delta, beta, max_iter, sqp_tol,
-                    BFGS, use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
-                    c1, c2, sqp_verbose
+                    sqp_tol, BFGS, use_only_armijo, use_strong_wolfe,
+                    hessian_modify_max_iter, c1, c2, sqp_verbose
                 );
                 VectorXd z = this->func(q); 
                 
