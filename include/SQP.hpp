@@ -456,10 +456,10 @@ class SQPOptimizer
         StepData<T> step(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                          const unsigned iter, const QuasiNewtonMethod quasi_newton,
                          StepData<T> prev_data, const T tau, const T delta,
-                         const T beta, const T tol, const bool use_only_armijo,
-                         const bool use_strong_wolfe, const unsigned hessian_modify_max_iter,
-                         const T c1 = 1e-4, const T c2 = 0.9, const T x_tol = 0,
-                         const bool verbose = false)
+                         const T beta, const T tol, const T x_tol, 
+                         const bool use_only_armijo, const bool use_strong_wolfe,
+                         const unsigned hessian_modify_max_iter,
+                         const T c1 = 1e-4, const T c2 = 0.9, const bool verbose = false)
         {
             using std::abs;
             using boost::multiprecision::abs;
@@ -470,11 +470,6 @@ class SQPOptimizer
             Matrix<T, Dynamic, 1> df = prev_data.df;
             Matrix<T, Dynamic, 1> dL = prev_data.dL;
             Matrix<T, Dynamic, Dynamic> d2L = modify<T>(prev_data.d2L, hessian_modify_max_iter, beta);
-
-            // Set x_tol = tol if x_tol has not been assigned (in which case it 
-            // has the default but invalid value of zero)
-            if (x_tol == 0)
-                x_tol = tol; 
 
             // If any of the components have a non-finite coordinate, return as is
             if (!x.array().isFinite().all() || !df.array().isFinite().all() || !dL.array().isFinite().all() || !d2L.array().isFinite().all())
@@ -723,21 +718,16 @@ class SQPOptimizer
                                   const Ref<const Matrix<T, Dynamic, 1> >& x_init, 
                                   const Ref<const Matrix<T, Dynamic, 1> >& l_init,
                                   const T tau, const T delta, const T beta,
-                                  const unsigned max_iter, const T tol,
+                                  const unsigned max_iter, const T tol, const T x_tol,
                                   const QuasiNewtonMethod quasi_newton,
                                   const bool use_only_armijo, 
                                   const bool use_strong_wolfe, 
                                   const unsigned hessian_modify_max_iter,
                                   const T c1 = 1e-4, const T c2 = 0.9,
-                                  const T x_tol = 0, const bool verbose = false)
+                                  const bool verbose = false)
         {
             using std::abs;
             using boost::multiprecision::abs;
-
-            // Set x_tol = tol if x_tol has not been assigned (in which case it 
-            // has the default but invalid value of zero)
-            if (x_tol == 0)
-                x_tol = tol; 
 
             // Evaluate the objective and its gradient
             T f = func(x_init);
