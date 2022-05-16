@@ -21,7 +21,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     5/6/2022
+ *     5/16/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -458,7 +458,8 @@ class SQPOptimizer
                          StepData<T> prev_data, const T tau, const T delta,
                          const T beta, const T tol, const bool use_only_armijo,
                          const bool use_strong_wolfe, const unsigned hessian_modify_max_iter,
-                         const T c1 = 1e-4, const T c2 = 0.9, const bool verbose = false)
+                         const T c1 = 1e-4, const T c2 = 0.9, const T x_tol = 0,
+                         const bool verbose = false)
         {
             using std::abs;
             using boost::multiprecision::abs;
@@ -469,6 +470,11 @@ class SQPOptimizer
             Matrix<T, Dynamic, 1> df = prev_data.df;
             Matrix<T, Dynamic, 1> dL = prev_data.dL;
             Matrix<T, Dynamic, Dynamic> d2L = modify<T>(prev_data.d2L, hessian_modify_max_iter, beta);
+
+            // Set x_tol = tol if x_tol has not been assigned (in which case it 
+            // has the default but invalid value of zero)
+            if (x_tol == 0)
+                x_tol = tol; 
 
             // If any of the components have a non-finite coordinate, return as is
             if (!x.array().isFinite().all() || !df.array().isFinite().all() || !dL.array().isFinite().all() || !d2L.array().isFinite().all())
@@ -630,7 +636,7 @@ class SQPOptimizer
                     std::cout << ", curvature = " << satisfies_curvature;
                 std::cout << std::endl; 
             }
-            while ((change_x > tol || abs(change_f) > tol) && !(satisfies_armijo && satisfies_curvature))
+            while ((change_x > x_tol || abs(change_f) > tol) && !(satisfies_armijo && satisfies_curvature))
             {
                 stepsize *= factor;
                 factor /= 2;
@@ -723,10 +729,15 @@ class SQPOptimizer
                                   const bool use_strong_wolfe, 
                                   const unsigned hessian_modify_max_iter,
                                   const T c1 = 1e-4, const T c2 = 0.9,
-                                  const bool verbose = false)
+                                  const T x_tol = 0, const bool verbose = false)
         {
             using std::abs;
-            using boost::multiprecision::abs; 
+            using boost::multiprecision::abs;
+
+            // Set x_tol = tol if x_tol has not been assigned (in which case it 
+            // has the default but invalid value of zero)
+            if (x_tol == 0)
+                x_tol = tol; 
 
             // Evaluate the objective and its gradient
             T f = func(x_init);
@@ -756,14 +767,14 @@ class SQPOptimizer
             curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
 
             unsigned i = 0;
-            T change_x = 2 * tol;
+            T change_x = 2 * x_tol;
             T change_f = 2 * tol; 
-            while (i < max_iter && (change_x > tol || change_f > tol))
+            while (i < max_iter && (change_x > x_tol || change_f > tol))
             {
                 StepData<T> next_data = this->step(
                     func, i, quasi_newton, curr_data, tau, delta, beta, tol, 
                     use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
-                    c1, c2, verbose
+                    c1, c2, x_tol, verbose
                 ); 
                 change_x = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm(); 
                 change_f = abs(curr_data.f - next_data.f); 
