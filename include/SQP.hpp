@@ -764,7 +764,7 @@ class SQPOptimizer
                 StepData<T> next_data = this->step(
                     func, i, quasi_newton, curr_data, tau, delta, beta, tol, 
                     use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
-                    c1, c2, x_tol, verbose
+                    c1, c2, verbose
                 ); 
                 change_x = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm(); 
                 change_f = abs(curr_data.f - next_data.f); 
