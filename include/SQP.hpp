@@ -21,7 +21,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     5/16/2022
+ *     7/6/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -545,15 +545,16 @@ class SQPOptimizer
                 // ... if the program cannot be solved because the D matrix is not 
                 // positive-semi-definite (this should never be the case), then replace
                 // D with the identity matrix
+                std::cout << "Setting matrix in quadratic part of objective to identity" << std::endl;  
+                for (unsigned i = 0; i < this->D; ++i)
+                {
+                    for (unsigned j = 0; j <= i; ++j)
+                    {
+                        this->program->set_d(i, j, 2.0);    // Sets 2D_ij and 2D_ji
+                    }
+                }
                 try
                 {
-                    for (unsigned i = 0; i < this->D; ++i)
-                    {
-                        for (unsigned j = 0; j <= i; ++j)
-                        {
-                            this->program->set_d(i, j, 2.0);    // Sets 2D_ij and 2D_ji
-                        }
-                    }
                     solution = CGAL::solve_quadratic_program(*this->program, ET());
                 }
                 catch (CGAL::Assertion_exception& e)
@@ -993,15 +994,16 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                 // ... if the program cannot be solved because the D matrix is not 
                 // positive-semi-definite (this should never be the case), then replace
                 // D with the identity matrix
+                std::cout << "Setting matrix in quadratic part of objective to identity" << std::endl;
+                for (unsigned i = 0; i < this->D; ++i)
+                {
+                    for (unsigned j = 0; j <= i; ++j)
+                    {
+                        this->program->set_d(i, j, 2.0);    // Sets 2D_ij and 2D_ji
+                    }
+                }
                 try
                 {
-                    for (unsigned i = 0; i < this->D; ++i)
-                    {
-                        for (unsigned j = 0; j <= i; ++j)
-                        {
-                            this->program->set_d(i, j, 2.0);    // Sets 2D_ij and 2D_ji
-                        }
-                    }
                     solution = CGAL::solve_quadratic_program(*this->program, ET());
                 }
                 catch (CGAL::Assertion_exception& e)
