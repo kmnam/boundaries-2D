@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     5/16/2022
+ *     7/6/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -231,7 +231,8 @@ class BoundaryFinder
                 // Get the coordinates of the i-th vertex 
                 Delaunay_triangulation::Point p = it->point();
                 for (unsigned j = 0; j < d; ++j)
-                    vertices(i, j) = CGAL::to_double(p[j]); 
+                    vertices(i, j) = CGAL::to_double(p[j]);
+                i++; 
             }
 
             return vertices; 
