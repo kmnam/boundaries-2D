@@ -15,13 +15,16 @@
  *   are not encountered.
  *
  * Step-sizes are determined to satisfy the (strong) Wolfe conditions, given by
- * Eqs. 3.6 and 3.7 in Nocedal and Wright.  
+ * Eqs. 3.6 and 3.7 in Nocedal and Wright.
+ *
+ * L1, L2, or elastic-net regularization may be incorporated into the
+ * objective function if desired.  
  *
  * **Authors:** 
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     7/6/2022
+ *     7/13/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -188,59 +191,6 @@ class SQPOptimizer
             using boost::multiprecision::abs; 
 
             return (abs(grad_new.dot(dir)) <= c * abs(grad_old.dot(dir))); 
-        }
-
-        /**
-         * Compute the L1 merit function (Nocedal and Wright, Eq. 15.24) with
-         * respect to the given function and stored constraints.
-         *
-         * @param func Input function.
-         * @param x    Input vector.
-         * @param mu   Mu parameter for merit function (Nocedal and Wright, 
-         *             Eq. 15.24)
-         * @returns    Value of corresponding merit function.  
-         */
-        T meritL1(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func, 
-                  const Ref<const Matrix<T, Dynamic, 1> >& x, const T mu)
-        {
-            T total = 0;
-            Matrix<T, Dynamic, 1> y;  
-            if (this->constraints->getInequalityType() == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                y = this->constraints->getA().template cast<T>() * x - this->constraints->getb().template cast<T>();
-            else
-                y = -this->constraints->getA().template cast<T>() * x + this->constraints->getb().template cast<T>();
-            for (unsigned i = 0; i < this->N; ++i)
-            {
-                if (y(i) < 0)
-                    total -= y(i); 
-            }
-            return func(x) + mu * total; 
-        }
-
-        /**
-         * Compute the L1 merit function (Nocedal and Wright, Eq. 15.24) with
-         * respect to the given pre-computed function value and stored constraints.
-         *
-         * @param eval Pre-computed function value.
-         * @param x    Input vector.
-         * @param mu   Mu parameter for merit function (Nocedal and Wright, 
-         *             Eq. 15.24)
-         * @returns    Value of corresponding merit function.  
-         */
-        T meritL1(T eval, const Ref<const Matrix<T, Dynamic, 1> >& x, const T mu)
-        {
-            T total = 0;
-            Matrix<T, Dynamic, 1> y;  
-            if (this->constraints->getInequalityType() == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                y = this->constraints->getA().template cast<T>() * x - this->constraints->getb().template cast<T>();
-            else
-                y = -this->constraints->getA().template cast<T>() * x + this->constraints->getb().template cast<T>();
-            for (unsigned i = 0; i < this->N; ++i)
-            {
-                if (y(i) < 0)
-                    total -= y(i); 
-            }
-            return eval + mu * total; 
         }
 
     public:
