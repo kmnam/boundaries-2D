@@ -57,7 +57,7 @@ enum QuasiNewtonMethod
 
 enum RegularizationMethod
 {
-    NONE,
+    NOREG,
     L1,
     L2,
 };
@@ -694,7 +694,7 @@ class SQPOptimizer
             std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> obj; 
             switch (regularize)
             {
-                case NONE:
+                case NOREG:
                     obj = func;
                     break; 
 
@@ -1185,7 +1185,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> obj; 
             switch (regularize)
             {
-                case NONE:
+                case NOREG:
                     obj = func;
                     break; 
 
