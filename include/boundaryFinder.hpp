@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     7/6/2022
+ *     7/13/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -643,6 +643,10 @@ class BoundaryFinder
          * @param write_prefix            Prefix of output file name to which to  
          *                                write the boundary obtained in this
          *                                iteration.
+         * @param regularize              Regularization method: `NONE`, `L1`,
+         *                                or `L2`. Set to `NONE` by default.  
+         * @param regularize_weight       Regularization weight. If `regularize`
+         *                                is `NONE`, then this value is ignored. 
          * @param c1                      Pre-factor for testing Armijo's 
          *                                condition during each SQP iteration.
          * @param c2                      Pre-factor for testing the curvature 
@@ -657,10 +661,13 @@ class BoundaryFinder
         bool pull(SQPOptimizer<double>* optimizer, 
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const double epsilon, const unsigned max_iter, const double sqp_tol,
-                  const unsigned iter, const unsigned max_edges, const double tau,
-                  const double delta, const double beta, const bool use_only_armijo,
-                  const bool use_strong_wolfe, const unsigned hessian_modify_max_iter,
-                  const std::string write_prefix, const double c1 = 1e-4, 
+                  const unsigned iter, const unsigned max_edges,
+                  const double tau, const double delta, const double beta,
+                  const bool use_only_armijo, const bool use_strong_wolfe,
+                  const unsigned hessian_modify_max_iter,
+                  const std::string write_prefix,
+                  const RegularizationMethod regularize = NONE,
+                  const T regularize_weight = 0, const double c1 = 1e-4,
                   const double c2 = 0.9, const bool verbose = true,
                   const bool sqp_verbose = false)
         {
@@ -707,8 +714,8 @@ class BoundaryFinder
                     - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
                 VectorXd q = optimizer->run(
                     obj, x_init, l_init, tau, delta, beta, max_iter, sqp_tol,
-                    sqp_tol, BFGS, use_only_armijo, use_strong_wolfe,
-                    hessian_modify_max_iter, c1, c2, sqp_verbose
+                    sqp_tol, BFGS, regularize, regularize_weight, use_only_armijo,
+                    use_strong_wolfe, hessian_modify_max_iter, c1, c2, sqp_verbose
                 );
                 VectorXd z = this->func(q); 
                 
