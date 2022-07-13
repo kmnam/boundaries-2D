@@ -879,6 +879,10 @@ class BoundaryFinder
          * @param write_prefix            Prefix of output file name to which to  
          *                                write the boundary obtained in each
          *                                iteration.
+         * @param regularize              Regularization method: `NONE`, `L1`,
+         *                                or `L2`. Set to `NONE` by default.  
+         * @param regularize_weight       Regularization weight. If `regularize`
+         *                                is `NONE`, then this value is ignored. 
          * @param c1                      Pre-factor for testing Armijo's 
          *                                condition during each SQP iteration.
          * @param c2                      Pre-factor for testing the curvature 
@@ -896,8 +900,11 @@ class BoundaryFinder
                  const unsigned sqp_max_iter, const double sqp_tol,
                  const unsigned max_edges, const double tau, const double delta,
                  const double beta, const bool use_only_armijo, 
-                 const bool use_strong_wolfe, const unsigned hessian_modify_max_iter,
-                 const std::string write_prefix, const double c1 = 1e-4,
+                 const bool use_strong_wolfe,
+                 const unsigned hessian_modify_max_iter,
+                 const std::string write_prefix,
+                 const RegularizationMethod regularize = NONE, 
+                 const T regularize_weight = 0, const double c1 = 1e-4,
                  const double c2 = 0.9, const bool verbose = true,
                  const bool sqp_verbose = false)
         {
@@ -933,8 +940,8 @@ class BoundaryFinder
                 bool result = this->pull(
                     optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
                     max_edges, tau, delta, beta, use_only_armijo, use_strong_wolfe, 
-                    hessian_modify_max_iter, write_prefix, c1, c2, verbose,
-                    sqp_verbose
+                    hessian_modify_max_iter, write_prefix, regularize, 
+                    regularize_weight, c1, c2, verbose, sqp_verbose
                 );
                 if (!result)
                     n_converged = 0;
