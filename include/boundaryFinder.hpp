@@ -643,10 +643,10 @@ class BoundaryFinder
          * @param write_prefix            Prefix of output file name to which to  
          *                                write the boundary obtained in this
          *                                iteration.
-         * @param regularize              Regularization method: `NONE`, `L1`,
-         *                                or `L2`. Set to `NONE` by default.  
+         * @param regularize              Regularization method: `NOREG`, `L1`,
+         *                                or `L2`. Set to `NOREG` by default.  
          * @param regularize_weight       Regularization weight. If `regularize`
-         *                                is `NONE`, then this value is ignored. 
+         *                                is `NOREG`, then this value is ignored. 
          * @param c1                      Pre-factor for testing Armijo's 
          *                                condition during each SQP iteration.
          * @param c2                      Pre-factor for testing the curvature 
@@ -666,7 +666,7 @@ class BoundaryFinder
                   const bool use_only_armijo, const bool use_strong_wolfe,
                   const unsigned hessian_modify_max_iter,
                   const std::string write_prefix,
-                  const RegularizationMethod regularize = NONE,
+                  const RegularizationMethod regularize = NOREG,
                   const T regularize_weight = 0, const double c1 = 1e-4,
                   const double c2 = 0.9, const bool verbose = true,
                   const bool sqp_verbose = false)
@@ -879,10 +879,10 @@ class BoundaryFinder
          * @param write_prefix            Prefix of output file name to which to  
          *                                write the boundary obtained in each
          *                                iteration.
-         * @param regularize              Regularization method: `NONE`, `L1`,
-         *                                or `L2`. Set to `NONE` by default.  
+         * @param regularize              Regularization method: `NOREG`, `L1`,
+         *                                or `L2`. Set to `NOREG` by default.  
          * @param regularize_weight       Regularization weight. If `regularize`
-         *                                is `NONE`, then this value is ignored. 
+         *                                is `NOREG`, then this value is ignored. 
          * @param c1                      Pre-factor for testing Armijo's 
          *                                condition during each SQP iteration.
          * @param c2                      Pre-factor for testing the curvature 
@@ -903,7 +903,7 @@ class BoundaryFinder
                  const bool use_strong_wolfe,
                  const unsigned hessian_modify_max_iter,
                  const std::string write_prefix,
-                 const RegularizationMethod regularize = NONE, 
+                 const RegularizationMethod regularize = NOREG, 
                  const T regularize_weight = 0, const double c1 = 1e-4,
                  const double c2 = 0.9, const bool verbose = true,
                  const bool sqp_verbose = false)
