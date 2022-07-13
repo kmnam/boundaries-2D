@@ -55,6 +55,13 @@ enum QuasiNewtonMethod
     SR1,
 };
 
+enum RegularizationMethod
+{
+    NONE,
+    L1,
+    L2,
+};
+
 template <typename T>
 struct StepData
 {
@@ -671,6 +678,8 @@ class SQPOptimizer
                                   const T tau, const T delta, const T beta,
                                   const unsigned max_iter, const T tol, const T x_tol,
                                   const QuasiNewtonMethod quasi_newton,
+                                  const RegularizationMethod regularize,
+                                  const T regularize_weight, 
                                   const bool use_only_armijo, 
                                   const bool use_strong_wolfe, 
                                   const unsigned hessian_modify_max_iter,
@@ -680,9 +689,36 @@ class SQPOptimizer
             using std::abs;
             using boost::multiprecision::abs;
 
+            // Define an objective function to be optimized from the given
+            // function and the desired regularization method
+            std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> obj; 
+            switch (regularize)
+            {
+                case NONE:
+                    obj = func;
+                    break; 
+
+                case L1:
+                    obj = [&func, &regularize_weight](const Ref<const Matrix<T, Dynamic, 1> >& x) -> T
+                    {
+                        return func(x) + regularize_weight * x.cwiseAbs().sum(); 
+                    };
+                    break; 
+
+                case L2:
+                    obj = [&func, &regularize_weight](const Ref<const Matrix<T, Dynamic, 1> >& x) -> T
+                    {
+                        return func(x) + regularize_weight * x.cwiseAbs2().sum(); 
+                    };
+                    break;
+
+                default:
+                    break;  
+            }
+
             // Evaluate the objective and its gradient
-            T f = func(x_init);
-            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init, delta);
+            T f = obj(x_init);
+            Matrix<T, Dynamic, 1> df = this->gradient(obj, x_init, delta);
 
             // Print the input vector and value of the objective function
             if (verbose)
@@ -702,8 +738,8 @@ class SQPOptimizer
             Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
             Polytopes::InequalityType type = this->constraints->getInequalityType(); 
             T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1);  
-            T L = func(x_init) + sign * l_init.dot(A * x_init - b); 
-            Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(func, x_init, l_init, delta); 
+            T L = obj(x_init) + sign * l_init.dot(A * x_init - b); 
+            Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(obj, x_init, l_init, delta); 
             curr_data.dL = dL;
             curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
 
@@ -713,7 +749,7 @@ class SQPOptimizer
             while (i < max_iter && (change_x > x_tol || change_f > tol))
             {
                 StepData<T> next_data = this->step(
-                    func, i, quasi_newton, curr_data, tau, delta, beta, tol, x_tol,
+                    obj, i, quasi_newton, curr_data, tau, delta, beta, tol, x_tol,
                     use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
                     c1, c2, verbose
                 ); 
@@ -1133,6 +1169,8 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                                   const T tau, const T beta,
                                   const unsigned max_iter, const T tol,
                                   const QuasiNewtonMethod quasi_newton,
+                                  const RegularizationMethod regularize,
+                                  const T regularize_weight, 
                                   const bool use_only_armijo, 
                                   const bool use_strong_wolfe, 
                                   const unsigned hessian_modify_max_iter,
@@ -1140,7 +1178,34 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                                   const bool verbose = false)
         {
             using std::abs;
-            using boost::multiprecision::abs; 
+            using boost::multiprecision::abs;
+
+            // Define an objective function to be optimized from the given
+            // function and the desired regularization method
+            std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> obj; 
+            switch (regularize)
+            {
+                case NONE:
+                    obj = func;
+                    break; 
+
+                case L1:
+                    obj = [&func, &regularize_weight](const Ref<const Matrix<T, Dynamic, 1> >& x) -> T
+                    {
+                        return func(x) + regularize_weight * x.cwiseAbs().sum(); 
+                    };
+                    break; 
+
+                case L2:
+                    obj = [&func, &regularize_weight](const Ref<const Matrix<T, Dynamic, 1> >& x) -> T
+                    {
+                        return func(x) + regularize_weight * x.cwiseAbs2().sum(); 
+                    };
+                    break;
+
+                default:
+                    break;  
+            }
 
             // Evaluate the objective and its gradient
             Matrix<Dual<T>, Dynamic, 1> x_init_(this->D); 
@@ -1149,8 +1214,8 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                 x_init_(i).a = x_init(i);
                 x_init_(i).b = 0;  
             }
-            T f = func(x_init_).a;
-            Matrix<T, Dynamic, 1> df = this->gradient(func, x_init);
+            T f = obj(x_init_).a;
+            Matrix<T, Dynamic, 1> df = this->gradient(obj, x_init);
 
             // Print the input vector and value of the objective function
             if (verbose)
@@ -1170,8 +1235,8 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
             Polytopes::InequalityType type = this->constraints->getInequalityType();
             T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1);  
-            T L = func(x_init_).a + sign * l_init.dot(A * x_init - b);
-            Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(func, x_init, l_init); 
+            T L = obj(x_init_).a + sign * l_init.dot(A * x_init - b);
+            Matrix<T, Dynamic, 1> dL = this->lagrangianGradient(obj, x_init, l_init); 
             curr_data.dL = dL;
             curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
 
@@ -1181,7 +1246,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
             while (i < max_iter && (change_x > tol || change_f > tol))
             {
                 StepData<T> next_data = this->step(
-                    func, i, quasi_newton, curr_data, tau, beta, tol,
+                    obj, i, quasi_newton, curr_data, tau, beta, tol,
                     use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
                     c1, c2, verbose
                 ); 
