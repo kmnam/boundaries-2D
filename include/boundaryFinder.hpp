@@ -667,7 +667,7 @@ class BoundaryFinder
                   const unsigned hessian_modify_max_iter,
                   const std::string write_prefix,
                   const RegularizationMethod regularize = NOREG,
-                  const T regularize_weight = 0, const double c1 = 1e-4,
+                  const double regularize_weight = 0, const double c1 = 1e-4,
                   const double c2 = 0.9, const bool verbose = true,
                   const bool sqp_verbose = false)
         {
@@ -904,7 +904,7 @@ class BoundaryFinder
                  const unsigned hessian_modify_max_iter,
                  const std::string write_prefix,
                  const RegularizationMethod regularize = NOREG, 
-                 const T regularize_weight = 0, const double c1 = 1e-4,
+                 const double regularize_weight = 0, const double c1 = 1e-4,
                  const double c2 = 0.9, const bool verbose = true,
                  const bool sqp_verbose = false)
         {
