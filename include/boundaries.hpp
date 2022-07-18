@@ -1283,7 +1283,8 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
    
     // For each vertex in the simplified polygon ...
     std::vector<int> vertex_indices_in_order_simplified; 
-    std::vector<std::pair<int, int> > edge_indices_in_order_simplified;  
+    std::vector<std::pair<int, int> > edge_indices_in_order_simplified;
+    int npoints = shape.x.size();   
     for (auto it = simplified_polygon.vertices_begin(); it != simplified_polygon.vertices_end(); ++it)
     {
         double xit = it->x(); 
@@ -1291,8 +1292,9 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
 
         // ... and identify the index of each vertex in the polygon
         // with respect to the entire point-set 
-        double sqdist_to_nearest_point = std::numeric_limits<double>::infinity(); 
-        auto it_nearest_point = points.begin(); 
+        double sqdist_to_nearest_point = std::numeric_limits<double>::infinity();
+        /* 
+        auto it_nearest_point = points.begin();
         for (auto it2 = points.begin(); it2 != points.end(); ++it2) 
         {
             double xv = it2->x(); 
@@ -1303,8 +1305,22 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
                 sqdist_to_nearest_point = sqdist; 
                 it_nearest_point = it2; 
             }
-        } 
-        vertex_indices_in_order_simplified.push_back(std::distance(points.begin(), it_nearest_point)); 
+        }
+        */
+        int idx_nearest_point = 0; 
+        for (int i = 0; i < npoints; ++i)
+        {
+            double xv = shape.x[i]; 
+            double yv = shape.y[i];
+            double sqdist = std::pow(xit - shape.x[i], 2) + std::pow(yit - shape.y[i], 2); 
+            if (sqdist_to_nearest_point > sqdist)
+            {
+                sqdist_to_nearest_point = sqdist; 
+                idx_nearest_point = i; 
+            } 
+        }
+        vertex_indices_in_order_simplified.push_back(idx_nearest_point); 
+        //vertex_indices_in_order_simplified.push_back(std::distance(points.begin(), it_nearest_point)); 
     }
 
     // The edges in the polygon are then easy to determine

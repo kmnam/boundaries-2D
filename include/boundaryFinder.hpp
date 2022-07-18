@@ -57,7 +57,7 @@ std::vector<int> sampleWithoutReplacement(int n, int k, boost::random::mt19937& 
     boost::random::uniform_01<double> dist;
     std::vector<double> weights; 
     for (int i = 0; i < n; ++i)
-        weights[i] = dist(rng); 
+        weights.push_back(dist(rng)); 
 
     // Populate a priority queue with 0..n-1, with priority defined by the weights
     // (note that pairs are compared lexicographically, so placing the weights 
@@ -413,7 +413,7 @@ class BoundaryFinder
             this->curr_bound.orient(CGAL::RIGHT_TURN);
 
             // If desired, simplify the current boundary
-            if (max_edges > 0)
+            if (max_edges > 0 && this->curr_bound.edges.size() > max_edges)
             {
                 try
                 { 
@@ -486,18 +486,24 @@ class BoundaryFinder
             }
 
             // Compute enclosed area and test for convergence
-            this->curr_area = this->curr_bound.area;
             if (verbose)
             {
-                std::cout << "[INIT] Initializing; enclosed area: " << this->curr_area
-                          << "; " << this->curr_bound.vertices.size() << " boundary points" 
-                          << "; " << this->curr_bound.x.size() << " total points"
+                std::cout << "[INIT] Initializing; "
+                          << this->curr_bound.vertices.size() << " boundary points; " 
+                          << this->curr_bound.x.size() << " total points; "
+                          << "enclosed area: " << this->curr_bound.area
                           << std::endl; 
                 if (this->simplified)
                 {
-                    std::cout << "       Simplified to "
+                    std::cout << "...... Simplified to "
                               << this->curr_simplified.vertices.size()
-                              << " boundary points" << std::endl; 
+                              << " boundary points; enclosed area: " 
+                              << this->curr_simplified.area << std::endl;
+                    this->curr_area = this->curr_simplified.area; 
+                }
+                else
+                {
+                    this->curr_area = this->curr_bound.area; 
                 }
             }
         }
@@ -560,7 +566,7 @@ class BoundaryFinder
             {
                 to_mutate.resize(this->curr_bound.vertices.size());
                 for (int i = 0; i < this->curr_bound.vertices.size(); ++i)
-                    to_mutate(i) = this->curr_bound.vertices[i]; 
+                    to_mutate(i) = this->curr_bound.vertices[i];
             }
             // Otherwise, then mutate every point in the *simplified* boundary,
             // plus psi more points in the unsimplified boundary 
@@ -575,7 +581,7 @@ class BoundaryFinder
                 std::unordered_set<int> indices_all, indices_simplified; 
                 std::vector<int> indices_complement; 
                 for (int i = 0; i < this->curr_bound.vertices.size(); ++i)
-                    indices_all.insert(this->curr_bound.vertices[i]);  
+                    indices_all.insert(this->curr_bound.vertices[i]);
                 for (int i = 0; i < this->curr_simplified.vertices.size(); ++i)
                     indices_simplified.insert(this->curr_simplified.vertices[i]);
                 for (auto it = indices_all.begin(); it != indices_all.end(); ++it)
@@ -676,7 +682,7 @@ class BoundaryFinder
             this->curr_bound.orient(CGAL::RIGHT_TURN);
 
             // If desired, simplify the current boundary
-            if (max_edges > 0)
+            if (max_edges > 0 && this->curr_bound.edges.size() > max_edges)
             {
                 try
                 { 
@@ -749,25 +755,35 @@ class BoundaryFinder
             }
 
             // Compute enclosed area and test for convergence
-            double area = this->curr_bound.area;
-            double change = area - this->curr_area;
-            this->curr_area = area;
+            double change = (
+                this->simplified
+                ? this->curr_simplified.area - this->curr_area
+                : this->curr_bound.area - this->curr_area
+            );
             if (verbose)
             {
-                std::cout << "[STEP] Iteration " << iter
-                          << "; enclosed area: " << area
-                          << "; " << this->curr_bound.vertices.size() << " boundary points" 
-                          << "; " << this->curr_bound.x.size() << " total points" 
-                          << "; change in area: " << change << std::endl;
+                std::cout << "[STEP] Iteration " << iter << "; "
+                          << this->curr_bound.vertices.size() << " boundary points; " 
+                          << this->curr_bound.x.size() << " total points; "
+                          << "enclosed area: " << this->curr_bound.area << "; "
+                          << "change: " << this->curr_bound.area - this->curr_area
+                          << std::endl;
                 if (this->simplified)
                 {
-                    std::cout << "       Simplified to "
+                    std::cout << "...... Simplified to "
                               << this->curr_simplified.vertices.size()
-                              << " boundary points" << std::endl; 
+                              << " boundary points; enclosed area: "
+                              << this->curr_simplified.area << "; "
+                              << "change: " << this->curr_simplified.area - this->curr_area
+                              << std::endl;
                 }
             }
+            bool converged = (std::abs(change) < this->area_tol * this->curr_area); 
+            this->curr_area = (
+                this->simplified ? this->curr_simplified.area : this->curr_bound.area
+            ); 
 
-            return (std::abs(change) < this->area_tol * (area - change));
+            return converged;
         }
 
         /**
@@ -897,12 +913,15 @@ class BoundaryFinder
                     normals.push_back(normals_original[indices_complement[sample[i]]]); 
                 } 
             }
+            std::cout << to_pull.transpose() << std::endl; 
+            for (int i = 0; i < normals.size(); ++i)
+                std::cout << normals[i].x() << " " << normals[i].y() << std::endl; 
 
             // Obtain the outward vertex normals along the boundary and,
             // for each vertex in the boundary, pull along its outward normal
             // vector by distance epsilon
             MatrixXd pulled(to_pull.size(), 2); 
-            for (int i = 0; i < this->curr_bound.vertices.size(); ++i)
+            for (int i = 0; i < to_pull.size(); ++i)
             {
                 int j = to_pull(i); 
                 Vector_2 v(x[j], y[j]);
@@ -923,7 +942,7 @@ class BoundaryFinder
             // pulled vertex with a feasible parameter point
             for (int i = 0; i < to_pull.size(); ++i)
             {
-                int j = to_pull(i); 
+                int j = to_pull(i);
 
                 // Minimize the appropriate objective function
                 VectorXd target = pulled.row(i);
@@ -931,7 +950,7 @@ class BoundaryFinder
                 {
                     return (target - this->func(x)).squaredNorm();
                 };
-                VectorXd x_init = this->input.row(j); 
+                VectorXd x_init = this->input.row(j);
                 VectorXd l_init = VectorXd::Ones(this->constraints->getN())
                     - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
                 VectorXd q = optimizer->run(
@@ -1007,7 +1026,7 @@ class BoundaryFinder
             this->curr_bound.orient(CGAL::RIGHT_TURN);
 
             // If desired, simplify the current boundary
-            if (max_edges > 0)
+            if (max_edges > 0 && this->curr_bound.edges.size() > max_edges)
             {
                 try
                 { 
@@ -1080,25 +1099,35 @@ class BoundaryFinder
             }
 
             // Compute enclosed area and test for convergence
-            double area = this->curr_bound.area;
-            double change = area - this->curr_area;
-            this->curr_area = area;
+            double change = (
+                this->simplified
+                ? this->curr_simplified.area - this->curr_area
+                : this->curr_bound.area - this->curr_area
+            );
             if (verbose)
             {
-                std::cout << "[PULL] Iteration " << iter
-                          << "; enclosed area: " << area
-                          << "; " << this->curr_bound.vertices.size() << " boundary points" 
-                          << "; " << this->curr_bound.x.size() << " total points"
-                          << "; change in area: " << change << std::endl;
+                std::cout << "[PULL] Iteration " << iter << "; "
+                          << this->curr_bound.vertices.size() << " boundary points; " 
+                          << this->curr_bound.x.size() << " total points; "
+                          << "enclosed area: " << this->curr_bound.area << "; "
+                          << "change: " << this->curr_bound.area - this->curr_area
+                          << std::endl;
                 if (this->simplified)
                 {
-                    std::cout << "       Simplified to "
+                    std::cout << "...... Simplified to "
                               << this->curr_simplified.vertices.size()
-                              << " boundary points" << std::endl; 
+                              << " boundary points; enclosed area: "
+                              << this->curr_simplified.area << "; "
+                              << "change: " << this->curr_simplified.area - this->curr_area
+                              << std::endl;
                 }
             }
+            bool converged = (std::abs(change) < this->area_tol * this->curr_area); 
+            this->curr_area = (
+                this->simplified ? this->curr_simplified.area : this->curr_bound.area
+            ); 
 
-            return (std::abs(change) < this->area_tol * (area - change));
+            return converged; 
         }
 
         /**
