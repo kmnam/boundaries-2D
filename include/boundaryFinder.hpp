@@ -64,7 +64,7 @@ std::vector<int> sampleWithoutReplacement(int n, int k, boost::random::mt19937& 
     // first allows for the weights to be used as priorities)
     std::priority_queue<std::pair<double, int> > queue;
     for (int i = 0; i < n; ++i)
-        queue.insert(std::make_pair(weights[i], i));
+        queue.emplace(std::make_pair(weights[i], i));
     
     // Return the first k items in the queue
     for (int i = 0; i < k; ++i)
@@ -1167,7 +1167,7 @@ class BoundaryFinder
                  const bool sqp_verbose = false)
         {
             // Initialize the sampling run ...
-            this->initialize(filter, init_input, max_edges, psi, write_prefix, verbose);
+            this->initialize(filter, init_input, max_edges, write_prefix, verbose);
 
             // ... then step through the boundary-finding algorithm up to the
             // maximum number of iterations ...
