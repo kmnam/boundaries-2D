@@ -622,6 +622,11 @@ class BoundaryFinder
                     this->points.row(this->N-1) = z;
                 }
             }
+            if (verbose)
+            {
+                std::cout << "- mutated " << to_mutate.size() << " points" << std::endl;
+                std::cout << "- augmented point-set contains " << this->N << " points" << std::endl;
+            } 
 
             // Get new boundary (assuming that the shape is simply connected)
             x.resize(this->N);
@@ -948,6 +953,11 @@ class BoundaryFinder
                     this->points.row(this->N-1) = z;
                 }
             }
+            if (verbose)
+            {
+                std::cout << "- pulled " << to_pull.size() << " points" << std::endl;
+                std::cout << "- augmented point-set contains " << this->N << " points" << std::endl;
+            } 
 
             // Get new boundary (assuming that the shape is simply connected)
             x.resize(this->N);
