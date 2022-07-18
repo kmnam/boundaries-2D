@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     5/12/2022
+ *     7/18/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -42,9 +42,6 @@ typedef K::Point_2                                                  Point_2;
 typedef K::Vector_2                                                 Vector_2;
 typedef CGAL::Aff_transformation_2<K>                               Transformation;
 typedef CGAL::Orientation                                           Orientation;
-typedef CGAL::Polygon_2<K>                                          Polygon_2;
-typedef CGAL::Polyline_simplification_2::Squared_distance_cost      Cost;
-typedef CGAL::Polyline_simplification_2::Stop_below_count_threshold Stop;
 
 /**
  * A container that stores a planar point-set along with the indices of the 
@@ -583,15 +580,15 @@ class Boundary2D
             {
                 // Find the point being pointed to by the boundary vertex 
                 Point_2 point = (*it)->point();
-                double x = point.x(); 
-                double y = point.y(); 
+                double xit = point.x(); 
+                double yit = point.y(); 
                 
                 // Find the nearest point in the point-set to this boundary vertex
                 double nearest_sqdist = std::numeric_limits<double>::infinity(); 
                 int nearest_index = 0; 
                 for (int i = 0; i < this->n; ++i)
                 {
-                    double sqdist = std::pow(this->x[i] - x, 2) + std::pow(this->y[i] - y, 2);
+                    double sqdist = std::pow(this->x[i] - xit, 2) + std::pow(this->y[i] - yit, 2);
                     if (sqdist < nearest_sqdist)
                     {
                         nearest_sqdist = sqdist;
@@ -840,15 +837,15 @@ class Boundary2D
             {
                 // Find the point being pointed to by the boundary vertex 
                 Point_2 point = (*it)->point();
-                double x = point.x(); 
-                double y = point.y(); 
+                double xit = point.x(); 
+                double yit = point.y(); 
                 
                 // Find the nearest input point to this point
                 double nearest_sqdist = std::numeric_limits<double>::infinity(); 
                 int nearest_index = 0; 
                 for (int i = 0; i < this->n; ++i)
                 {
-                    double sqdist = std::pow(this->x[i] - x, 2) + std::pow(this->y[i] - y, 2);
+                    double sqdist = std::pow(this->x[i] - xit, 2) + std::pow(this->y[i] - yit, 2);
                     if (sqdist < nearest_sqdist)
                     {
                         nearest_sqdist = sqdist;
@@ -999,20 +996,20 @@ class Boundary2D
             }
             adj.setFromTriplets(triplets.begin(), triplets.end());
 
-            // Identify, for each vertex in the alpha shape, the point corresponding to it 
+            // Identify, for each vertex in the alpha shape, the point corresponding to it
             for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
             {
                 // Find the point being pointed to by the boundary vertex 
                 Point_2 point = (*it)->point();
-                double x = point.x(); 
-                double y = point.y(); 
+                double xit = point.x(); 
+                double yit = point.y(); 
                 
                 // Find the nearest point in the point-set to this boundary vertex
                 double nearest_sqdist = std::numeric_limits<double>::infinity(); 
                 int nearest_index = 0; 
                 for (int i = 0; i < this->n; ++i)
                 {
-                    double sqdist = std::pow(this->x[i] - x, 2) + std::pow(this->y[i] - y, 2);
+                    double sqdist = std::pow(this->x[i] - xit, 2) + std::pow(this->y[i] - yit, 2);
                     if (sqdist < nearest_sqdist)
                     {
                         nearest_sqdist = sqdist;
@@ -1060,7 +1057,9 @@ class Boundary2D
             for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
                 vertices.push_back(vertices_to_points[*it].first);
 
-            return AlphaShape2DProperties(x, y, vertices, edges, opt_alpha, total_area, false);
+            return AlphaShape2DProperties(
+                this->x, this->y, vertices, edges, opt_alpha, total_area, false
+            );
         }
 
         /**
@@ -1073,15 +1072,11 @@ class Boundary2D
          * with the *smallest* value of alpha such that the boundary forms 
          * a simple cycle (i.e., the enclosed region is simply connected).
          *
-         * @param max_edges Maximum number of edges to be contained in the 
-         *                  alpha shape; if the number of edges in the alpha 
-         *                  shape exceeds this value, the alpha shape is
-         *                  simplified. 
          * @returns `AlphaShape2DProperties` object containing the alpha shape 
          *          representing the boundary of the point-set.  
          */
         template <bool tag = true>
-        AlphaShape2DProperties getSimplyConnectedBoundary(int max_edges = 0)
+        AlphaShape2DProperties getSimplyConnectedBoundary()
         {
             typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> > Vb;
             typedef CGAL::Alpha_shape_face_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >   Fb;
@@ -1209,128 +1204,142 @@ class Boundary2D
             std::vector<int> vertex_indices_in_order; 
             std::vector<std::pair<int, int> > edge_indices_in_order; 
 
-            /* ------------------------------------------------------------------ //
-             * If simplification of the detected boundary is desired, then simplify
-             * the alpha shape using Dyken et al.'s polyline simplification algorithm:
-             * - The cost of decimating a vertex is measured using maximum distance
-             *   between the remaining vertices and the new line segment formed
-             * - The simplification is terminated once the total cost of decimation
-             *   exceeds 1e-5
-             * ------------------------------------------------------------------ */
-            if (max_edges != 0 && nedges > max_edges)
-            {
-                std::cout << "- ... simplifying the boundary" << std::endl; 
-
-                // Instantiate a Polygon object with the vertices given in the
-                // order in which they were traversed
-                std::vector<Point_2> traversed_points;
-                for (auto it = traversal.begin(); it != traversal.end(); ++it)
-                {
-                    int nearest_index = vertices_to_points[indices_to_vertices[*it]].first;
-                    Point_2 p(points[nearest_index].x(), points[nearest_index].y());  
-                    traversed_points.push_back(p);
-                }
-                Polygon_2 polygon(traversed_points.begin(), traversed_points.end());
-                
-                // Simplify the polygon ...  
-                Polygon_2 simplified_polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
-
-                for (auto it = simplified_polygon.vertices_begin(); it != simplified_polygon.vertices_end(); ++it)
-                {
-                    double x = it->x(); 
-                    double y = it->y(); 
-
-                    // ... and identify the index of each vertex in the polygon
-                    // with respect to the entire point-set 
-                    double sqdist_to_nearest_point = std::numeric_limits<double>::infinity(); 
-                    auto it_nearest_point = points.begin(); 
-                    for (auto it2 = points.begin(); it2 != points.end(); ++it2) 
-                    {
-                        double xv = it2->x(); 
-                        double yv = it2->y(); 
-                        double sqdist = std::pow(x - xv, 2) + std::pow(y - yv, 2);
-                        if (sqdist_to_nearest_point > sqdist)
-                        {
-                            sqdist_to_nearest_point = sqdist; 
-                            it_nearest_point = it2; 
-                        }
-                    } 
-                    vertex_indices_in_order.push_back(std::distance(points.begin(), it_nearest_point)); 
-                }
-
-                // The edges in the polygon are then easy to determine
-                for (int i = 0; i < vertex_indices_in_order.size() - 1; ++i)
-                {
-                    int vi = vertex_indices_in_order[i];
-                    int vj = vertex_indices_in_order[i+1]; 
-                    edge_indices_in_order.emplace_back(std::make_pair(vi, vj)); 
-                }
-                int vi = *std::prev(vertex_indices_in_order.end());
-                int vj = *vertex_indices_in_order.begin();
-                edge_indices_in_order.emplace_back(std::make_pair(vi, vj)); 
-                nvertices = vertex_indices_in_order.size(); 
-                nedges = edge_indices_in_order.size(); 
-
-                // Compute the area of the polygon formed by the simplified 
-                // boundary
-                double total_area = std::abs(CGAL::to_double(polygon.area())); 
-                std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
-                std::cout << "- enclosed area = " << total_area << std::endl;  
-                std::cout << "- number of vertices = " << nvertices << std::endl; 
-                std::cout << "- number of edges = " << nedges << std::endl; 
-                
-                return AlphaShape2DProperties(
-                    x, y, vertex_indices_in_order, edge_indices_in_order,  
-                    opt_alpha, total_area, is_simple_cycle
-                );
-            }
-            // If the boundary is a simple cycle but was *not* simplified,
-            // then accumulate the indices of the boundary vertices in the
+            // Accumulate the indices of the boundary vertices in the
             // order in which they were traversed
-            else
+            auto it = traversal.begin();
+            int curr = vertices_to_points[indices_to_vertices[*it]].first; 
+            vertex_indices_in_order.push_back(curr);
+            ++it;
+            while (it != traversal.end())
             {
-                auto it = traversal.begin();
-                int curr = vertices_to_points[indices_to_vertices[*it]].first; 
+                int next = vertices_to_points[indices_to_vertices[*it]].first;
+                edge_indices_in_order.emplace_back(std::make_pair(curr, next));
+                curr = next;  
                 vertex_indices_in_order.push_back(curr);
-                ++it;
-                while (it != traversal.end())
-                {
-                    int next = vertices_to_points[indices_to_vertices[*it]].first;
-                    edge_indices_in_order.emplace_back(std::make_pair(curr, next));
-                    curr = next;  
-                    vertex_indices_in_order.push_back(curr);
-                    ++it;  
-                }
-                edge_indices_in_order.emplace_back(
-                    std::make_pair(curr, vertices_to_points[indices_to_vertices[*(traversal.begin())]].first)
-                );
-                
-                // Get the area of the region enclosed by the alpha shape 
-                // with the optimum value of alpha
-                double total_area = 0.0;
-                for (auto it = shape.finite_faces_begin(); it != shape.finite_faces_end(); ++it)
-                {
-                    Face_handle_2 face = Tds::Face_range::s_iterator_to(*it);
-                    auto type = shape.classify(face);
-                    if (type == Alpha_shape::REGULAR || type == Alpha_shape::INTERIOR)
-                    {
-                        Point_2 p = it->vertex(0)->point();
-                        Point_2 q = it->vertex(1)->point();
-                        Point_2 r = it->vertex(2)->point();
-                        total_area += CGAL::area(p, q, r);
-                    }
-                }
-                std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
-                std::cout << "- number of vertices = " << nvertices << std::endl; 
-                std::cout << "- number of edges = " << nedges << std::endl;
-                std::cout << "- enclosed area = " << total_area << std::endl;  
-
-                return AlphaShape2DProperties(
-                    x, y, vertex_indices_in_order, edge_indices_in_order,  
-                    opt_alpha, total_area, is_simple_cycle
-                );
+                ++it;  
             }
+            edge_indices_in_order.emplace_back(
+                std::make_pair(curr, vertices_to_points[indices_to_vertices[*(traversal.begin())]].first)
+            );
+            
+            // Get the area of the region enclosed by the alpha shape 
+            // with the optimum value of alpha
+            double total_area = 0.0;
+            for (auto it = shape.finite_faces_begin(); it != shape.finite_faces_end(); ++it)
+            {
+                Face_handle_2 face = Tds::Face_range::s_iterator_to(*it);
+                auto type = shape.classify(face);
+                if (type == Alpha_shape::REGULAR || type == Alpha_shape::INTERIOR)
+                {
+                    Point_2 p = it->vertex(0)->point();
+                    Point_2 q = it->vertex(1)->point();
+                    Point_2 r = it->vertex(2)->point();
+                    total_area += CGAL::area(p, q, r);
+                }
+            }
+            std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
+            std::cout << "- number of vertices = " << nvertices << std::endl; 
+            std::cout << "- number of edges = " << nedges << std::endl;
+            std::cout << "- enclosed area = " << total_area << std::endl;  
+
+            return AlphaShape2DProperties(
+                x, y, vertex_indices_in_order, edge_indices_in_order,  
+                opt_alpha, total_area, is_simple_cycle
+            );
         }
 };
+
+/**
+ * Simplify the given shape with Dyken et al.'s polyline simplification algorithm,
+ * using the maximum square distance cost function and a threshold based on the
+ * maximum number of desired edges.
+ *
+ * @param shape     The (alpha) shape to be simplified. 
+ * @param max_edges Maximum number of edges to be contained in the alpha shape;
+ *                  if the number of edges in the alpha shape exceeds this value,
+ *                  the alpha shape is simplified.
+ * @returns A new `AlphaShape2DProperties` instance containing the simplified
+ *          shape. 
+ */
+AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const int max_edges)
+{
+    typedef CGAL::Polygon_2<K>                                                              Polygon_2;
+    typedef CGAL::Polyline_simplification_2::Vertex_base_2<K>                               _Vb; 
+    typedef CGAL::Constrained_triangulation_face_base_2<K>                                  _Fb;
+    typedef CGAL::Triangulation_data_structure_2<_Vb, _Fb>                                  _Tds;
+    typedef CGAL::Constrained_Delaunay_triangulation_2<K, _Tds, CGAL::Exact_predicates_tag> CDT;
+    typedef CGAL::Constrained_triangulation_plus_2<CDT>                                     CT;
+    typedef CGAL::Polyline_simplification_2::Squared_distance_cost                          Cost;
+    typedef CGAL::Polyline_simplification_2::Stop_below_count_threshold                     Stop;
+
+    std::cout << "- ... simplifying the boundary" << std::endl; 
+
+    // Instantiate a Polygon object with the vertices given in the
+    // order in which they were traversed
+    std::vector<Point_2> points; 
+    for (auto it = shape.vertices.begin(); it != shape.vertices.end(); ++it)
+    {
+        Point_2 p(shape.x[*it], shape.y[*it]); 
+        points.push_back(p);
+    }
+    Polygon_2 polygon(points.begin(), points.end()); 
+
+    // Simplify the polygon  
+    Polygon_2 simplified_polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
+   
+    // For each vertex in the simplified polygon ...
+    std::vector<int> vertex_indices_in_order_simplified; 
+    std::vector<std::pair<int, int> > edge_indices_in_order_simplified;  
+    for (auto it = simplified_polygon.vertices_begin(); it != simplified_polygon.vertices_end(); ++it)
+    {
+        double xit = it->x(); 
+        double yit = it->y();
+
+        // ... and identify the index of each vertex in the polygon
+        // with respect to the entire point-set 
+        double sqdist_to_nearest_point = std::numeric_limits<double>::infinity(); 
+        auto it_nearest_point = points.begin(); 
+        for (auto it2 = points.begin(); it2 != points.end(); ++it2) 
+        {
+            double xv = it2->x(); 
+            double yv = it2->y(); 
+            double sqdist = std::pow(xit - xv, 2) + std::pow(yit - yv, 2);
+            if (sqdist_to_nearest_point > sqdist)
+            {
+                sqdist_to_nearest_point = sqdist; 
+                it_nearest_point = it2; 
+            }
+        } 
+        vertex_indices_in_order_simplified.push_back(std::distance(points.begin(), it_nearest_point)); 
+    }
+
+    // The edges in the polygon are then easy to determine
+    for (int i = 0; i < vertex_indices_in_order_simplified.size() - 1; ++i)
+    {
+        int vi = vertex_indices_in_order_simplified[i];
+        int vj = vertex_indices_in_order_simplified[i+1]; 
+        edge_indices_in_order_simplified.emplace_back(std::make_pair(vi, vj)); 
+    }
+    int vi = *std::prev(vertex_indices_in_order_simplified.end());
+    int vj = *vertex_indices_in_order_simplified.begin();
+    edge_indices_in_order_simplified.emplace_back(std::make_pair(vi, vj)); 
+    int nvertices_simplified = vertex_indices_in_order_simplified.size(); 
+    int nedges_simplified = edge_indices_in_order_simplified.size(); 
+
+    // Compute the area of the polygon formed by the simplified 
+    // boundary
+    double total_area = std::abs(CGAL::to_double(simplified_polygon.area())); 
+    std::cout << "- enclosed area of simplified boundary = "
+              << total_area << std::endl;  
+    std::cout << "- number of vertices of simplified boundary = "
+              << nvertices_simplified << std::endl; 
+    std::cout << "- number of edges of simplified boundary = "
+              << nedges_simplified << std::endl; 
+    
+    return AlphaShape2DProperties(
+        shape.x, shape.y, vertex_indices_in_order_simplified,
+        edge_indices_in_order_simplified, shape.alpha, total_area, true
+    );
+}
 
 #endif
