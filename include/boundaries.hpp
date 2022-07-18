@@ -36,12 +36,15 @@
 using namespace Eigen;
 const double TWO_PI = 2 * std::acos(-1);
 
-typedef CGAL::Exact_predicates_inexact_constructions_kernel         K;
-typedef K::FT                                                       FT;
-typedef K::Point_2                                                  Point_2;
-typedef K::Vector_2                                                 Vector_2;
-typedef CGAL::Aff_transformation_2<K>                               Transformation;
-typedef CGAL::Orientation                                           Orientation;
+typedef CGAL::Exact_predicates_inexact_constructions_kernel          K;
+typedef K::FT                                                        FT;
+typedef K::Point_2                                                   Point_2;
+typedef K::Vector_2                                                  Vector_2;
+typedef CGAL::Aff_transformation_2<K>                                Transformation;
+typedef CGAL::Orientation                                            Orientation;
+typedef CGAL::Polygon_2<K>                                           Polygon_2;
+typedef CGAL::Polyline_simplification_2::Squared_distance_cost       Cost;
+typedef CGAL::Polyline_simplification_2::Stop_below_count_threshold  Stop;
 
 /**
  * A container that stores a planar point-set along with the indices of the 
@@ -1263,15 +1266,6 @@ class Boundary2D
  */
 AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const int max_edges)
 {
-    typedef CGAL::Polygon_2<K>                                                              Polygon_2;
-    typedef CGAL::Polyline_simplification_2::Vertex_base_2<K>                               _Vb; 
-    typedef CGAL::Constrained_triangulation_face_base_2<K>                                  _Fb;
-    typedef CGAL::Triangulation_data_structure_2<_Vb, _Fb>                                  _Tds;
-    typedef CGAL::Constrained_Delaunay_triangulation_2<K, _Tds, CGAL::Exact_predicates_tag> CDT;
-    typedef CGAL::Constrained_triangulation_plus_2<CDT>                                     CT;
-    typedef CGAL::Polyline_simplification_2::Squared_distance_cost                          Cost;
-    typedef CGAL::Polyline_simplification_2::Stop_below_count_threshold                     Stop;
-
     std::cout << "- ... simplifying the boundary" << std::endl; 
 
     // Instantiate a Polygon object with the vertices given in the
