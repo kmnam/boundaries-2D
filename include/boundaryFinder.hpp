@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     7/13/2022
+ *     7/19/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -376,7 +376,7 @@ class BoundaryFinder
                 // This line may throw:
                 // - CGAL::Assertion_exception (while instantiating the alpha shape) 
                 // - std::runtime_error (if polygon is not simple)
-                this->curr_bound = boundary.getSimplyConnectedBoundary<true>(); 
+                this->curr_bound = boundary.getSimplyConnectedBoundary<true>(verbose); 
             }
             catch (CGAL::Assertion_exception& e) 
             {
@@ -386,7 +386,7 @@ class BoundaryFinder
                 // instantiating the alpha shape) 
                 try 
                 {
-                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>();
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(verbose); 
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -401,7 +401,7 @@ class BoundaryFinder
                 // the alpha shape) 
                 try 
                 {
-                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>();
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -419,7 +419,7 @@ class BoundaryFinder
                 { 
                     // This line may raise a CGAL::Precondition_exception while 
                     // instantiating the polygon for simplification
-                    this->curr_simplified = simplifyAlphaShape(this->curr_bound, max_edges);  
+                    this->curr_simplified = simplifyAlphaShape(this->curr_bound, max_edges, verbose);  
                 }
                 catch (CGAL::Precondition_exception& e)
                 {
@@ -645,7 +645,7 @@ class BoundaryFinder
                 // This line may throw:
                 // - CGAL::Assertion_exception (while instantiating the alpha shape) 
                 // - std::runtime_error (if polygon is not simple)
-                this->curr_bound = boundary.getSimplyConnectedBoundary<true>();
+                this->curr_bound = boundary.getSimplyConnectedBoundary<true>(verbose);
             }
             catch (CGAL::Assertion_exception& e) 
             {
@@ -655,7 +655,7 @@ class BoundaryFinder
                 // instantiating the alpha shape) 
                 try 
                 {
-                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>();
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -670,7 +670,7 @@ class BoundaryFinder
                 // the alpha shape) 
                 try 
                 {
-                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>();
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -688,7 +688,7 @@ class BoundaryFinder
                 { 
                     // This line may raise a CGAL::Precondition_exception while 
                     // instantiating the polygon for simplification
-                    this->curr_simplified = simplifyAlphaShape(this->curr_bound, max_edges);  
+                    this->curr_simplified = simplifyAlphaShape(this->curr_bound, max_edges, verbose);  
                 }
                 catch (CGAL::Precondition_exception& e)
                 {
@@ -913,9 +913,6 @@ class BoundaryFinder
                     normals.push_back(normals_original[indices_complement[sample[i]]]); 
                 } 
             }
-            std::cout << to_pull.transpose() << std::endl; 
-            for (int i = 0; i < normals.size(); ++i)
-                std::cout << normals[i].x() << " " << normals[i].y() << std::endl; 
 
             // Obtain the outward vertex normals along the boundary and,
             // for each vertex in the boundary, pull along its outward normal
@@ -989,7 +986,7 @@ class BoundaryFinder
                 // This line may throw:
                 // - CGAL::Assertion_exception (while instantiating the alpha shape) 
                 // - std::runtime_error (if polygon is not simple)
-                this->curr_bound = boundary.getSimplyConnectedBoundary<true>();
+                this->curr_bound = boundary.getSimplyConnectedBoundary<true>(verbose);
             }
             catch (CGAL::Assertion_exception& e) 
             {
@@ -999,7 +996,7 @@ class BoundaryFinder
                 // instantiating the alpha shape) 
                 try 
                 {
-                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>();
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -1014,7 +1011,7 @@ class BoundaryFinder
                 // the alpha shape) 
                 try 
                 {
-                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>();
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -1032,7 +1029,7 @@ class BoundaryFinder
                 { 
                     // This line may raise a CGAL::Precondition_exception while 
                     // instantiating the polygon for simplification
-                    this->curr_simplified = simplifyAlphaShape(this->curr_bound, max_edges);  
+                    this->curr_simplified = simplifyAlphaShape(this->curr_bound, max_edges, verbose);  
                 }
                 catch (CGAL::Precondition_exception& e)
                 {
