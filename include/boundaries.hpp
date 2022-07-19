@@ -53,91 +53,6 @@ typedef CGAL::Polyline_simplification_2::Stop_below_count_threshold  Stop;
  */
 struct AlphaShape2DProperties
 {
-    private:
-        /**
-         * Given the indices of three *consecutive* vertices `p`, `q`, `r` in
-         * the alpha shape, return the outward normal vector at the middle
-         * vertex, `q`.
-         *
-         * The alpha shape is assumed to contain the edges `(p,q)` and `(q,r)`.
-         *
-         * @param p Index of first vertex in alpha shape.
-         * @param q Index of second vertex in alpha shape. 
-         * @param r Index of third vertex in alpha shape. 
-         * @return Outward normal vector at `q`. 
-         */
-        Vector_2 outwardVertexNormal(int p, int q, int r)
-        {
-            Vector_2 v, w, normal;
-
-            // Get the vectors from q to p and from q to r 
-            v = Vector_2(this->x[p] - this->x[q], this->y[p] - this->y[q]);
-            w = Vector_2(this->x[r] - this->x[q], this->y[r] - this->y[q]);
-
-            // Get the angle between the two vectors
-            double arg = CGAL::scalar_product(v, w) / std::sqrt(v.squared_length() * w.squared_length());
-            if (arg > 1)         // Check that the argument passed to acos() is between -1 and 1
-                arg = 1; 
-            else if (arg < -1)
-                arg = -1; 
-            double angle = std::acos(arg);
-            Orientation v_to_w = CGAL::orientation(-v, w);
-
-            // Case 1: The boundary is oriented by right turns and -v and w
-            // form a right turn
-            if (this->orientation == CGAL::RIGHT_TURN && v_to_w == CGAL::RIGHT_TURN)
-            {
-                // Rotate w by (2*pi - angle) / 2 counterclockwise
-                Transformation rotate(CGAL::ROTATION, std::sin((TWO_PI - angle) / 2.0), std::cos((TWO_PI - angle) / 2.0)); 
-                normal = rotate(w);
-            }
-            // Case 2: The boundary is oriented by right turns and -v and w
-            // form a left turn
-            else if (this->orientation == CGAL::RIGHT_TURN && v_to_w == CGAL::LEFT_TURN)
-            {
-                // Rotate w by angle / 2 counterclockwise
-                Transformation rotate(CGAL::ROTATION, std::sin(angle / 2.0), std::cos(angle / 2.0));
-                normal = rotate(w);
-            }
-            // Case 3: The boundary is oriented by left turns and -v and w
-            // form a right turn
-            else if (this->orientation == CGAL::LEFT_TURN && v_to_w == CGAL::RIGHT_TURN)
-            {
-                // Rotate v by angle / 2 counterclockwise
-                Transformation rotate(CGAL::ROTATION, std::sin(angle / 2.0), std::cos(angle / 2.0));
-                normal = rotate(v);
-            }
-            // Case 4: The boundary is oriented by left turns and -v and w 
-            // form a left turn
-            else if (this->orientation == CGAL::LEFT_TURN && v_to_w == CGAL::LEFT_TURN)
-            {
-                // Rotate v by (2*pi - angle) / 2 counterclockwise
-                Transformation rotate(CGAL::ROTATION, std::sin((TWO_PI - angle) / 2.0), std::cos((TWO_PI - angle) / 2.0));
-                normal = rotate(v);
-            }
-            // Case 5: -v and w are collinear
-            else
-            {
-                // If the interior of the boundary is to the right, rotate
-                // w by 90 degrees counterclockwise
-                if (this->orientation == CGAL::RIGHT_TURN)
-                {
-                    Transformation rotate(CGAL::ROTATION, 1.0, 0.0);
-                    normal = rotate(w);
-                }
-                // Otherwise, rotate v by 90 degrees counterclockwise
-                else
-                {
-                    Transformation rotate(CGAL::ROTATION, 1.0, 0.0);
-                    normal = rotate(v);
-                }
-            }
-
-            // Normalize the vector by its length and return
-            normal /= std::sqrt(normal.squared_length());
-            return normal;
-        }
-
     public:
         /** x-coordinates of the points in the point-set. */
         std::vector<double> x;
@@ -360,6 +275,90 @@ struct AlphaShape2DProperties
         }
 
         /**
+         * Given the indices of three *consecutive* vertices `p`, `q`, `r` in
+         * the alpha shape, return the outward normal vector at the middle
+         * vertex, `q`.
+         *
+         * The alpha shape is assumed to contain the edges `(p,q)` and `(q,r)`.
+         *
+         * @param p Index of first vertex in alpha shape.
+         * @param q Index of second vertex in alpha shape. 
+         * @param r Index of third vertex in alpha shape. 
+         * @return Outward normal vector at `q`. 
+         */
+        Vector_2 getOutwardVertexNormal(int p, int q, int r)
+        {
+            Vector_2 v, w, normal;
+
+            // Get the vectors from q to p and from q to r 
+            v = Vector_2(this->x[p] - this->x[q], this->y[p] - this->y[q]);
+            w = Vector_2(this->x[r] - this->x[q], this->y[r] - this->y[q]);
+
+            // Get the angle between the two vectors
+            double arg = CGAL::scalar_product(v, w) / std::sqrt(v.squared_length() * w.squared_length());
+            if (arg > 1)         // Check that the argument passed to acos() is between -1 and 1
+                arg = 1; 
+            else if (arg < -1)
+                arg = -1; 
+            double angle = std::acos(arg);
+            Orientation v_to_w = CGAL::orientation(-v, w);
+
+            // Case 1: The boundary is oriented by right turns and -v and w
+            // form a right turn
+            if (this->orientation == CGAL::RIGHT_TURN && v_to_w == CGAL::RIGHT_TURN)
+            {
+                // Rotate w by (2*pi - angle) / 2 counterclockwise
+                Transformation rotate(CGAL::ROTATION, std::sin((TWO_PI - angle) / 2.0), std::cos((TWO_PI - angle) / 2.0)); 
+                normal = rotate(w);
+            }
+            // Case 2: The boundary is oriented by right turns and -v and w
+            // form a left turn
+            else if (this->orientation == CGAL::RIGHT_TURN && v_to_w == CGAL::LEFT_TURN)
+            {
+                // Rotate w by angle / 2 counterclockwise
+                Transformation rotate(CGAL::ROTATION, std::sin(angle / 2.0), std::cos(angle / 2.0));
+                normal = rotate(w);
+            }
+            // Case 3: The boundary is oriented by left turns and -v and w
+            // form a right turn
+            else if (this->orientation == CGAL::LEFT_TURN && v_to_w == CGAL::RIGHT_TURN)
+            {
+                // Rotate v by angle / 2 counterclockwise
+                Transformation rotate(CGAL::ROTATION, std::sin(angle / 2.0), std::cos(angle / 2.0));
+                normal = rotate(v);
+            }
+            // Case 4: The boundary is oriented by left turns and -v and w 
+            // form a left turn
+            else if (this->orientation == CGAL::LEFT_TURN && v_to_w == CGAL::LEFT_TURN)
+            {
+                // Rotate v by (2*pi - angle) / 2 counterclockwise
+                Transformation rotate(CGAL::ROTATION, std::sin((TWO_PI - angle) / 2.0), std::cos((TWO_PI - angle) / 2.0));
+                normal = rotate(v);
+            }
+            // Case 5: -v and w are collinear
+            else
+            {
+                // If the interior of the boundary is to the right, rotate
+                // w by 90 degrees counterclockwise
+                if (this->orientation == CGAL::RIGHT_TURN)
+                {
+                    Transformation rotate(CGAL::ROTATION, 1.0, 0.0);
+                    normal = rotate(w);
+                }
+                // Otherwise, rotate v by 90 degrees counterclockwise
+                else
+                {
+                    Transformation rotate(CGAL::ROTATION, 1.0, 0.0);
+                    normal = rotate(v);
+                }
+            }
+
+            // Normalize the vector by its length and return
+            normal /= std::sqrt(normal.squared_length());
+            return normal;
+        }
+
+        /**
          * Return the outward normal vectors from all vertices along the alpha
          * shape.
          *
@@ -367,7 +366,7 @@ struct AlphaShape2DProperties
          * @throws std::runtime_error If the alpha shape has fewer than three
          *                            vertices. 
          */
-        std::vector<Vector_2> outwardVertexNormals()
+        std::vector<Vector_2> getOutwardVertexNormals()
         {
             int p, q, r;
             std::vector<Vector_2> normals;
@@ -384,13 +383,13 @@ struct AlphaShape2DProperties
             p = this->vertices[this->nv-1];
             q = this->vertices[0];
             r = this->vertices[1];
-            normals.push_back(this->outwardVertexNormal(p, q, r));
+            normals.push_back(this->getOutwardVertexNormal(p, q, r));
             for (int i = 1; i < this->nv; ++i)
             {
                 p = this->vertices[(i-1) % this->nv];
                 q = this->vertices[i];
                 r = this->vertices[(i+1) % this->nv];
-                normals.push_back(this->outwardVertexNormal(p, q, r));
+                normals.push_back(this->getOutwardVertexNormal(p, q, r));
             }
 
             return normals;

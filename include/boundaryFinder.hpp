@@ -878,15 +878,15 @@ class BoundaryFinder
                 to_pull.resize(this->curr_bound.vertices.size());
                 for (int i = 0; i < this->curr_bound.vertices.size(); ++i)
                     to_pull(i) = this->curr_bound.vertices[i];
-                normals = this->curr_bound.outwardVertexNormals();  
+                normals = this->curr_bound.getOutwardVertexNormals();  
             }
             // Otherwise, then pull every point in the *simplified* boundary,
             // plus psi more points in the unsimplified boundary 
             else
             {
                 to_pull.resize(this->curr_simplified.vertices.size() + psi);
-                std::vector<Vector_2> normals_original = this->curr_bound.outwardVertexNormals(); 
-                std::vector<Vector_2> normals_simplified = this->curr_simplified.outwardVertexNormals(); 
+                std::vector<Vector_2> normals_original = this->curr_bound.getOutwardVertexNormals(); 
+                std::vector<Vector_2> normals_simplified = this->curr_simplified.getOutwardVertexNormals(); 
                 for (int i = 0; i < this->curr_simplified.vertices.size(); ++i)
                 {
                     to_pull(i) = this->curr_simplified.vertices[i];
@@ -897,10 +897,10 @@ class BoundaryFinder
                 // that do not belong to the simplified boundary 
                 std::unordered_set<int> indices_all, indices_simplified; 
                 std::vector<int> indices_complement; 
-                for (int i = 0; i < this->curr_bound.vertices.size(); ++i)
-                    indices_all.insert(this->curr_bound.vertices[i]);  
-                for (int i = 0; i < this->curr_simplified.vertices.size(); ++i)
-                    indices_simplified.insert(this->curr_simplified.vertices[i]);
+                for (int i : this->curr_bound.vertices)
+                    indices_all.insert(i); 
+                for (int i : this->curr_simplified.vertices)
+                    indices_simplified.insert(i); 
                 for (auto it = indices_all.begin(); it != indices_all.end(); ++it)
                 {
                     if (indices_simplified.find(*it) == indices_simplified.end())
@@ -909,8 +909,19 @@ class BoundaryFinder
                 std::vector<int> sample = sampleWithoutReplacement(indices_complement.size(), psi, this->rng);
                 for (int i = 0; i < psi; ++i)
                 {
-                    to_pull(this->curr_simplified.vertices.size() + i) = indices_complement[sample[i]];
-                    normals.push_back(normals_original[indices_complement[sample[i]]]); 
+                    int j = indices_complement[sample[i]];
+                    int k = std::distance(
+                        this->curr_bound.vertices.begin(),
+                        std::find(this->curr_bound.vertices.begin(), this->curr_bound.vertices.end(), j)
+                    );  // Note that this call to std::find() should *never* yield this->curr_bound.vertices.end()
+                    to_pull(this->curr_simplified.vertices.size() + i) = j;
+                    int prev = (k - 1 < 0 ? this->curr_bound.nv - 1 : k - 1);
+                    int next = (k + 1 > this->curr_bound.nv - 1 ? 0 : k + 1);
+                    normals.push_back(
+                        this->curr_bound.getOutwardVertexNormal(
+                            this->curr_bound.vertices[prev], j, this->curr_bound.vertices[next]
+                        )
+                    ); 
                 } 
             }
 
