@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     7/18/2022
+ *     7/19/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -483,7 +483,7 @@ class Boundary2D
                                                 std::unordered_map<typename Dt::Vertex_handle, std::pair<int, double> >&
                                                     vertices_to_points, 
                                                 SparseMatrix<int, RowMajor>& adj, 
-                                                const int alpha_index, const bool verbose)
+                                                const int alpha_index, const bool verbose = false)
         {
             auto alpha = shape.get_nth_alpha(alpha_index);  
             shape.set_alpha(alpha);
@@ -711,11 +711,12 @@ class Boundary2D
          * with the *smallest* value of alpha such that every point in the 
          * the point-set falls within the boundary or its interior.
          *
+         * @param verbose If true, output intermittent messages to `stdout`.
          * @returns `AlphaShape2DProperties` object containing the alpha shape 
          *          representing the boundary of the point-set.  
          */
         template <bool tag = true>
-        AlphaShape2DProperties getBoundary() 
+        AlphaShape2DProperties getBoundary(const bool verbose = false) 
         {
             typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> > Vb;
             typedef CGAL::Alpha_shape_face_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >   Fb;
@@ -877,10 +878,13 @@ class Boundary2D
                     total_area += CGAL::area(p, q, r);
                 }
             }
-            std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
-            std::cout << "- enclosed area = " << total_area << std::endl;  
-            std::cout << "- number of vertices = " << nvertices << std::endl; 
-            std::cout << "- number of edges = " << nedges << std::endl; 
+            if (verbose)
+            {
+                std::cout << "- optimal value of alpha = " << opt_alpha << std::endl
+                          << "- enclosed area = " << total_area << std::endl
+                          << "- number of vertices = " << nvertices << std::endl
+                          << "- number of edges = " << nedges << std::endl;
+            } 
 
             // Finally collect the boundary vertices and edges in arbitrary order 
             std::vector<std::pair<int, int> > edges; 
@@ -909,11 +913,12 @@ class Boundary2D
          * with the *smallest* value of alpha such that the boundary encloses
          * a connected region.
          *
+         * @param verbose If true, output intermittent messages to `stdout`.
          * @returns `AlphaShape2DProperties` object containing the alpha shape 
          *          representing the boundary of the point-set.  
          */
         template <bool tag = true>
-        AlphaShape2DProperties getConnectedBoundary()
+        AlphaShape2DProperties getConnectedBoundary(const bool verbose = false)
         {
             typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> > Vb;
             typedef CGAL::Alpha_shape_face_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >   Fb;
@@ -1041,10 +1046,13 @@ class Boundary2D
                     total_area += CGAL::area(p, q, r);
                 }
             }
-            std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
-            std::cout << "- enclosed area = " << total_area << std::endl;  
-            std::cout << "- number of vertices = " << nvertices << std::endl; 
-            std::cout << "- number of edges = " << nedges << std::endl; 
+            if (verbose)
+            {
+                std::cout << "- optimal value of alpha = " << opt_alpha << std::endl
+                          << "- enclosed area = " << total_area << std::endl
+                          << "- number of vertices = " << nvertices << std::endl
+                          << "- number of edges = " << nedges << std::endl;
+            } 
 
             // Finally collect the boundary vertices and edges in arbitrary order 
             std::vector<std::pair<int, int> > edges; 
@@ -1075,11 +1083,12 @@ class Boundary2D
          * with the *smallest* value of alpha such that the boundary forms 
          * a simple cycle (i.e., the enclosed region is simply connected).
          *
+         * @param verbose If true, output intermittent messages to `stdout`.
          * @returns `AlphaShape2DProperties` object containing the alpha shape 
          *          representing the boundary of the point-set.  
          */
         template <bool tag = true>
-        AlphaShape2DProperties getSimplyConnectedBoundary()
+        AlphaShape2DProperties getSimplyConnectedBoundary(const bool verbose = false)
         {
             typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> > Vb;
             typedef CGAL::Alpha_shape_face_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >   Fb;
@@ -1155,14 +1164,17 @@ class Boundary2D
             {
                 low = 0;
             }
-            int high = shape.number_of_alphas() - 1; 
-            std::cout << "- ... searching between alpha = "
-                      << CGAL::to_double(shape.get_nth_alpha(low))
-                      << " and "
-                      << CGAL::to_double(shape.get_nth_alpha(high))
-                      << " inclusive ("
-                      << high - low + 1
-                      << " values of alpha)" << std::endl;
+            int high = shape.number_of_alphas() - 1;
+            if (verbose)
+            { 
+                std::cout << "- ... searching between alpha = "
+                          << CGAL::to_double(shape.get_nth_alpha(low))
+                          << " and "
+                          << CGAL::to_double(shape.get_nth_alpha(high))
+                          << " inclusive ("
+                          << high - low + 1
+                          << " values of alpha)" << std::endl;
+            }
 
             // Also keep track of the vertices and edges in the order in which 
             // they are traversed 
@@ -1240,10 +1252,13 @@ class Boundary2D
                     total_area += CGAL::area(p, q, r);
                 }
             }
-            std::cout << "- optimal value of alpha = " << opt_alpha << std::endl;
-            std::cout << "- number of vertices = " << nvertices << std::endl; 
-            std::cout << "- number of edges = " << nedges << std::endl;
-            std::cout << "- enclosed area = " << total_area << std::endl;  
+            if (verbose)
+            {
+                std::cout << "- optimal value of alpha = " << opt_alpha << std::endl
+                          << "- number of vertices = " << nvertices << std::endl
+                          << "- number of edges = " << nedges << std::endl
+                          << "- enclosed area = " << total_area << std::endl;
+            } 
 
             return AlphaShape2DProperties(
                 x, y, vertex_indices_in_order, edge_indices_in_order,  
@@ -1261,12 +1276,15 @@ class Boundary2D
  * @param max_edges Maximum number of edges to be contained in the alpha shape;
  *                  if the number of edges in the alpha shape exceeds this value,
  *                  the alpha shape is simplified.
+ * @param verbose   If true, output intermittent messages to `stdout`.
  * @returns A new `AlphaShape2DProperties` instance containing the simplified
  *          shape. 
  */
-AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const int max_edges)
+AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const int max_edges,
+                                          const bool verbose = false)
 {
-    std::cout << "- ... simplifying the boundary" << std::endl; 
+    if (verbose)
+        std::cout << "- ... simplifying the boundary" << std::endl; 
 
     // Instantiate a Polygon object with the vertices given in the
     // order in which they were traversed
@@ -1293,20 +1311,6 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
         // ... and identify the index of each vertex in the polygon
         // with respect to the entire point-set 
         double sqdist_to_nearest_point = std::numeric_limits<double>::infinity();
-        /* 
-        auto it_nearest_point = points.begin();
-        for (auto it2 = points.begin(); it2 != points.end(); ++it2) 
-        {
-            double xv = it2->x(); 
-            double yv = it2->y(); 
-            double sqdist = std::pow(xit - xv, 2) + std::pow(yit - yv, 2);
-            if (sqdist_to_nearest_point > sqdist)
-            {
-                sqdist_to_nearest_point = sqdist; 
-                it_nearest_point = it2; 
-            }
-        }
-        */
         int idx_nearest_point = 0; 
         for (int i = 0; i < npoints; ++i)
         {
@@ -1320,7 +1324,6 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
             } 
         }
         vertex_indices_in_order_simplified.push_back(idx_nearest_point); 
-        //vertex_indices_in_order_simplified.push_back(std::distance(points.begin(), it_nearest_point)); 
     }
 
     // The edges in the polygon are then easy to determine
@@ -1338,13 +1341,16 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
 
     // Compute the area of the polygon formed by the simplified 
     // boundary
-    double total_area = std::abs(CGAL::to_double(simplified_polygon.area())); 
-    std::cout << "- enclosed area of simplified boundary = "
-              << total_area << std::endl;  
-    std::cout << "- number of vertices of simplified boundary = "
-              << nvertices_simplified << std::endl; 
-    std::cout << "- number of edges of simplified boundary = "
-              << nedges_simplified << std::endl; 
+    double total_area = std::abs(CGAL::to_double(simplified_polygon.area()));
+    if (verbose)
+    { 
+        std::cout << "- enclosed area of simplified boundary = "
+                  << total_area << std::endl
+                  << "- number of vertices of simplified boundary = "
+                  << nvertices_simplified << std::endl
+                  << "- number of edges of simplified boundary = "
+                  << nedges_simplified << std::endl;
+    } 
     
     return AlphaShape2DProperties(
         shape.x, shape.y, vertex_indices_in_order_simplified,
