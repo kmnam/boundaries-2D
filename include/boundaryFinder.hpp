@@ -47,24 +47,34 @@ constexpr double MINDIST_BETWEEN_POINTS = 1e-8;
  * @param n   Length of input range. 
  * @param k   Number of items to sample.
  * @param rng Random number generator.  
- * @returns   Another `std::vector` instance containing the subsample.  
+ * @returns   Another `std::vector` instance containing the subsample.
+ * @throws std::invalid_argument If `n < k`. 
  */
-std::vector<int> sampleWithoutReplacement(int n, int k, boost::random::mt19937& rng)
+std::vector<int> sampleWithoutReplacement(const int n, const int k,
+                                          boost::random::mt19937& rng)
 {
+    // Check that n >= k
+    if (n < k)
+        throw std::invalid_argument("Cannot sample k items from a set of size n < k");
+
+    // If n == k, simply return the range from 0 to n-1
     std::vector<int> sample; 
+    if (n == k)
+    {
+        for (int i = 0; i < n; ++i)
+            sample.push_back(i); 
+        return sample; 
+    } 
 
-    // Generate a random weight for each number 
+    // Populate a priority queue with 0..n-1, with priority defined by randomly
+    // generated weights between 0 and 1
+    // 
+    // Note that pairs are compared lexicographically, so placing the weights 
+    // first allows for the weights to be used as priorities
     boost::random::uniform_01<double> dist;
-    std::vector<double> weights; 
-    for (int i = 0; i < n; ++i)
-        weights.push_back(dist(rng)); 
-
-    // Populate a priority queue with 0..n-1, with priority defined by the weights
-    // (note that pairs are compared lexicographically, so placing the weights 
-    // first allows for the weights to be used as priorities)
     std::priority_queue<std::pair<double, int> > queue;
     for (int i = 0; i < n; ++i)
-        queue.emplace(std::make_pair(weights[i], i));
+        queue.emplace(std::make_pair(dist(rng), i));
     
     // Return the first k items in the queue
     for (int i = 0; i < k; ++i)
