@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     7/19/2022
+ *     7/25/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -393,6 +393,94 @@ struct AlphaShape2DProperties
             }
 
             return normals;
+        }
+
+        /**
+         * Delete the given points (randomly sampled without replacement) in
+         * the interior of the alpha shape.
+         *
+         * @param indices Indices of interior points to delete. 
+         * @throws std::runtime_error If any specified index refers to a point 
+         *                            that does not exist or lie in the interior.
+         */
+        void deleteInteriorPoints(std::vector<int>& indices)
+        {
+            // Maintain a set of boundary point indices, to ensure that none 
+            // of the points being deleted are boundary points 
+            std::unordered_set<int> boundary_indices; 
+            for (int i = 0; i < this->nv; ++i)
+                boundary_indices.insert(this->vertices[i]);
+            for (const int& i : indices)
+            {
+                if (i >= this->np)
+                    throw std::runtime_error("Invalid index specified for point to be removed");
+                else if (boundary_indices.find(i) != boundary_indices.end())
+                    throw std::runtime_error("Specified point lies in boundary, not in interior");  
+            }
+
+            // Maintain a new vector of indices of points to be removed 
+            std::vector<int> interior_indices(indices);
+
+            // Remove each point one by one ...  
+            boost::random::uniform_01<double> dist;  
+            for (int i = 0; i < interior_indices.size(); ++i)
+            {
+                std::vector<double>::iterator xit = this->x.begin() + interior_indices[i]; 
+                this->x.erase(xit);
+                std::vector<double>::iterator yit = this->y.begin() + interior_indices[i];
+                this->y.erase(yit);
+                this->np--;
+
+                for (int j = 0; j < this->nv; ++j)
+                {
+                    // Note that this->vertices[i] should never equal index_to_remove 
+                    // (former is in boundary, latter is in interior)
+                    if (this->vertices[j] > interior_indices[i])
+                        this->vertices[j]--;
+                }
+                for (int j = 0; j < this->edges.size(); ++j)
+                {
+                    // Note that neither vertex of each edge should never equal 
+                    // index_to_remove (former is in boundary, latter is in interior)
+                    if (this->edges[j].first > interior_indices[i])
+                        this->edges[j].first--;
+                    if (this->edges[j].second > interior_indices[i])
+                        this->edges[j].second--;
+                }
+                for (int j = i + 1; j < interior_indices.size(); ++j)
+                {
+                    if (interior_indices[j] > interior_indices[i])
+                        interior_indices[j]--;
+                }
+            }
+
+            // Find the vertex with minimum y-coordinate, breaking any 
+            // ties with whichever point has the smallest x-coordinate
+            if (this->nv > 0)
+            {
+                this->min = 0;
+                double xmin = this->x[this->vertices[0]];
+                double ymin = this->y[this->vertices[0]];
+                for (int i = 1; i < this->nv; ++i)
+                {
+                    if (this->y[this->vertices[i]] < ymin)
+                    {
+                        this->min = i;
+                        xmin = this->x[this->vertices[i]];
+                        ymin = this->y[this->vertices[i]];
+                    }
+                    else if (this->y[this->vertices[i]] == ymin && this->x[this->vertices[i]] < xmin)
+                    {
+                        this->min = i;
+                        xmin = this->x[this->vertices[i]];
+                        ymin = this->y[this->vertices[i]];
+                    }
+                }
+            }
+            else 
+            {
+                this->min = std::numeric_limits<double>::quiet_NaN();  
+            }
         }
 
         /**
@@ -1157,7 +1245,10 @@ class Boundary2D
             // if there are collinear points within the alpha shape
             try
             {
-                low = std::distance(shape.alpha_begin(), shape.find_optimal_alpha(1));
+                low = std::max(
+                    0,
+                    static_cast<int>(std::distance(shape.alpha_begin(), shape.find_optimal_alpha(1)) - 1)
+                );
             } 
             catch (CGAL::Assertion_exception& e)
             {
@@ -1283,7 +1374,7 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
                                           const bool verbose = false)
 {
     if (verbose)
-        std::cout << "- ... simplifying the boundary" << std::endl; 
+        std::cout << "- ... simplifying the boundary" << std::endl;
 
     // Instantiate a Polygon object with the vertices given in the
     // order in which they were traversed
@@ -1293,7 +1384,7 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
         Point_2 p(shape.x[*it], shape.y[*it]); 
         points.push_back(p);
     }
-    Polygon_2 polygon(points.begin(), points.end()); 
+    Polygon_2 polygon(points.begin(), points.end());
 
     // Simplify the polygon  
     Polygon_2 simplified_polygon = CGAL::Polyline_simplification_2::simplify(polygon, Cost(), Stop(max_edges));
@@ -1301,7 +1392,7 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
     // For each vertex in the simplified polygon ...
     std::vector<int> vertex_indices_in_order_simplified; 
     std::vector<std::pair<int, int> > edge_indices_in_order_simplified;
-    int npoints = shape.x.size();   
+    int npoints = shape.np; 
     for (auto it = simplified_polygon.vertices_begin(); it != simplified_polygon.vertices_end(); ++it)
     {
         double xit = it->x(); 
@@ -1336,7 +1427,7 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
     int vj = *vertex_indices_in_order_simplified.begin();
     edge_indices_in_order_simplified.emplace_back(std::make_pair(vi, vj)); 
     int nvertices_simplified = vertex_indices_in_order_simplified.size(); 
-    int nedges_simplified = edge_indices_in_order_simplified.size(); 
+    int nedges_simplified = edge_indices_in_order_simplified.size();
 
     // Compute the area of the polygon formed by the simplified 
     // boundary
