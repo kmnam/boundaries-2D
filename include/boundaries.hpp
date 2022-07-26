@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     7/25/2022
+ *     7/26/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -396,12 +396,12 @@ struct AlphaShape2DProperties
         }
 
         /**
-         * Delete the given points (randomly sampled without replacement) in
-         * the interior of the alpha shape.
+         * Delete the given points in the interior of the alpha shape.
          *
          * @param indices Indices of interior points to delete. 
          * @throws std::runtime_error If any specified index refers to a point 
-         *                            that does not exist or lie in the interior.
+         *                            that does not exist or lie in the interior,
+         *                            or if any index was specified multiple times.
          */
         void deleteInteriorPoints(std::vector<int>& indices)
         {
@@ -412,14 +412,14 @@ struct AlphaShape2DProperties
                 boundary_indices.insert(this->vertices[i]);
             for (const int& i : indices)
             {
-                if (i >= this->np)
+                if (i < 0 || i >= this->np)
                     throw std::runtime_error("Invalid index specified for point to be removed");
                 else if (boundary_indices.find(i) != boundary_indices.end())
                     throw std::runtime_error("Specified point lies in boundary, not in interior");  
             }
 
-            // Maintain a new vector of indices of points to be removed 
-            std::vector<int> interior_indices(indices);
+            // Maintain a vector of indices of points to be removed 
+            std::vector<int> interior_indices(indices); 
 
             // Remove each point one by one ...  
             boost::random::uniform_01<double> dist;  
@@ -449,7 +449,11 @@ struct AlphaShape2DProperties
                 }
                 for (int j = i + 1; j < interior_indices.size(); ++j)
                 {
-                    if (interior_indices[j] > interior_indices[i])
+                    // Note that no other given interior point index (j) should 
+                    // equal the current index (i), but this should be checked
+                    if (interior_indices[j] == interior_indices[i])
+                        throw std::runtime_error("Specified list of indices contains duplicates"); 
+                    else if (interior_indices[j] > interior_indices[i])
                         interior_indices[j]--;
                 }
             }
