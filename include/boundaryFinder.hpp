@@ -44,8 +44,8 @@ constexpr double MINDIST_BETWEEN_POINTS = 1e-8;
  * Sample `k` items from the range from `0` to `n - 1` (inclusive) without
  * replacement.
  *
- * @param n   Length of input range. 
- * @param k   Number of items to sample.
+ * @param n   Length of input range. Must be positive. 
+ * @param k   Number of items to sample. Must be non-negative.
  * @param rng Random number generator.  
  * @returns   Another `std::vector` instance containing the subsample.
  * @throws std::invalid_argument If `n < k`. 
@@ -53,9 +53,15 @@ constexpr double MINDIST_BETWEEN_POINTS = 1e-8;
 std::vector<int> sampleWithoutReplacement(const int n, const int k,
                                           boost::random::mt19937& rng)
 {
-    // Check that n >= k
+    // Check that n > 0, k >= 0 and n >= k
     if (n < k)
-        throw std::invalid_argument("Cannot sample k items from a set of size n < k");
+        throw std::invalid_argument("Cannot sample k items from a space of size n < k");
+    else if (n == 0)
+        throw std::invalid_argument("Cannot sample from empty space");
+    else if (n < 0)
+        throw std::invalid_argument("Sample space has size n < 0"); 
+    else if (k < 0)
+        throw std::invalid_argument("Cannot sample k < 0 items"); 
 
     // If n == k, simply return the range from 0 to n-1
     std::vector<int> sample; 
@@ -64,7 +70,12 @@ std::vector<int> sampleWithoutReplacement(const int n, const int k,
         for (int i = 0; i < n; ++i)
             sample.push_back(i); 
         return sample; 
-    } 
+    }
+    // Otherwise, if k == 0, simply return an empty vector
+    else if (k == 0)
+    {
+        return sample;
+    }
 
     // Populate a priority queue with 0..n-1, with priority defined by randomly
     // generated weights between 0 and 1
@@ -436,10 +447,13 @@ class BoundaryFinder
                     interior_indices.push_back(i); 
             }
             std::vector<int> interior_indices_to_delete;
+            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_int;
+            if (n_to_delete < 0)
+            {   // Check that the number of points to be deleted is not negative 
+                n_to_delete = 0; 
+            }
             std::vector<int> interior_indices_to_delete2 = sampleWithoutReplacement(
-                this->curr_bound.np - this->curr_bound.nv,
-                this->curr_bound.np - this->curr_bound.nv - n_keep_int,
-                this->rng
+                this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
             );
             for (const int i : interior_indices_to_delete2)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
@@ -772,10 +786,13 @@ class BoundaryFinder
                     interior_indices.push_back(i); 
             }
             std::vector<int> interior_indices_to_delete;
+            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_int;
+            if (n_to_delete < 0)
+            {   // Check that the number of points to be deleted is not negative 
+                n_to_delete = 0; 
+            }
             std::vector<int> interior_indices_to_delete2 = sampleWithoutReplacement(
-                this->curr_bound.np - this->curr_bound.nv,
-                this->curr_bound.np - this->curr_bound.nv - n_keep_int,
-                this->rng
+                this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
             );
             for (const int i : interior_indices_to_delete2)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
@@ -1234,10 +1251,13 @@ class BoundaryFinder
                     interior_indices.push_back(i); 
             }
             std::vector<int> interior_indices_to_delete;
+            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_int;
+            if (n_to_delete < 0)
+            {   // Check that the number of points to be deleted is not negative 
+                n_to_delete = 0; 
+            }
             std::vector<int> interior_indices_to_delete2 = sampleWithoutReplacement(
-                this->curr_bound.np - this->curr_bound.nv,
-                this->curr_bound.np - this->curr_bound.nv - n_keep_int,
-                this->rng
+                this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
             );
             for (const int i : interior_indices_to_delete2)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
