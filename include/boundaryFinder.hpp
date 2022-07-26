@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     7/25/2022
+ *     7/26/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -455,8 +455,8 @@ class BoundaryFinder
                 if (interior_indices_to_delete_set.find(i) == interior_indices_to_delete_set.end())
                     indices_to_keep.push_back(i); 
             }
-            this->input = this->input(indices_to_keep, Eigen::all); 
-            this->points = this->points(indices_to_keep, Eigen::all); 
+            this->input = this->input(indices_to_keep, Eigen::all).eval(); 
+            this->points = this->points(indices_to_keep, Eigen::all).eval(); 
             this->N = this->curr_bound.np;
             if (verbose)
                 std::cout << "- preserved " << n_keep_int << " interior points" << std::endl; 
@@ -661,8 +661,8 @@ class BoundaryFinder
             }
             indices_to_keep_prior(Eigen::seqN(n_int, to_mutate.size())) = to_mutate; 
             this->N = n_int + to_mutate.size(); 
-            this->input = this->input(indices_to_keep_prior, Eigen::all); 
-            this->points = this->points(indices_to_keep_prior, Eigen::all);
+            this->input = this->input(indices_to_keep_prior, Eigen::all).eval(); 
+            this->points = this->points(indices_to_keep_prior, Eigen::all).eval();
             if (verbose)
             {
                 std::cout << "- preserved " << this->N << " points: "
@@ -791,8 +791,8 @@ class BoundaryFinder
                 if (interior_indices_to_delete_set.find(i) == interior_indices_to_delete_set.end())
                     indices_to_keep.push_back(i); 
             }
-            this->input = this->input(indices_to_keep, Eigen::all); 
-            this->points = this->points(indices_to_keep, Eigen::all); 
+            this->input = this->input(indices_to_keep, Eigen::all).eval(); 
+            this->points = this->points(indices_to_keep, Eigen::all).eval(); 
             this->N = this->curr_bound.np;
             if (verbose)
                 std::cout << "- preserved " << n_keep_int << " interior points" << std::endl; 
@@ -967,6 +967,10 @@ class BoundaryFinder
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
          *                                during SQP to `stdout`.
+         * @param write_pulled_points     If true, write the points that were 
+         *                                pulled, their corresponding normal 
+         *                                vectors, and the resulting points 
+         *                                to file. 
          * @returns True if the area enclosed by the boundary (obtained prior 
          *          to pulling) has converged to within `this->area_tol`. 
          */
@@ -983,8 +987,10 @@ class BoundaryFinder
                   const RegularizationMethod regularize = NOREG,
                   const double regularize_weight = 0, const double c1 = 1e-4,
                   const double c2 = 0.9, const bool verbose = true,
-                  const bool sqp_verbose = false)
+                  const bool sqp_verbose = false,
+                  const bool write_pulled_points = false)
         {
+            const int D = this->constraints->getD();
             VectorXi to_pull; 
 
             // If the boundary was not simplified, or the simplification did 
@@ -1048,9 +1054,9 @@ class BoundaryFinder
             int n_int = this->curr_bound.np - this->curr_bound.nv; 
             std::unordered_set<int> boundary_indices(
                 this->curr_bound.vertices.begin(), this->curr_bound.vertices.end()
-            );
+            );  // Note that this->curr_bound and this->curr_simplified have the same interior points
             VectorXi indices_to_keep_prior(n_int + to_pull.size()); 
-            int idx = 0;  
+            int idx = 0; 
             for (int i = 0; i < this->curr_bound.np; ++i)
             {
                 if (boundary_indices.find(i) == boundary_indices.end())
@@ -1061,15 +1067,15 @@ class BoundaryFinder
             }
             indices_to_keep_prior(Eigen::seqN(n_int, to_pull.size())) = to_pull; 
             this->N = n_int + to_pull.size(); 
-            this->input = this->input(indices_to_keep_prior, Eigen::all); 
-            this->points = this->points(indices_to_keep_prior, Eigen::all);
+            this->input = this->input(indices_to_keep_prior, Eigen::all).eval(); 
+            this->points = this->points(indices_to_keep_prior, Eigen::all).eval();
             if (verbose)
             {
                 std::cout << "- preserved " << this->N << " points: "
                           << n_int << " interior, "
                           << to_pull.size() << " boundary (to be pulled)"
                           << std::endl; 
-            } 
+            }
 
             // For each vertex in the boundary, pull along its outward normal
             // vector by distance epsilon
@@ -1091,6 +1097,8 @@ class BoundaryFinder
 
             // For each vertex in the boundary, minimize the distance to the
             // pulled vertex with a feasible parameter point
+            MatrixXd pull_results_in(to_pull.size(), D);
+            MatrixXd pull_results_out(to_pull.size(), 2); 
             for (int i = 0; i < to_pull.size(); ++i)
             {
                 // Minimize the appropriate objective function
@@ -1107,24 +1115,64 @@ class BoundaryFinder
                     sqp_tol, BFGS, regularize, regularize_weight, use_only_armijo,
                     use_strong_wolfe, hessian_modify_max_iter, c1, c2, sqp_verbose
                 );
-                VectorXd z = this->func(q); 
-                
-                // Check that pulling did not give rise to an already computed point
-                double mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
-                if (!filter(z) && mindist > MINDIST_BETWEEN_POINTS)
+                pull_results_in.row(i) = q;
+                pull_results_out.row(i) = this->func(q);
+            }  
+            
+            // Now check proximity of the resulting points (in output 2-D space)
+            // to the existing points
+            Matrix<bool, Dynamic, 1> added = Matrix<bool, Dynamic, 1>::Zero(to_pull.size());  
+            for (int i = 0; i < to_pull.size(); ++i)
+            {
+                double mindist = (this->points.rowwise() - pull_results_out.row(i)).rowwise().norm().minCoeff();
+
+                // If the resulting point is not filtered and is far enough
+                // away from the points already in the point-set, then add to
+                // the point-set 
+                if (!filter(pull_results_out.row(i)) && mindist > MINDIST_BETWEEN_POINTS)
                 {
+                    added(i) = true; 
                     this->N++;
-                    this->input.conservativeResize(this->N, this->constraints->getD()); 
+                    this->input.conservativeResize(this->N, D); 
                     this->points.conservativeResize(this->N, 2);
-                    this->input.row(this->N-1) = q;
-                    this->points.row(this->N-1) = z;
+                    this->input.row(this->N-1) = pull_results_in.row(i);
+                    this->points.row(this->N-1) = pull_results_out.row(i);
                 }
             }
             if (verbose)
             {
                 std::cout << "- pulled " << to_pull.size() << " points" << std::endl;
                 std::cout << "- augmented point-set contains " << this->N << " points" << std::endl;
-            } 
+            }
+
+            // Write the results of the pulling procedure to file, if desired 
+            if (write_pulled_points)
+            {
+                std::ofstream outfile; 
+                std::stringstream ss;
+                ss << write_prefix << "-pass" << iter << "-pull.txt";
+                outfile.open(ss.str());
+                outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
+                outfile << "START_X\tSTART_Y\tNORMAL_X\tNORMAL_Y\tTARGET_X\tTARGET_Y\t"; 
+                for (int i = 0; i < D; ++i)
+                    outfile << "RESULT_IN_" << i << '\t'; 
+                outfile << "RESULT_OUT_X\tRESULT_OUT_Y\tADDED\n"; 
+                for (int i = 0; i < to_pull.size(); ++i)
+                {
+                    outfile << this->points(n_int + i, 0) << '\t'
+                            << this->points(n_int + i, 1) << '\t'
+                            << CGAL::to_double(normals[i].x()) << '\t'
+                            << CGAL::to_double(normals[i].y()) << '\t'
+                            << pulled(i, 0) << '\t'
+                            << pulled(i, 1) << '\t';
+                    for (int j = 0; j < D; ++j)
+                        outfile << pull_results_in(i, j) << '\t'; 
+                    outfile << pull_results_out(i, 0) << '\t'
+                            << pull_results_out(i, 1) << '\t'
+                            << added(i) << std::endl; 
+                }
+                outfile.close();  
+            }
 
             // Get new boundary (assuming that the shape is simply connected)
             std::vector<double> x, y; 
@@ -1205,8 +1253,8 @@ class BoundaryFinder
                 if (interior_indices_to_delete_set.find(i) == interior_indices_to_delete_set.end())
                     indices_to_keep.push_back(i); 
             }
-            this->input = this->input(indices_to_keep, Eigen::all); 
-            this->points = this->points(indices_to_keep, Eigen::all); 
+            this->input = this->input(indices_to_keep, Eigen::all).eval(); 
+            this->points = this->points(indices_to_keep, Eigen::all).eval(); 
             this->N = this->curr_bound.np;
             if (verbose)
                 std::cout << "- preserved " << n_keep_int << " interior points" << std::endl; 
@@ -1379,6 +1427,10 @@ class BoundaryFinder
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
          *                                during SQP to `stdout`.
+         * @param write_pulled_points     If true, write the points that were 
+         *                                pulled, their corresponding normal 
+         *                                vectors, and the resulting points 
+         *                                to file. 
          */
         void run(const double mutate_delta,
                  std::function<bool(const Ref<const VectorXd>&)> filter, 
@@ -1395,7 +1447,8 @@ class BoundaryFinder
                  const RegularizationMethod regularize = NOREG, 
                  const double regularize_weight = 0, const double c1 = 1e-4,
                  const double c2 = 0.9, const bool verbose = true,
-                 const bool sqp_verbose = false)
+                 const bool sqp_verbose = false, 
+                 const bool write_pulled_points = false)
         {
             // Initialize the sampling run ...
             this->initialize(
@@ -1436,7 +1489,7 @@ class BoundaryFinder
                     max_edges, n_keep_int, correct_orig, tau, delta, beta,
                     use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
                     write_prefix, regularize, regularize_weight, c1, c2,
-                    verbose, sqp_verbose
+                    verbose, sqp_verbose, write_pulled_points
                 );
                 if (!result)
                     n_converged = 0;
