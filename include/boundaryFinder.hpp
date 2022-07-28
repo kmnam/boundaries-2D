@@ -338,26 +338,26 @@ class BoundaryFinder
          * at the given set of points in the input polytope, and computing
          * the initial boundary.
          *
-         * @param filter       Boolean function for filtering output points in 
-         *                     the plane as desired.
-         * @param input        Initial set of points in the input polytope at 
-         *                     which to evaluate the stored mapping.
-         * @param max_edges    Maximum number of edges to be contained in the
-         *                     boundary. If zero, the boundary is kept
-         *                     unsimplified.
-         * @param n_keep_int   Number of interior points to keep in the
-         *                     unsimplified boundary. If this number exceeds
-         *                     the total number of interior points, then all 
-         *                     interior points are kept. 
-         * @param write_prefix Prefix of output file name to which to write 
-         *                     the boundary obtained in this iteration.
-         * @param verbose      If true, output intermittent messages to `stdout`.
-         * @throws std::invalid_argument if the input points do not have the 
+         * @param filter           Boolean function for filtering output points
+         *                         in the plane as desired.
+         * @param input            Initial set of points in the input polytope 
+         *                         at which to evaluate the stored mapping.
+         * @param max_edges        Maximum number of edges to be contained in
+         *                         the boundary. If zero, the boundary is kept
+         *                         unsimplified.
+         * @param n_keep_interior  Number of interior points to keep from the
+         *                         unsimplified boundary. If this number exceeds
+         *                         the total number of interior points, then all 
+         *                         interior points are kept.
+         * @param write_prefix     Prefix of output file name to which to write 
+         *                         the boundary obtained in this iteration.
+         * @param verbose          If true, output intermittent messages to `stdout`.
+         * @throws std::invalid_argument If the input points do not have the 
          *                               correct dimension.  
          */
         void initialize(std::function<bool(const Ref<const VectorXd>&)> filter, 
                         const Ref<const MatrixXd>& input, const int max_edges, 
-                        const int n_keep_int, const std::string write_prefix,
+                        const int n_keep_interior, const std::string write_prefix,
                         const bool verbose = true)
         {
             // Check that the input points have the correct dimensionality
@@ -437,25 +437,25 @@ class BoundaryFinder
             this->curr_bound.orient(CGAL::RIGHT_TURN);
 
             // Remove as many points from the interior as desired
-            std::vector<int> interior_indices; 
             std::unordered_set<int> boundary_indices(
                 this->curr_bound.vertices.begin(), this->curr_bound.vertices.end()
             );
+            std::vector<int> interior_indices; 
             for (int i = 0; i < this->curr_bound.np; ++i)
             {
                 if (boundary_indices.find(i) == boundary_indices.end())
                     interior_indices.push_back(i); 
             }
             std::vector<int> interior_indices_to_delete;
-            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_int;
+            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_interior;
             if (n_to_delete < 0)
             {   // Check that the number of points to be deleted is not negative 
                 n_to_delete = 0; 
             }
-            std::vector<int> interior_indices_to_delete2 = sampleWithoutReplacement(
+            std::vector<int> idx = sampleWithoutReplacement(
                 this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
             );
-            for (const int i : interior_indices_to_delete2)
+            for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
 
@@ -464,7 +464,7 @@ class BoundaryFinder
             std::unordered_set<int> interior_indices_to_delete_set(
                 interior_indices_to_delete.begin(), interior_indices_to_delete.end()
             ); 
-            for (int i = 0; i < this->N; ++i)   // Find all preserved interior (and boundary) vertices
+            for (int i = 0; i < this->N; ++i)
             {
                 if (interior_indices_to_delete_set.find(i) == interior_indices_to_delete_set.end())
                     indices_to_keep.push_back(i); 
@@ -589,111 +589,186 @@ class BoundaryFinder
          *
          * Note that this method assumes that the boundary is simply connected.
          *
-         * @param dist         Random distribution from which to sample increments
-         *                     by which to mutate each input point coordinate.
-         * @param filter       Boolean function for filtering output points in the 
-         *                     plane as desired.
-         * @param iter         Iteration number. 
-         * @param max_edges    Maximum number of edges to be contained in the
-         *                     boundary. If zero, the boundary is kept
-         *                     unsimplified.
-         * @param n_keep_int   Number of interior points to keep in the
-         *                     unsimplified boundary. If this number exceeds
-         *                     the total number of interior points, then all 
-         *                     interior points are kept. 
-         * @param correct_orig If the boundary is simplified, the number of
-         *                     points in the *original (unsimplified) boundary*
-         *                     that should be randomly sampled (without
-         *                     replacement) for mutation.
-         * @param write_prefix Prefix of output file name to which to write 
-         *                     the boundary obtained in this iteration.
-         * @param verbose      If true, output intermittent messages to `stdout`.
+         * @param dist               Random distribution from which to sample
+         *                           increments by which to mutate each input
+         *                           point coordinate.
+         * @param filter             Boolean function for filtering output points
+         *                           in the plane as desired.
+         * @param iter               Iteration number. 
+         * @param max_edges          Maximum number of edges to be contained in
+         *                           the boundary. If zero, the boundary is kept
+         *                           unsimplified.
+         * @param n_keep_interior    Number of interior points to keep in the
+         *                           unsimplified boundary. If this number exceeds
+         *                           the total number of interior points, then all 
+         *                           interior points are kept. 
+         * @param n_keep_origbound   If the boundary is simplified, the number of
+         *                           points in the *original (unsimplified)
+         *                           boundary* that should be randomly sampled
+         *                           (without replacement) to be preserved. 
+         * @param n_mutate_origbound If the boundary is simplified, the number of
+         *                           points *among those chosen to be preserved*
+         *                           that should be further randomly sampled 
+         *                           (without replacement) to be mutated. 
+         * @param write_prefix       Prefix of output file name to which to write 
+         *                           the boundary obtained in this iteration.
+         * @param verbose            If true, output intermittent messages to
+         *                           `stdout`.
          * @returns True if the area enclosed by the boundary (obtained prior 
          *          to mutation) has converged to within `this->area_tol`. 
          */
         bool step(boost::random::uniform_real_distribution<double>& dist,
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
-                  const int iter, const int max_edges, const int n_keep_int, 
-                  const int correct_orig, const std::string write_prefix,
-                  const bool verbose = true)
+                  const int iter, const int max_edges, int n_keep_interior,
+                  int n_keep_origbound, int n_mutate_origbound, 
+                  const std::string write_prefix, const bool verbose = true)
         {
-            // For each of the points in the boundary, mutate the corresponding
-            // model parameters once, and evaluate the stored mapping at these 
-            // mutated parameter values
+            // Reset input parameters if necessary 
+            int n_interior = this->curr_bound.np - this->curr_bound.nv; 
+            int origbound_nv = this->curr_bound.nv - this->curr_simplified.nv;
+            if (n_keep_interior > n_interior)
+                n_keep_interior = n_interior; 
+            if (n_keep_origbound > origbound_nv)
+                n_keep_origbound = origbound_nv; 
+            if (n_mutate_origbound > n_keep_origbound)
+                n_mutate_origbound = n_keep_origbound; 
+
+            // First, if the boundary was simplified, identify the subset of 
+            // boundary vertices in the unsimplified boundary and not in 
+            // the simplified boundary to keep; otherwise, keep every point 
+            // in the (unsimplified) boundary
+            std::vector<int> origbound_indices, origbound_indices_to_keep;
+            std::unordered_set<int> boundary_indices(
+                this->curr_bound.vertices.begin(),
+                this->curr_bound.vertices.end()
+            );
+            std::unordered_set<int> simplified_indices; 
+            if (!this->simplified)
+            {
+                for (const int i : this->curr_bound.vertices)
+                    origbound_indices_to_keep.push_back(i); 
+            }
+            else
+            {
+                simplified_indices.insert(
+                    this->curr_simplified.vertices.begin(),
+                    this->curr_simplified.vertices.end()
+                );
+
+                // Get the complement of vertices in the unsimplified boundary 
+                // that do not lie in the simplified boundary
+                for (const int i : boundary_indices)
+                {
+                    if (simplified_indices.find(i) == simplified_indices.end())
+                        origbound_indices.push_back(i); 
+                }
+
+                // Sample a subset of these vertices 
+                std::vector<int> idx = sampleWithoutReplacement(
+                    origbound_indices.size(), n_keep_origbound, this->rng
+                ); 
+                for (const int i : idx)
+                    origbound_indices_to_keep.push_back(origbound_indices[i]); 
+            }
+
+            // Keep only the vertices in the unsimplified boundary chosen above
+            //
+            // Note that this slicing is only necessary if the boundary was 
+            // simplified  
+            if (this->simplified)
+            {
+                n_keep_prior = this->curr_simplified.nv + n_interior + n_keep_origbound;
+                VectorXi indices_to_keep_prior(n_keep_prior); 
+                int j = 0;
+
+                // Keep all vertices in the simplified boundary, all points
+                // in the interior, and the vertices in the unsimplified 
+                // boundary chosen above
+                for (int i = 0; i < this->curr_bound.np; ++i)
+                {
+                    if (boundary_indices.find(i) == boundary_indices.end())
+                    {
+                        indices_to_keep_prior(j) = i;
+                        j++;
+                    }
+                }
+                for (const int i : this->curr_simplified.vertices) 
+                {
+                    indices_to_keep_prior(j) = i; 
+                    j++;
+                }
+                for (const int i : origbound_indices_to_keep)
+                {
+                    indices_to_keep_prior(j) = i;
+                    j++; 
+                }
+                this->N = n_keep_prior; 
+                this->input = this->input(indices_to_keep_prior, Eigen::all).eval(); 
+                this->points = this->points(indices_to_keep_prior, Eigen::all).eval();
+            }
+            if (verbose)
+            {
+                if (!this->simplified)
+                {
+                    std::cout << "- preserved " << this->N << " points: "
+                              << n_interior << " interior, "
+                              << this->curr_bound.nv << " boundary"
+                              << std::endl; 
+                } 
+                else 
+                {
+                    std::cout << "- preserved " << this->N << " points: "
+                              << n_interior << " interior, "
+                              << this->curr_simplified.nv + n_keep_origbound
+                              << " boundary" << std::endl;
+                }
+            }
+
             const int D = this->constraints->getD();
             VectorXi to_mutate;
 
-            // If the boundary was not simplified, or the simplification did 
-            // not lead to the decimation of > correct_orig points, then mutate
-            // every point in the boundary
-            if (!this->simplified || this->curr_simplified.nv + correct_orig >= this->curr_bound.nv)
+            // If the boundary was not simplified, then mutate every point in
+            // the boundary
+            if (!this->simplified)
             {
                 to_mutate.resize(this->curr_bound.nv);
                 for (int i = 0; i < this->curr_bound.nv; ++i)
                     to_mutate(i) = this->curr_bound.vertices[i];
             }
             // Otherwise, then mutate every point in the *simplified* boundary,
-            // plus correct_orig more points in the unsimplified boundary 
+            // plus the desired number of points in the unsimplified boundary 
             else
             {
-                to_mutate.resize(this->curr_simplified.nv + correct_orig);
-                for (int i = 0; i < this->curr_simplified.nv; ++i)
-                    to_mutate(i) = this->curr_simplified.vertices[i];
-                
-                // Choose correct_orig number of points from the unsimplified
-                // boundary that do not belong to the simplified boundary 
-                std::unordered_set<int> indices_all(
-                    this->curr_bound.vertices.begin(), this->curr_bound.vertices.end()
-                );
-                std::unordered_set<int> indices_simplified(
-                    this->curr_simplified.vertices.begin(), this->curr_simplified.vertices.end()
-                ); 
-                std::vector<int> indices_complement; 
-                for (auto it = indices_all.begin(); it != indices_all.end(); ++it)
-                {
-                    if (indices_simplified.find(*it) == indices_simplified.end())
-                        indices_complement.push_back(*it); 
-                }
-                std::vector<int> sample = sampleWithoutReplacement(
-                    indices_complement.size(), correct_orig, this->rng
-                );
-                for (int i = 0; i < correct_orig; ++i)
-                    to_mutate(this->curr_simplified.nv + i) = indices_complement[sample[i]];
-            }
+                const int n_mutate = this->curr_simplified.nv + n_mutate_origbound; 
+                to_mutate.resize(n_mutate);
 
-            // Remove *every other* boundary point from this->N, this->input, this->points
-            int n_int = this->curr_bound.np - this->curr_bound.nv; 
-            std::unordered_set<int> boundary_indices(
-                this->curr_bound.vertices.begin(), this->curr_bound.vertices.end()
-            );
-            VectorXi indices_to_keep_prior(n_int + to_mutate.size()); 
-            int idx = 0;  
-            for (int i = 0; i < this->curr_bound.np; ++i)
-            {
-                if (boundary_indices.find(i) == boundary_indices.end())
-                {
-                    indices_to_keep_prior(idx) = i;
-                    idx++;
-                } 
+                // The vertices in the simplified boundary are now in one 
+                // contiguous chunk in this->input / this->points (see above)
+                for (int i = 0; i < this->curr_simplified.nv; ++i)
+                    to_mutate(i) = n_interior + i;
+                
+                // Choose n_mutate_origbound number of vertices among the 
+                // vertices in the unsimplified boundary *that were chosen to 
+                // be kept above*
+                std::vector<int> idx = sampleWithoutReplacement(
+                    n_keep_origbound, n_mutate_origbound, this->rng
+                );
+                for (const int i : idx)
+                    to_mutate(this->curr_simplified.nv + i) = n_interior + this->curr_simplified.nv + i;
             }
-            indices_to_keep_prior(Eigen::seqN(n_int, to_mutate.size())) = to_mutate; 
-            this->N = n_int + to_mutate.size(); 
-            this->input = this->input(indices_to_keep_prior, Eigen::all).eval(); 
-            this->points = this->points(indices_to_keep_prior, Eigen::all).eval();
             if (verbose)
             {
-                std::cout << "- preserved " << this->N << " points: "
-                          << n_int << " interior, "
-                          << to_mutate.size() << " boundary (to be mutated)"
-                          << std::endl; 
+                std::cout << "- mutating " << to_mutate.size()
+                          << " boundary points" << std::endl; 
             } 
 
+            // Now proceed to mutate each point ... 
             for (int i = 0; i < to_mutate.size(); ++i)
             {
                 bool filtered = true;
                 double mindist = 0.0;
                 int j = 0;
-                VectorXd p = this->input.row(n_int + i); 
+                VectorXd p = this->input.row(i);
                 VectorXd q, z;
                 while ((filtered || mindist < MINDIST_BETWEEN_POINTS) && j < MAX_NUM_MUTATION_ATTEMPTS)
                 {
@@ -725,9 +800,9 @@ class BoundaryFinder
             }
             if (verbose)
             {
-                std::cout << "- mutated " << to_mutate.size() << " points" << std::endl;
-                std::cout << "- augmented point-set contains " << this->N << " points" << std::endl;
-            } 
+                std::cout << "- mutations complete; augmented point-set contains "
+                          << this->N << " points" << std::endl;
+            }
 
             // Get new boundary (assuming that the shape is simply connected)
             std::vector<double> x, y;
@@ -778,26 +853,26 @@ class BoundaryFinder
             this->curr_bound.orient(CGAL::RIGHT_TURN);
 
             // Remove as many points from the interior as desired
-            std::vector<int> interior_indices; 
             boundary_indices.clear(); 
             boundary_indices.insert(
                 this->curr_bound.vertices.begin(), this->curr_bound.vertices.end()
             );
+            std::vector<int> interior_indices; 
             for (int i = 0; i < this->curr_bound.np; ++i)
             {
                 if (boundary_indices.find(i) == boundary_indices.end())
                     interior_indices.push_back(i); 
             }
             std::vector<int> interior_indices_to_delete;
-            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_int;
+            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_interior;
             if (n_to_delete < 0)
             {   // Check that the number of points to be deleted is not negative 
                 n_to_delete = 0; 
             }
-            std::vector<int> interior_indices_to_delete2 = sampleWithoutReplacement(
+            std::vector<int> idx = sampleWithoutReplacement(
                 this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
             );
-            for (const int i : interior_indices_to_delete2)
+            for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
 
@@ -806,7 +881,7 @@ class BoundaryFinder
             std::unordered_set<int> interior_indices_to_delete_set(
                 interior_indices_to_delete.begin(), interior_indices_to_delete.end()
             ); 
-            for (int i = 0; i < this->N; ++i)   // Find all preserved interior (and boundary) vertices
+            for (int i = 0; i < this->N; ++i)
             {
                 if (interior_indices_to_delete_set.find(i) == interior_indices_to_delete_set.end())
                     indices_to_keep.push_back(i); 
@@ -949,16 +1024,21 @@ class BoundaryFinder
          * @param max_edges               Maximum number of edges to be contained
          *                                in the boundary. If zero, the boundary
          *                                is kept unsimplified.
-         * @param n_keep_int              Number of interior points to keep in
+         * @param n_keep_interior         Number of interior points to keep in
          *                                the unsimplified boundary. If this
          *                                number exceeds the total number of
          *                                interior points, then all interior
          *                                points are kept. 
-         * @param correct_orig            If the boundary is simplified, the
+         * @param n_keep_origbound        If the boundary is simplified, the
          *                                number of points in the *original
          *                                (unsimplified) boundary* that should
-         *                                be randomly sampled (without
-         *                                replacement) for pulling.
+         *                                be randomly sampled (without replacement)
+         *                                to be preserved.
+         * @param n_pull_origbound        If the boundary is simplified, the
+         *                                number of points *among those chosen
+         *                                to be preserved* that should be further
+         *                                randomly sampled (without replacement)
+         *                                to be pulled. 
          * @param tau                     Rate at which step-sizes are decreased
          *                                during each SQP iteration.
          * @param delta                   Increment for finite-differences 
@@ -1001,9 +1081,9 @@ class BoundaryFinder
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const double epsilon, const int max_iter,
                   const double sqp_tol, const int iter,
-                  const int max_edges, const int n_keep_int, 
-                  const int correct_orig, const double tau,
-                  const double delta, const double beta,
+                  const int iter, const int max_edges, int n_keep_interior,
+                  int n_keep_origbound, int n_pull_origbound,
+                  const double tau, const double delta, const double beta,
                   const bool use_only_armijo, const bool use_strong_wolfe,
                   const int hessian_modify_max_iter,
                   const std::string write_prefix,
@@ -1013,99 +1093,168 @@ class BoundaryFinder
                   const bool sqp_verbose = false,
                   const bool write_pulled_points = false)
         {
-            const int D = this->constraints->getD();
-            VectorXi to_pull; 
+            // Reset input parameters if necessary 
+            int n_interior = this->curr_bound.np - this->curr_bound.nv; 
+            int origbound_nv = this->curr_bound.nv - this->curr_simplified.nv;
+            if (n_keep_interior > n_interior)
+                n_keep_interior = n_interior; 
+            if (n_keep_origbound > origbound_nv)
+                n_keep_origbound = origbound_nv; 
+            if (n_pull_origbound > n_keep_origbound)
+                n_pull_origbound = n_keep_origbound; 
 
-            // If the boundary was not simplified, or the simplification did 
-            // not lead to the decimation of > correct_orig points, then pull every 
-            // point in the boundary
-            std::vector<Vector_2> normals;
-            if (!this->simplified || this->curr_simplified.nv + correct_orig >= this->curr_bound.nv)
+            // First, if the boundary was simplified, identify the subset of 
+            // boundary vertices in the unsimplified boundary and not in 
+            // the simplified boundary to keep; otherwise, keep every point 
+            // in the (unsimplified) boundary
+            std::vector<int> origbound_indices, origbound_indices_to_keep;
+            std::unordered_set<int> boundary_indices(
+                this->curr_bound.vertices.begin(),
+                this->curr_bound.vertices.end()
+            );
+            std::unordered_set<int> simplified_indices; 
+            if (!this->simplified)
             {
-                to_pull.resize(this->curr_bound.nv); 
+                for (const int i : this->curr_bound.vertices)
+                    origbound_indices_to_keep.push_back(i); 
+            }
+            else
+            {
+                simplified_indices.insert(
+                    this->curr_simplified.vertices.begin(),
+                    this->curr_simplified.vertices.end()
+                );
+
+                // Get the complement of vertices in the unsimplified boundary 
+                // that do not lie in the simplified boundary
+                for (const int i : boundary_indices)
+                {
+                    if (simplified_indices.find(i) == simplified_indices.end())
+                        origbound_indices.push_back(i); 
+                }
+
+                // Sample a subset of these vertices 
+                std::vector<int> idx = sampleWithoutReplacement(
+                    origbound_indices.size(), n_keep_origbound, this->rng
+                ); 
+                for (const int i : idx)
+                    origbound_indices_to_keep.push_back(origbound_indices[i]); 
+            }
+
+            // Keep only the vertices in the unsimplified boundary chosen above
+            //
+            // Note that this slicing is only necessary if the boundary was 
+            // simplified  
+            if (this->simplified)
+            {
+                n_keep_prior = this->curr_simplified.nv + n_interior + n_keep_origbound;
+                VectorXi indices_to_keep_prior(n_keep_prior); 
+                int j = 0;
+
+                // Keep all vertices in the simplified boundary, all points
+                // in the interior, and the vertices in the unsimplified 
+                // boundary chosen above
+                for (int i = 0; i < this->curr_bound.np; ++i)
+                {
+                    if (boundary_indices.find(i) == boundary_indices.end())
+                    {
+                        indices_to_keep_prior(j) = i;
+                        j++;
+                    }
+                }
+                for (const int i : this->curr_simplified.vertices) 
+                {
+                    indices_to_keep_prior(j) = i; 
+                    j++;
+                }
+                for (const int i : origbound_indices_to_keep)
+                {
+                    indices_to_keep_prior(j) = i;
+                    j++; 
+                }
+                this->N = n_keep_prior; 
+                this->input = this->input(indices_to_keep_prior, Eigen::all).eval(); 
+                this->points = this->points(indices_to_keep_prior, Eigen::all).eval();
+            }
+            if (verbose)
+            {
+                if (!this->simplified)
+                {
+                    std::cout << "- preserved " << this->N << " points: "
+                              << n_interior << " interior, "
+                              << this->curr_bound.nv << " boundary"
+                              << std::endl; 
+                } 
+                else 
+                {
+                    std::cout << "- preserved " << this->N << " points: "
+                              << n_interior << " interior, "
+                              << this->curr_simplified.nv + n_keep_origbound
+                              << " boundary" << std::endl;
+                }
+            }
+
+            const int D = this->constraints->getD();
+            VectorXi to_pull;
+            std::vector<Vector_2> normals;
+
+            // If the boundary was not simplified, then pull every point in
+            // the boundary
+            if (!this->simplified)
+            {
+                to_pull.resize(this->curr_bound.nv);
                 for (int i = 0; i < this->curr_bound.nv; ++i)
                     to_pull(i) = this->curr_bound.vertices[i];
                 normals = this->curr_bound.getOutwardVertexNormals();  
             }
             // Otherwise, then pull every point in the *simplified* boundary,
-            // plus correct_orig more points in the unsimplified boundary 
+            // plus the desired number of points in the unsimplified boundary 
             else
             {
-                to_pull.resize(this->curr_simplified.nv + correct_orig);
-                std::vector<Vector_2> normals_original = this->curr_bound.getOutwardVertexNormals(); 
-                std::vector<Vector_2> normals_simplified = this->curr_simplified.getOutwardVertexNormals(); 
-                for (int i = 0; i < this->curr_simplified.nv; ++i)
-                {
-                    to_pull(i) = this->curr_simplified.vertices[i];
-                    normals.push_back(normals_simplified[i]); 
-                }
-                
-                // Choose correct_orig points from the unsimplified boundary that 
-                // do not belong to the simplified boundary 
-                std::unordered_set<int> indices_all(
-                    this->curr_bound.vertices.begin(), this->curr_bound.vertices.end()
-                );
-                std::unordered_set<int> indices_simplified(
-                    this->curr_simplified.vertices.begin(), this->curr_simplified.vertices.end()
-                ); 
-                std::vector<int> indices_complement; 
-                for (auto it = indices_all.begin(); it != indices_all.end(); ++it)
-                {
-                    if (indices_simplified.find(*it) == indices_simplified.end())
-                        indices_complement.push_back(*it); 
-                }
-                std::vector<int> sample = sampleWithoutReplacement(indices_complement.size(), correct_orig, this->rng);
-                for (int i = 0; i < correct_orig; ++i)
-                {
-                    int j = indices_complement[sample[i]];
-                    int k = std::distance(
-                        this->curr_bound.vertices.begin(),
-                        std::find(this->curr_bound.vertices.begin(), this->curr_bound.vertices.end(), j)
-                    );  // Note that this call to std::find() should *never* yield this->curr_bound.vertices.end()
-                    to_pull(this->curr_simplified.nv + i) = j;
-                    int prev = (k - 1 < 0 ? this->curr_bound.nv - 1 : k - 1);
-                    int next = (k + 1 > this->curr_bound.nv - 1 ? 0 : k + 1);
-                    normals.push_back(
-                        this->curr_bound.getOutwardVertexNormal(
-                            this->curr_bound.vertices[prev], j, this->curr_bound.vertices[next]
-                        )
-                    ); 
-                } 
-            }
+                const int n_pull = this->curr_simplified.nv + n_pull_origbound; 
+                to_pull.resize(n_pull);
 
-            // Remove *every other* boundary point from this->N, this->input, this->points
-            int n_int = this->curr_bound.np - this->curr_bound.nv; 
-            std::unordered_set<int> boundary_indices(
-                this->curr_bound.vertices.begin(), this->curr_bound.vertices.end()
-            );  // Note that this->curr_bound and this->curr_simplified have the same interior points
-            VectorXi indices_to_keep_prior(n_int + to_pull.size()); 
-            int idx = 0; 
-            for (int i = 0; i < this->curr_bound.np; ++i)
-            {
-                if (boundary_indices.find(i) == boundary_indices.end())
+                // The vertices in the simplified boundary are now in one 
+                // contiguous chunk in this->input / this->points (see above)
+                for (int i = 0; i < this->curr_simplified.nv; ++i)
+                    to_pull(i) = n_interior + i;
+                
+                // Choose n_pull_origbound number of vertices among the 
+                // vertices in the unsimplified boundary *that were chosen to 
+                // be kept above*
+                std::vector<int> idx = sampleWithoutReplacement(
+                    n_keep_origbound, n_pull_origbound, this->rng
+                );
+                for (const int i : idx)
+                    to_pull(this->curr_simplified.nv + i) = n_interior + this->curr_simplified.nv + i;
+
+                // Rely on the old indexing of points to locate each vertex 
+                // to be pulled in the current unsimplified and simplified
+                // boundaries and determine its outward normal vector
+                std::vector<Vector_2> normals_simplified = this->curr_simplified.getOutwardVertexNormals(); 
+                for (auto&& v : normals_simplified)
+                    normals.push_back(v);
+                std::vector<Vector_2> normals_origbound; 
+                for (int i = 0; i < n_pull_origbound; ++i)
                 {
-                    indices_to_keep_prior(idx) = i;
-                    idx++;
-                } 
+                    int q = origbound_indices_to_keep[i];
+                    int p = (q - 1) % this->curr_bound.np;
+                    int r = (q + 1) % this->curr_bound.np;
+                    normals.push_back(this->curr_bound.getOutwardVertexNormal(p, q, r));  
+                }
             }
-            indices_to_keep_prior(Eigen::seqN(n_int, to_pull.size())) = to_pull; 
-            this->N = n_int + to_pull.size(); 
-            this->input = this->input(indices_to_keep_prior, Eigen::all).eval(); 
-            this->points = this->points(indices_to_keep_prior, Eigen::all).eval();
             if (verbose)
             {
-                std::cout << "- preserved " << this->N << " points: "
-                          << n_int << " interior, "
-                          << to_pull.size() << " boundary (to be pulled)"
-                          << std::endl; 
-            }
+                std::cout << "- pulling " << to_pull.size()
+                          << " boundary points" << std::endl; 
+            } 
 
             // For each vertex in the boundary, pull along its outward normal
             // vector by distance epsilon
             MatrixXd pulled(to_pull.size(), 2); 
             for (int i = 0; i < to_pull.size(); ++i)
             {
-                Vector_2 v(this->points(n_int + i, 0), this->points(n_int + i, 1));
+                Vector_2 v(this->points(i, 0), this->points(i, 1));
                 Vector_2 v_pulled = v + epsilon * normals[i];
                 pulled(i, 0) = CGAL::to_double(v_pulled.x());
                 pulled(i, 1) = CGAL::to_double(v_pulled.y());
@@ -1114,7 +1263,7 @@ class BoundaryFinder
                 if (filter(pulled.row(i)))
                 {
                     // If so, simply don't pull that vertex
-                    pulled.row(i) = this->points.row(n_int + i); 
+                    pulled.row(i) = this->points.row(i);
                 }
             }
 
@@ -1130,7 +1279,7 @@ class BoundaryFinder
                 {
                     return (target - this->func(x)).squaredNorm();
                 };
-                VectorXd x_init = this->input.row(n_int + i);
+                VectorXd x_init = this->input.row(i);
                 VectorXd l_init = VectorXd::Ones(this->constraints->getN())
                     - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
                 VectorXd q = optimizer->run(
@@ -1164,8 +1313,8 @@ class BoundaryFinder
             }
             if (verbose)
             {
-                std::cout << "- pulled " << to_pull.size() << " points" << std::endl;
-                std::cout << "- augmented point-set contains " << this->N << " points" << std::endl;
+                std::cout << "- pulling complete; augmented point-set contains "
+                          << this->N << " points" << std::endl;
             }
 
             // Write the results of the pulling procedure to file, if desired 
@@ -1182,8 +1331,8 @@ class BoundaryFinder
                 outfile << "RESULT_OUT_X\tRESULT_OUT_Y\tADDED\n"; 
                 for (int i = 0; i < to_pull.size(); ++i)
                 {
-                    outfile << this->points(n_int + i, 0) << '\t'
-                            << this->points(n_int + i, 1) << '\t'
+                    outfile << this->points(i, 0) << '\t'
+                            << this->points(i, 1) << '\t'
                             << CGAL::to_double(normals[i].x()) << '\t'
                             << CGAL::to_double(normals[i].y()) << '\t'
                             << pulled(i, 0) << '\t'
@@ -1246,26 +1395,26 @@ class BoundaryFinder
             this->curr_bound.orient(CGAL::RIGHT_TURN);
 
             // Remove as many points from the interior as desired
-            std::vector<int> interior_indices;
-            boundary_indices.clear();  
+            boundary_indices.clear(); 
             boundary_indices.insert(
                 this->curr_bound.vertices.begin(), this->curr_bound.vertices.end()
             );
+            std::vector<int> interior_indices; 
             for (int i = 0; i < this->curr_bound.np; ++i)
             {
                 if (boundary_indices.find(i) == boundary_indices.end())
                     interior_indices.push_back(i); 
             }
             std::vector<int> interior_indices_to_delete;
-            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_int;
+            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_interior;
             if (n_to_delete < 0)
             {   // Check that the number of points to be deleted is not negative 
                 n_to_delete = 0; 
             }
-            std::vector<int> interior_indices_to_delete2 = sampleWithoutReplacement(
+            std::vector<int> idx = sampleWithoutReplacement(
                 this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
             );
-            for (const int i : interior_indices_to_delete2)
+            for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
 
@@ -1274,7 +1423,7 @@ class BoundaryFinder
             std::unordered_set<int> interior_indices_to_delete_set(
                 interior_indices_to_delete.begin(), interior_indices_to_delete.end()
             ); 
-            for (int i = 0; i < this->N; ++i)   // Find all preserved interior (and boundary) vertices
+            for (int i = 0; i < this->N; ++i)
             {
                 if (interior_indices_to_delete_set.find(i) == interior_indices_to_delete_set.end())
                     indices_to_keep.push_back(i); 
@@ -1415,16 +1564,26 @@ class BoundaryFinder
          * @param max_edges               Maximum number of edges to be contained
          *                                in the boundary. If zero, the boundary
          *                                is kept unsimplified.
-         * @param n_keep_int              Number of interior points to keep in
+         * @param n_keep_interior         Number of interior points to keep in
          *                                the unsimplified boundary. If this
          *                                number exceeds the total number of
          *                                interior points, then all interior
          *                                points are kept. 
-         * @param correct_orig            If the boundary is simplified, the
+         * @param n_keep_origbound        If the boundary is simplified, the
          *                                number of points in the *original
          *                                (unsimplified) boundary* that should
-         *                                be randomly sampled (without
-         *                                replacement) for mutation.
+         *                                be randomly sampled (without replacement)
+         *                                to be preserved.
+         * @param n_mutate_origbound      If the boundary is simplified, the
+         *                                number of points *among those chosen
+         *                                to be preserved* that should be further
+         *                                randomly sampled (without replacement)
+         *                                to be mutated. 
+         * @param n_pull_origbound        If the boundary is simplified, the
+         *                                number of points *among those chosen
+         *                                to be preserved* that should be further
+         *                                randomly sampled (without replacement)
+         *                                to be pulled. 
          * @param tau                     Rate at which step-sizes are decreased
          *                                during each SQP iteration.
          * @param delta                   Increment for finite-differences 
@@ -1467,9 +1626,9 @@ class BoundaryFinder
                  const int min_step_iter, const int max_step_iter,
                  const int min_pull_iter, const int max_pull_iter,
                  const int sqp_max_iter, const double sqp_tol,
-                 const int max_edges, const int n_keep_int, 
-                 const int correct_orig, const double tau,
-                 const double delta, const double beta,
+                 const int max_edges, int n_keep_interior, int n_keep_origbound,
+                 int n_mutate_origbound, int n_pull_origbound,
+                 const double tau, const double delta, const double beta,
                  const bool use_only_armijo, const bool use_strong_wolfe,
                  const int hessian_modify_max_iter,
                  const std::string write_prefix,
@@ -1481,7 +1640,8 @@ class BoundaryFinder
         {
             // Initialize the sampling run ...
             this->initialize(
-                filter, init_input, max_edges, n_keep_int, write_prefix, verbose
+                filter, init_input, max_edges, n_keep_interior, write_prefix,
+                verbose
             );
 
             // ... then step through the boundary-finding algorithm up to the
@@ -1493,8 +1653,8 @@ class BoundaryFinder
             while (i - 1 < min_step_iter || (i - 1 < max_step_iter && !terminate))
             {
                 bool result = this->step(
-                    dist, filter, i, max_edges, n_keep_int, correct_orig,
-                    write_prefix, verbose
+                    dist, filter, i, max_edges, n_keep_interior, n_keep_origbound,
+                    n_mutate_origbound, write_prefix, verbose
                 );
                 if (!result)
                     n_converged = 0;
@@ -1515,10 +1675,11 @@ class BoundaryFinder
                 if (verbose) std::cout << "Pulling by epsilon = " << epsilon << std::endl;  
                 bool result = this->pull(
                     optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
-                    max_edges, n_keep_int, correct_orig, tau, delta, beta,
-                    use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
-                    write_prefix, regularize, regularize_weight, c1, c2,
-                    verbose, sqp_verbose, write_pulled_points
+                    max_edges, n_keep_interior, n_keep_origbound, n_pull_origbound,
+                    tau, delta, beta, use_only_armijo, use_strong_wolfe,
+                    hessian_modify_max_iter, write_prefix, regularize,
+                    regularize_weight, c1, c2, verbose, sqp_verbose,
+                    write_pulled_points
                 );
                 if (!result)
                     n_converged = 0;
