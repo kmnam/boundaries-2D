@@ -768,7 +768,7 @@ class BoundaryFinder
                 bool filtered = true;
                 double mindist = 0.0;
                 int j = 0;
-                VectorXd p = this->input.row(i);
+                VectorXd p = this->input.row(to_mutate(i));
                 VectorXd q, z;
                 while ((filtered || mindist < MINDIST_BETWEEN_POINTS) && j < MAX_NUM_MUTATION_ATTEMPTS)
                 {
@@ -1132,12 +1132,12 @@ class BoundaryFinder
                         origbound_indices.push_back(i); 
                 }
 
-                // Sample a subset of these vertices 
+                // Sample a subset of these vertices to keep ... 
                 std::vector<int> idx = sampleWithoutReplacement(
                     origbound_indices.size(), n_keep_origbound, this->rng
                 ); 
                 for (const int i : idx)
-                    origbound_indices_to_keep.push_back(origbound_indices[i]); 
+                    origbound_indices_to_keep.push_back(origbound_indices[i]);
             }
 
             // Keep only the vertices in the unsimplified boundary chosen above
@@ -1153,6 +1153,7 @@ class BoundaryFinder
                 // Keep all vertices in the simplified boundary, all points
                 // in the interior, and the vertices in the unsimplified 
                 // boundary chosen above
+                std::cout << "defining indices_to_keep_prior\n"; 
                 for (int i = 0; i < this->curr_bound.np; ++i)
                 {
                     if (boundary_indices.find(i) == boundary_indices.end())
@@ -1237,9 +1238,12 @@ class BoundaryFinder
                 for (int i = 0; i < n_pull_origbound; ++i)
                 {
                     int q = origbound_indices_to_keep[i];
-                    int p = (q - 1) % this->curr_bound.np;
-                    int r = (q + 1) % this->curr_bound.np;
-                    normals.push_back(this->curr_bound.getOutwardVertexNormal(p, q, r));  
+                    std::vector<int>::iterator qit = std::find(
+                        this->curr_bound.vertices.begin(), this->curr_bound.vertices.end(), q
+                    );
+                    std::vector<int>::iterator pit = std::prev(qit); 
+                    std::vector<int>::iterator rit = std::next(qit);  
+                    normals.push_back(this->curr_bound.getOutwardVertexNormal(*pit, q, *rit));  
                 }
             }
             if (verbose)
@@ -1253,7 +1257,7 @@ class BoundaryFinder
             MatrixXd pulled(to_pull.size(), 2); 
             for (int i = 0; i < to_pull.size(); ++i)
             {
-                Vector_2 v(this->points(i, 0), this->points(i, 1));
+                Vector_2 v(this->points(to_pull(i), 0), this->points(to_pull(i), 1));
                 Vector_2 v_pulled = v + epsilon * normals[i];
                 pulled(i, 0) = CGAL::to_double(v_pulled.x());
                 pulled(i, 1) = CGAL::to_double(v_pulled.y());
@@ -1262,7 +1266,7 @@ class BoundaryFinder
                 if (filter(pulled.row(i)))
                 {
                     // If so, simply don't pull that vertex
-                    pulled.row(i) = this->points.row(i);
+                    pulled.row(i) = this->points.row(to_pull(i));
                 }
             }
 
@@ -1278,7 +1282,7 @@ class BoundaryFinder
                 {
                     return (target - this->func(x)).squaredNorm();
                 };
-                VectorXd x_init = this->input.row(i);
+                VectorXd x_init = this->input.row(to_pull(i));
                 VectorXd l_init = VectorXd::Ones(this->constraints->getN())
                     - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
                 VectorXd q = optimizer->run(
@@ -1330,8 +1334,8 @@ class BoundaryFinder
                 outfile << "RESULT_OUT_X\tRESULT_OUT_Y\tADDED\n"; 
                 for (int i = 0; i < to_pull.size(); ++i)
                 {
-                    outfile << this->points(i, 0) << '\t'
-                            << this->points(i, 1) << '\t'
+                    outfile << this->points(to_pull(i), 0) << '\t'
+                            << this->points(to_pull(i), 1) << '\t'
                             << CGAL::to_double(normals[i].x()) << '\t'
                             << CGAL::to_double(normals[i].y()) << '\t'
                             << pulled(i, 0) << '\t'
