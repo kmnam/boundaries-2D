@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     7/26/2022
+ *     7/28/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -473,7 +473,10 @@ class BoundaryFinder
             this->points = this->points(indices_to_keep, Eigen::all).eval(); 
             this->N = this->curr_bound.np;
             if (verbose)
-                std::cout << "- preserved " << n_keep_int << " interior points" << std::endl; 
+            {
+                std::cout << "- removed " << interior_indices_to_delete.size()
+                          << " interior points" << std::endl;
+            } 
 
             // If desired, simplify the current boundary
             if (max_edges > 0 && this->curr_bound.edges.size() > max_edges)
@@ -486,7 +489,7 @@ class BoundaryFinder
                 }
                 catch (CGAL::Precondition_exception& e)
                 {
-                    // TODO What do we do here?
+                    // TODO Perhaps a better option exists here 
                     throw; 
                 }
                 // Re-orient the points so that the boundary is traversed 
@@ -812,7 +815,10 @@ class BoundaryFinder
             this->points = this->points(indices_to_keep, Eigen::all).eval(); 
             this->N = this->curr_bound.np;
             if (verbose)
-                std::cout << "- preserved " << n_keep_int << " interior points" << std::endl; 
+            {
+                std::cout << "- removed " << interior_indices_to_delete.size()
+                          << " interior points" << std::endl;
+            } 
 
             // If desired, simplify the current boundary
             if (max_edges > 0 && this->curr_bound.edges.size() > max_edges)
@@ -825,7 +831,7 @@ class BoundaryFinder
                 }
                 catch (CGAL::Precondition_exception& e)
                 {
-                    // TODO What do we do here?
+                    // TODO Perhaps a better option exists here 
                     throw; 
                 }
                 // Re-orient the points so that the boundary is traversed 
@@ -1277,7 +1283,10 @@ class BoundaryFinder
             this->points = this->points(indices_to_keep, Eigen::all).eval(); 
             this->N = this->curr_bound.np;
             if (verbose)
-                std::cout << "- preserved " << n_keep_int << " interior points" << std::endl; 
+            {
+                std::cout << "- removed " << interior_indices_to_delete.size()
+                          << " interior points" << std::endl;
+            } 
             
             // If desired, simplify the current boundary
             if (max_edges > 0 && this->curr_bound.edges.size() > max_edges)
@@ -1290,7 +1299,7 @@ class BoundaryFinder
                 }
                 catch (CGAL::Precondition_exception& e)
                 {
-                    // TODO What do we do here? 
+                    // TODO Perhaps a better option exists here
                     throw; 
                 }
                 // Re-orient the points so that the boundary is traversed 
