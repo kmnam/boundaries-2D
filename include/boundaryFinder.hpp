@@ -1237,7 +1237,7 @@ class BoundaryFinder
                 std::vector<Vector_2> normals_origbound; 
                 for (int i = 0; i < n_pull_origbound; ++i)
                 {
-                    int q = origbound_indices_to_keep[i];
+                    int q = origbound_indices_to_keep[idx[i]];
                     std::vector<int>::iterator qit = std::find(
                         this->curr_bound.vertices.begin(), this->curr_bound.vertices.end(), q
                     );
