@@ -677,7 +677,7 @@ class BoundaryFinder
             // simplified  
             if (this->simplified)
             {
-                n_keep_prior = this->curr_simplified.nv + n_interior + n_keep_origbound;
+                int n_keep_prior = this->curr_simplified.nv + n_interior + n_keep_origbound;
                 VectorXi indices_to_keep_prior(n_keep_prior); 
                 int j = 0;
 
@@ -739,7 +739,7 @@ class BoundaryFinder
             // plus the desired number of points in the unsimplified boundary 
             else
             {
-                const int n_mutate = this->curr_simplified.nv + n_mutate_origbound; 
+                const int n_mutate = this->curr_simplified.nv + n_mutate_origbound;
                 to_mutate.resize(n_mutate);
 
                 // The vertices in the simplified boundary are now in one 
@@ -753,8 +753,8 @@ class BoundaryFinder
                 std::vector<int> idx = sampleWithoutReplacement(
                     n_keep_origbound, n_mutate_origbound, this->rng
                 );
-                for (const int i : idx)
-                    to_mutate(this->curr_simplified.nv + i) = n_interior + this->curr_simplified.nv + i;
+                for (int i = 0; i < n_mutate_origbound; ++i)
+                    to_mutate(this->curr_simplified.nv + i) = n_interior + this->curr_simplified.nv + idx[i];
             }
             if (verbose)
             {
@@ -1080,9 +1080,8 @@ class BoundaryFinder
         bool pull(SQPOptimizer<double>* optimizer, 
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const double epsilon, const int max_iter,
-                  const double sqp_tol, const int iter,
-                  const int iter, const int max_edges, int n_keep_interior,
-                  int n_keep_origbound, int n_pull_origbound,
+                  const double sqp_tol, const int iter, const int max_edges,
+                  int n_keep_interior, int n_keep_origbound, int n_pull_origbound,
                   const double tau, const double delta, const double beta,
                   const bool use_only_armijo, const bool use_strong_wolfe,
                   const int hessian_modify_max_iter,
@@ -1147,7 +1146,7 @@ class BoundaryFinder
             // simplified  
             if (this->simplified)
             {
-                n_keep_prior = this->curr_simplified.nv + n_interior + n_keep_origbound;
+                int n_keep_prior = this->curr_simplified.nv + n_interior + n_keep_origbound;
                 VectorXi indices_to_keep_prior(n_keep_prior); 
                 int j = 0;
 
@@ -1225,8 +1224,8 @@ class BoundaryFinder
                 std::vector<int> idx = sampleWithoutReplacement(
                     n_keep_origbound, n_pull_origbound, this->rng
                 );
-                for (const int i : idx)
-                    to_pull(this->curr_simplified.nv + i) = n_interior + this->curr_simplified.nv + i;
+                for (int i = 0; i < n_pull_origbound; ++i)
+                    to_pull(this->curr_simplified.nv + i) = n_interior + this->curr_simplified.nv + idx[i];
 
                 // Rely on the old indexing of points to locate each vertex 
                 // to be pulled in the current unsimplified and simplified
