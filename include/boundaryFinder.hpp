@@ -1153,7 +1153,6 @@ class BoundaryFinder
                 // Keep all vertices in the simplified boundary, all points
                 // in the interior, and the vertices in the unsimplified 
                 // boundary chosen above
-                std::cout << "defining indices_to_keep_prior\n"; 
                 for (int i = 0; i < this->curr_bound.np; ++i)
                 {
                     if (boundary_indices.find(i) == boundary_indices.end())
