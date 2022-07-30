@@ -630,8 +630,6 @@ class BoundaryFinder
             // Reset input parameters if necessary 
             int n_interior = this->curr_bound.np - this->curr_bound.nv; 
             int origbound_nv = this->curr_bound.nv - this->curr_simplified.nv;
-            if (n_keep_interior > n_interior)
-                n_keep_interior = n_interior; 
             if (n_keep_origbound > origbound_nv)
                 n_keep_origbound = origbound_nv; 
             if (n_mutate_origbound > n_keep_origbound)
@@ -855,6 +853,11 @@ class BoundaryFinder
 
             // Re-orient the points so that the boundary is traversed clockwise
             this->curr_bound.orient(CGAL::RIGHT_TURN);
+
+            // Update input parameters as necessary
+            n_interior = this->curr_bound.np - this->curr_bound.nv;   // New number of interior points 
+            if (n_keep_interior > n_interior)
+                n_keep_interior = n_interior; 
 
             // Remove as many points from the interior as desired
             boundary_indices.clear(); 
@@ -1103,8 +1106,6 @@ class BoundaryFinder
             // Reset input parameters if necessary 
             int n_interior = this->curr_bound.np - this->curr_bound.nv; 
             int origbound_nv = this->curr_bound.nv - this->curr_simplified.nv;
-            if (n_keep_interior > n_interior)
-                n_keep_interior = n_interior; 
             if (n_keep_origbound > origbound_nv)
                 n_keep_origbound = origbound_nv; 
             if (n_pull_origbound > n_keep_origbound)
@@ -1403,6 +1404,11 @@ class BoundaryFinder
 
             // Re-orient the points so that the boundary is traversed clockwise
             this->curr_bound.orient(CGAL::RIGHT_TURN);
+
+            // Update input parameters as necessary
+            n_interior = this->curr_bound.np - this->curr_bound.nv;   // New number of interior points 
+            if (n_keep_interior > n_interior)
+                n_keep_interior = n_interior; 
 
             // Remove as many points from the interior as desired
             boundary_indices.clear(); 
