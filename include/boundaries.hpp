@@ -405,12 +405,14 @@ struct AlphaShape2DProperties
          */
         void deleteInteriorPoints(std::vector<int>& indices)
         {
+            std::cout << "- in deleteInteriorPoints(): deleting " << indices.size() << " points ...\n"; 
+
             // Maintain a set of boundary point indices, to ensure that none 
             // of the points being deleted are boundary points 
             std::unordered_set<int> boundary_indices; 
             for (int i = 0; i < this->nv; ++i)
                 boundary_indices.insert(this->vertices[i]);
-            for (const int& i : indices)
+            for (const int i : indices)
             {
                 if (i < 0 || i >= this->np)
                     throw std::runtime_error("Invalid index specified for point to be removed");

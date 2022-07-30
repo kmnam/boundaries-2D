@@ -452,9 +452,13 @@ class BoundaryFinder
             {   // Check that the number of points to be deleted is not negative 
                 n_to_delete = 0; 
             }
+            std::cout << "np = " << this->curr_bound.np << ", nv = " << this->curr_bound.nv
+                      << ", n_keep_interior = " << n_keep_interior << ", n_to_delete = " << n_to_delete
+                      << std::endl; 
             std::vector<int> idx = sampleWithoutReplacement(
                 this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
             );
+            std::cout << "sampled " << idx.size() << std::endl; 
             for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
@@ -869,9 +873,13 @@ class BoundaryFinder
             {   // Check that the number of points to be deleted is not negative 
                 n_to_delete = 0; 
             }
+            std::cout << "np = " << this->curr_bound.np << ", nv = " << this->curr_bound.nv
+                      << ", n_keep_interior = " << n_keep_interior << ", n_to_delete = " << n_to_delete
+                      << std::endl; 
             std::vector<int> idx = sampleWithoutReplacement(
                 this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
             );
+            std::cout << "sampled " << idx.size() << std::endl; 
             for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
@@ -1414,9 +1422,13 @@ class BoundaryFinder
             {   // Check that the number of points to be deleted is not negative 
                 n_to_delete = 0; 
             }
+            std::cout << "np = " << this->curr_bound.np << ", nv = " << this->curr_bound.nv
+                      << ", n_keep_interior = " << n_keep_interior << ", n_to_delete = " << n_to_delete
+                      << std::endl; 
             std::vector<int> idx = sampleWithoutReplacement(
                 this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
             );
+            std::cout << "sampled " << idx.size() << std::endl; 
             for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
