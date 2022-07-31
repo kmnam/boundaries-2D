@@ -1212,13 +1212,19 @@ class BoundaryFinder
             else
             {
                 const int n_pull = this->curr_simplified.nv + n_pull_origbound;
-                std::cout << "n_pull = " << n_pull << std::endl;  
+                std::cout << "n_interior = " << n_interior << ", "
+                          << "this->curr_simplified.nv = " << this->curr_simplified.nv << ", "
+                          << "n_pull_origbound = " << n_pull_origbound << ", "
+                          << "n_pull = " << n_pull << std::endl;  
                 to_pull.resize(n_pull);
 
                 // The vertices in the simplified boundary are now in one 
                 // contiguous chunk in this->input / this->points (see above)
                 for (int i = 0; i < this->curr_simplified.nv; ++i)
+                {
                     to_pull(i) = n_interior + i;
+                    std::cout << "set to_pull(" << i << ") = " << n_interior + i << std::endl; 
+                }
                 std::cout << "added vertices in simplified boundary to to_pull\n"; 
                 
                 // Choose n_pull_origbound number of vertices among the 
