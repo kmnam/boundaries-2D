@@ -1219,13 +1219,15 @@ class BoundaryFinder
             // plus the desired number of points in the unsimplified boundary 
             else
             {
-                const int n_pull = this->curr_simplified.nv + n_pull_origbound; 
+                const int n_pull = this->curr_simplified.nv + n_pull_origbound;
+                std::cout << "n_pull = " << n_pull << std::endl;  
                 to_pull.resize(n_pull);
 
                 // The vertices in the simplified boundary are now in one 
                 // contiguous chunk in this->input / this->points (see above)
                 for (int i = 0; i < this->curr_simplified.nv; ++i)
                     to_pull(i) = n_interior + i;
+                std::cout << "added vertices in simplified boundary to to_pull\n"; 
                 
                 // Choose n_pull_origbound number of vertices among the 
                 // vertices in the unsimplified boundary *that were chosen to 
@@ -1235,6 +1237,7 @@ class BoundaryFinder
                 );
                 for (int i = 0; i < n_pull_origbound; ++i)
                     to_pull(this->curr_simplified.nv + i) = n_interior + this->curr_simplified.nv + idx[i];
+                std::cout << "added vertices in unsimplified boundary to to_pull\n"; 
 
                 // Rely on the old indexing of points to locate each vertex 
                 // to be pulled in the current unsimplified and simplified
@@ -1242,6 +1245,7 @@ class BoundaryFinder
                 std::vector<Vector_2> normals_simplified = this->curr_simplified.getOutwardVertexNormals(); 
                 for (auto&& v : normals_simplified)
                     normals.push_back(v);
+                std::cout << "found outward normal vectors for vertices in simplified boundary\n"; 
                 std::vector<Vector_2> normals_origbound; 
                 for (int i = 0; i < n_pull_origbound; ++i)
                 {
@@ -1251,8 +1255,10 @@ class BoundaryFinder
                     );
                     std::vector<int>::iterator pit = std::prev(qit); 
                     std::vector<int>::iterator rit = std::next(qit);  
-                    normals.push_back(this->curr_bound.getOutwardVertexNormal(*pit, q, *rit));  
+                    normals.push_back(this->curr_bound.getOutwardVertexNormal(*pit, q, *rit)); 
+                    std::cout << ".. found outward normal vector for " << i << "-th vertex in unsimplified boundary\n";  
                 }
+                std::cout << "found outward normal vectors for vertices in unsimplified boundary\n"; 
             }
             if (verbose)
             {
