@@ -452,13 +452,9 @@ class BoundaryFinder
             {   // Check that the number of points to be deleted is not negative 
                 n_to_delete = 0; 
             }
-            std::cout << "np = " << this->curr_bound.np << ", nv = " << this->curr_bound.nv
-                      << ", n_keep_interior = " << n_keep_interior << ", n_to_delete = " << n_to_delete
-                      << std::endl; 
             std::vector<int> idx = sampleWithoutReplacement(
                 this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
             );
-            std::cout << "sampled " << idx.size() << std::endl; 
             for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
@@ -565,7 +561,7 @@ class BoundaryFinder
                           << std::endl; 
                 if (this->simplified)
                 {
-                    std::cout << "...... Simplified to "
+                    std::cout << ">>>>>> Simplified to "
                               << this->curr_simplified.nv
                               << " boundary points; enclosed area: " 
                               << this->curr_simplified.area << std::endl;
@@ -876,13 +872,9 @@ class BoundaryFinder
             {   // Check that the number of points to be deleted is not negative 
                 n_to_delete = 0; 
             }
-            std::cout << "np = " << this->curr_bound.np << ", nv = " << this->curr_bound.nv
-                      << ", n_keep_interior = " << n_keep_interior << ", n_to_delete = " << n_to_delete
-                      << std::endl; 
             std::vector<int> idx = sampleWithoutReplacement(
                 this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
             );
-            std::cout << "sampled " << idx.size() << std::endl; 
             for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
@@ -995,7 +987,7 @@ class BoundaryFinder
                           << std::endl;
                 if (this->simplified)
                 {
-                    std::cout << "...... Simplified to "
+                    std::cout << ">>>>>> Simplified to "
                               << this->curr_simplified.nv
                               << " boundary points; enclosed area: "
                               << this->curr_simplified.area << "; "
@@ -1433,13 +1425,9 @@ class BoundaryFinder
             {   // Check that the number of points to be deleted is not negative 
                 n_to_delete = 0; 
             }
-            std::cout << "np = " << this->curr_bound.np << ", nv = " << this->curr_bound.nv
-                      << ", n_keep_interior = " << n_keep_interior << ", n_to_delete = " << n_to_delete
-                      << std::endl; 
             std::vector<int> idx = sampleWithoutReplacement(
                 this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
             );
-            std::cout << "sampled " << idx.size() << std::endl; 
             for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
@@ -1552,7 +1540,7 @@ class BoundaryFinder
                           << std::endl;
                 if (this->simplified)
                 {
-                    std::cout << "...... Simplified to "
+                    std::cout << ">>>>>> Simplified to "
                               << this->curr_simplified.nv
                               << " boundary points; enclosed area: "
                               << this->curr_simplified.area << "; "
@@ -1698,7 +1686,8 @@ class BoundaryFinder
             SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(this->constraints); 
             while (j < min_pull_iter || (j < max_pull_iter && !terminate))
             {
-                if (verbose) std::cout << "Pulling by epsilon = " << epsilon << std::endl;  
+                if (verbose)
+                    std::cout << "- pulling by epsilon = " << epsilon << std::endl;  
                 bool result = this->pull(
                     optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
                     max_edges, n_keep_interior, n_keep_origbound, n_pull_origbound,
