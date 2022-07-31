@@ -405,8 +405,6 @@ struct AlphaShape2DProperties
          */
         void deleteInteriorPoints(std::vector<int>& indices)
         {
-            std::cout << "- in deleteInteriorPoints(): deleting " << indices.size() << " points ...\n"; 
-
             // Maintain a set of boundary point indices, to ensure that none 
             // of the points being deleted are boundary points 
             std::unordered_set<int> boundary_indices; 
@@ -701,7 +699,7 @@ class Boundary2D
             {
                 if (verbose)
                 { 
-                    std::cout << "- ... traversed " << nvisited << "/" << nvertices
+                    std::cout << "- traversed " << nvisited << "/" << nvertices
                               << " boundary vertices in a simple cycle" << std::endl;
                 }
                 return std::make_pair(nvertices, true); 
@@ -710,7 +708,7 @@ class Boundary2D
             {
                 if (verbose)
                 {
-                    std::cout << "- ... traversed " << nvisited << "/" << nvertices 
+                    std::cout << "- traversed " << nvisited << "/" << nvertices 
                               << " boundary vertices; boundary contains "
                               << nedges << " edges" << std::endl;
                 }
@@ -1263,13 +1261,13 @@ class Boundary2D
             int high = shape.number_of_alphas() - 1;
             if (verbose)
             { 
-                std::cout << "- ... searching between alpha = "
+                std::cout << "- searching between alpha = "
                           << CGAL::to_double(shape.get_nth_alpha(low))
                           << " and "
                           << CGAL::to_double(shape.get_nth_alpha(high))
                           << " inclusive ("
                           << high - low + 1
-                          << " values of alpha)" << std::endl;
+                          << " values of alpha) ..." << std::endl;
             }
 
             // Also keep track of the vertices and edges in the order in which 
@@ -1380,7 +1378,7 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
                                           const bool verbose = false)
 {
     if (verbose)
-        std::cout << "- ... simplifying the boundary" << std::endl;
+        std::cout << "- simplifying boundary ..." << std::endl;
 
     // Instantiate a Polygon object with the vertices given in the
     // order in which they were traversed
