@@ -1220,6 +1220,7 @@ class BoundaryFinder
 
                 // The vertices in the simplified boundary are now in one 
                 // contiguous chunk in this->input / this->points (see above)
+                std::cout << to_pull.size() << " ?= " << n_pull << std::endl; 
                 for (int i = 0; i < this->curr_simplified.nv; ++i)
                 {
                     to_pull(i) = n_interior + i;
