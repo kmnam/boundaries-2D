@@ -1242,10 +1242,10 @@ class BoundaryFinder
                         this->curr_bound.vertices.begin(), this->curr_bound.vertices.end(), q
                     );
                     std::vector<int>::iterator pit = (
-                        qit == this->curr_bound.vertices().begin() ? this->curr_bound.vertices().end() - 1 : std::prev(qit)
+                        qit == this->curr_bound.vertices.begin() ? this->curr_bound.vertices.end() - 1 : std::prev(qit)
                     ); 
                     std::vector<int>::iterator rit = (
-                        qit == this->curr_bound.vertices().end() - 1 ? this->curr_bound.vertices().begin() : std::next(qit)
+                        qit == this->curr_bound.vertices.end() - 1 ? this->curr_bound.vertices.begin() : std::next(qit)
                     );
                     normals.push_back(this->curr_bound.getOutwardVertexNormal(*pit, q, *rit)); 
                 }
