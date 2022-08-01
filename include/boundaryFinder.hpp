@@ -1261,10 +1261,10 @@ class BoundaryFinder
                     );
                     //std::cout << "is q in this->curr_bound.vertices? : " << (qit != this->curr_bound.vertices.end()) << std::endl; 
                     std::vector<int>::iterator pit = (
-                        qit == this->curr_bound.vertices().begin() ? this->curr_bound.vertices().end() - 1 : std::prev(qit)
+                        qit == this->curr_bound.vertices.begin() ? this->curr_bound.vertices.end() - 1 : std::prev(qit)
                     ); 
                     std::vector<int>::iterator rit = (
-                        qit == this->curr_bound.vertices().end() - 1 ? this->curr_bound.vertices().begin() : std::next(qit)
+                        qit == this->curr_bound.vertices.end() - 1 ? this->curr_bound.vertices.begin() : std::next(qit)
                     );
                     //std::cout << "p = " << *pit << std::endl; 
                     //std::cout << "r = " << *rit << std::endl; 
