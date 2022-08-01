@@ -63,10 +63,12 @@ std::vector<int> sampleWithoutReplacement(const int n, const int k,
     else if (k < 0)
         throw std::invalid_argument("Cannot sample k < 0 items"); 
 
+    std::cout << "sampleWithoutReplacement(): sampling " << k << " items from " << n << std::endl; 
     // If n == k, simply return the range from 0 to n-1
     std::vector<int> sample; 
     if (n == k)
     {
+        std::cout << "case where n == k\n";
         for (int i = 0; i < n; ++i)
             sample.push_back(i); 
         return sample; 
@@ -74,6 +76,7 @@ std::vector<int> sampleWithoutReplacement(const int n, const int k,
     // Otherwise, if k == 0, simply return an empty vector
     else if (k == 0)
     {
+        std::cout << "case where k == 0\n";
         return sample;
     }
 
@@ -82,16 +85,19 @@ std::vector<int> sampleWithoutReplacement(const int n, const int k,
     // 
     // Note that pairs are compared lexicographically, so placing the weights 
     // first allows for the weights to be used as priorities
+    std::cout << "case where n > k > 0\n"; 
     boost::random::uniform_01<double> dist;
     std::priority_queue<std::pair<double, int> > queue;
     for (int i = 0; i < n; ++i)
         queue.emplace(std::make_pair(dist(rng), i));
     
     // Return the first k items in the queue
+    std::cout << "prepped priority queue of size " << n << std::endl; 
     for (int i = 0; i < k; ++i)
     {
         sample.push_back(queue.top().second);
         queue.pop();
+        std::cout << "added " << i << "-th item from queue\n"; 
     }
 
     return sample;  
@@ -1234,26 +1240,41 @@ class BoundaryFinder
                 std::vector<int> idx = sampleWithoutReplacement(
                     n_keep_origbound, n_pull_origbound, this->rng
                 );
+                std::cout << "done sampling from unsimplified boundary\n"; 
                 for (int i = 0; i < n_pull_origbound; ++i)
+                {
                     to_pull(this->curr_simplified.nv + i) = n_interior + this->curr_simplified.nv + idx[i];
+                    std::cout << "set to_pull(" << this->curr_simplified.nv + i 
+                              << ") = " << n_interior + this->curr_simplified.nv + idx[i]
+                              << std::endl; 
+                }
                 std::cout << "added vertices in unsimplified boundary to to_pull\n"; 
 
                 // Rely on the old indexing of points to locate each vertex 
                 // to be pulled in the current unsimplified and simplified
                 // boundaries and determine its outward normal vector
-                std::vector<Vector_2> normals_simplified = this->curr_simplified.getOutwardVertexNormals(); 
-                for (auto&& v : normals_simplified)
-                    normals.push_back(v);
+                std::vector<Vector_2> normals_simplified = this->curr_simplified.getOutwardVertexNormals();
                 std::cout << "found outward normal vectors for vertices in simplified boundary\n"; 
+                for (auto&& v : normals_simplified)
+                {
+                    normals.push_back(v);
+                    std::cout << ".. added outward normal vector for one vertex in simplified boundary\n"; 
+                }
+                std::cout << "added outward normal vectors for all vertices in simplified boundary\n"; 
                 std::vector<Vector_2> normals_origbound; 
                 for (int i = 0; i < n_pull_origbound; ++i)
                 {
+                    std::cout << ".. finding outward normal vector for " << i << "-th vertex in unsimplified boundary\n"; 
                     int q = origbound_indices_to_keep[idx[i]];
+                    std::cout << "q = " << q << std::endl; 
                     std::vector<int>::iterator qit = std::find(
                         this->curr_bound.vertices.begin(), this->curr_bound.vertices.end(), q
                     );
+                    std::cout << "is q in this->curr_bound.vertices? : " << (qit != this->curr_bound.vertices.end()) << std::endl; 
                     std::vector<int>::iterator pit = std::prev(qit); 
-                    std::vector<int>::iterator rit = std::next(qit);  
+                    std::vector<int>::iterator rit = std::next(qit);
+                    std::cout << "p = " << *pit << std::endl; 
+                    std::cout << "r = " << *rit << std::endl; 
                     normals.push_back(this->curr_bound.getOutwardVertexNormal(*pit, q, *rit)); 
                     std::cout << ".. found outward normal vector for " << i << "-th vertex in unsimplified boundary\n";  
                 }
