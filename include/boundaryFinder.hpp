@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     7/31/2022
+ *     8/1/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -63,12 +63,10 @@ std::vector<int> sampleWithoutReplacement(const int n, const int k,
     else if (k < 0)
         throw std::invalid_argument("Cannot sample k < 0 items"); 
 
-    std::cout << "sampleWithoutReplacement(): sampling " << k << " items from " << n << std::endl; 
     // If n == k, simply return the range from 0 to n-1
     std::vector<int> sample; 
     if (n == k)
     {
-        std::cout << "case where n == k\n";
         for (int i = 0; i < n; ++i)
             sample.push_back(i); 
         return sample; 
@@ -76,7 +74,6 @@ std::vector<int> sampleWithoutReplacement(const int n, const int k,
     // Otherwise, if k == 0, simply return an empty vector
     else if (k == 0)
     {
-        std::cout << "case where k == 0\n";
         return sample;
     }
 
@@ -85,19 +82,16 @@ std::vector<int> sampleWithoutReplacement(const int n, const int k,
     // 
     // Note that pairs are compared lexicographically, so placing the weights 
     // first allows for the weights to be used as priorities
-    std::cout << "case where n > k > 0\n"; 
     boost::random::uniform_01<double> dist;
     std::priority_queue<std::pair<double, int> > queue;
     for (int i = 0; i < n; ++i)
         queue.emplace(std::make_pair(dist(rng), i));
     
     // Return the first k items in the queue
-    std::cout << "prepped priority queue of size " << n << std::endl; 
     for (int i = 0; i < k; ++i)
     {
         sample.push_back(queue.top().second);
         queue.pop();
-        std::cout << "added " << i << "-th item from queue\n"; 
     }
 
     return sample;  
@@ -480,7 +474,7 @@ class BoundaryFinder
             this->N = this->curr_bound.np;
             if (verbose)
             {
-                std::cout << "- removed " << interior_indices_to_delete.size()
+                std::cout << "- Removed " << interior_indices_to_delete.size()
                           << " interior points" << std::endl;
             } 
 
@@ -561,15 +555,15 @@ class BoundaryFinder
             if (verbose)
             {
                 std::cout << "[INIT] Initializing; "
-                          << this->curr_bound.nv << " boundary points; " 
                           << this->curr_bound.np << " total points; "
-                          << "enclosed area: " << this->curr_bound.area
+                          << this->curr_bound.nv << " in boundary; "
+                          << "enclosed area = " << this->curr_bound.area
                           << std::endl; 
                 if (this->simplified)
                 {
                     std::cout << ">>>>>> Simplified to "
                               << this->curr_simplified.nv
-                              << " boundary points; enclosed area: " 
+                              << " boundary points; enclosed area = " 
                               << this->curr_simplified.area << std::endl;
                     this->curr_area = this->curr_simplified.area; 
                 }
@@ -714,14 +708,14 @@ class BoundaryFinder
             {
                 if (!this->simplified)
                 {
-                    std::cout << "- preserved " << this->N << " points: "
+                    std::cout << "- Preserved " << this->N << " points: "
                               << n_interior << " interior, "
                               << this->curr_bound.nv << " boundary"
                               << std::endl; 
                 } 
                 else 
                 {
-                    std::cout << "- preserved " << this->N << " points: "
+                    std::cout << "- Preserved " << this->N << " points: "
                               << n_interior << " interior, "
                               << this->curr_simplified.nv + n_keep_origbound
                               << " boundary" << std::endl;
@@ -762,7 +756,7 @@ class BoundaryFinder
             }
             if (verbose)
             {
-                std::cout << "- mutating " << to_mutate.size()
+                std::cout << "- Mutating " << to_mutate.size()
                           << " boundary points" << std::endl; 
             } 
 
@@ -804,7 +798,7 @@ class BoundaryFinder
             }
             if (verbose)
             {
-                std::cout << "- mutations complete; augmented point-set contains "
+                std::cout << "- Mutations complete; augmented point-set contains "
                           << this->N << " points" << std::endl;
             }
 
@@ -900,7 +894,7 @@ class BoundaryFinder
             this->N = this->curr_bound.np;
             if (verbose)
             {
-                std::cout << "- removed " << interior_indices_to_delete.size()
+                std::cout << "- Removed " << interior_indices_to_delete.size()
                           << " interior points" << std::endl;
             } 
 
@@ -986,18 +980,18 @@ class BoundaryFinder
             if (verbose)
             {
                 std::cout << "[STEP] Iteration " << iter << "; "
-                          << this->curr_bound.nv << " boundary points; " 
                           << this->curr_bound.np << " total points; "
-                          << "enclosed area: " << this->curr_bound.area << "; "
-                          << "change: " << this->curr_bound.area - this->curr_area
+                          << this->curr_bound.nv << " in boundary; "
+                          << "enclosed area = " << this->curr_bound.area << "; "
+                          << "change = " << this->curr_bound.area - this->curr_area
                           << std::endl;
                 if (this->simplified)
                 {
                     std::cout << ">>>>>> Simplified to "
                               << this->curr_simplified.nv
-                              << " boundary points; enclosed area: "
+                              << " boundary points; enclosed area = "
                               << this->curr_simplified.area << "; "
-                              << "change: " << this->curr_simplified.area - this->curr_area
+                              << "change = " << this->curr_simplified.area - this->curr_area
                               << std::endl;
                 }
             }
@@ -1186,14 +1180,14 @@ class BoundaryFinder
             {
                 if (!this->simplified)
                 {
-                    std::cout << "- preserved " << this->N << " points: "
+                    std::cout << "- Preserved " << this->N << " points: "
                               << n_interior << " interior, "
                               << this->curr_bound.nv << " boundary"
                               << std::endl; 
                 } 
                 else 
                 {
-                    std::cout << "- preserved " << this->N << " points: "
+                    std::cout << "- Preserved " << this->N << " points: "
                               << n_interior << " interior, "
                               << this->curr_simplified.nv + n_keep_origbound
                               << " boundary" << std::endl;
@@ -1218,18 +1212,12 @@ class BoundaryFinder
             else
             {
                 const int n_pull = this->curr_simplified.nv + n_pull_origbound;
-                std::cout << "n_interior = " << n_interior << ", "
-                          << "this->curr_simplified.nv = " << this->curr_simplified.nv << ", "
-                          << "n_pull_origbound = " << n_pull_origbound << ", "
-                          << "n_pull = " << n_pull << std::endl;  
                 to_pull.resize(n_pull);
 
                 // The vertices in the simplified boundary are now in one 
                 // contiguous chunk in this->input / this->points (see above)
-                std::cout << to_pull.size() << " ?= " << n_pull << std::endl; 
                 for (int i = 0; i < this->curr_simplified.nv; ++i)
                     to_pull(i) = n_interior + i;
-                std::cout << "added vertices in simplified boundary to to_pull\n"; 
                 
                 // Choose n_pull_origbound number of vertices among the 
                 // vertices in the unsimplified boundary *that were chosen to 
@@ -1237,45 +1225,34 @@ class BoundaryFinder
                 std::vector<int> idx = sampleWithoutReplacement(
                     n_keep_origbound, n_pull_origbound, this->rng
                 );
-                std::cout << "done sampling from unsimplified boundary\n"; 
                 for (int i = 0; i < n_pull_origbound; ++i)
                     to_pull(this->curr_simplified.nv + i) = n_interior + this->curr_simplified.nv + idx[i];
-                std::cout << "added vertices in unsimplified boundary to to_pull\n"; 
 
                 // Rely on the old indexing of points to locate each vertex 
                 // to be pulled in the current unsimplified and simplified
                 // boundaries and determine its outward normal vector
                 std::vector<Vector_2> normals_simplified = this->curr_simplified.getOutwardVertexNormals();
-                std::cout << "found outward normal vectors for vertices in simplified boundary\n"; 
                 for (auto&& v : normals_simplified)
                     normals.push_back(v);
-                std::cout << "added outward normal vectors for all vertices in simplified boundary\n"; 
                 std::vector<Vector_2> normals_origbound; 
                 for (int i = 0; i < n_pull_origbound; ++i)
                 {
-                    //std::cout << ".. finding outward normal vector for " << i << "-th vertex in unsimplified boundary\n"; 
                     int q = origbound_indices_to_keep[idx[i]];
-                    //std::cout << "q = " << q << std::endl; 
                     std::vector<int>::iterator qit = std::find(
                         this->curr_bound.vertices.begin(), this->curr_bound.vertices.end(), q
                     );
-                    //std::cout << "is q in this->curr_bound.vertices? : " << (qit != this->curr_bound.vertices.end()) << std::endl; 
                     std::vector<int>::iterator pit = (
-                        qit == this->curr_bound.vertices.begin() ? this->curr_bound.vertices.end() - 1 : std::prev(qit)
+                        qit == this->curr_bound.vertices().begin() ? this->curr_bound.vertices().end() - 1 : std::prev(qit)
                     ); 
                     std::vector<int>::iterator rit = (
-                        qit == this->curr_bound.vertices.end() - 1 ? this->curr_bound.vertices.begin() : std::next(qit)
+                        qit == this->curr_bound.vertices().end() - 1 ? this->curr_bound.vertices().begin() : std::next(qit)
                     );
-                    //std::cout << "p = " << *pit << std::endl; 
-                    //std::cout << "r = " << *rit << std::endl; 
                     normals.push_back(this->curr_bound.getOutwardVertexNormal(*pit, q, *rit)); 
-                    //std::cout << ".. found outward normal vector for " << i << "-th vertex in unsimplified boundary\n";  
                 }
-                std::cout << "found outward normal vectors for vertices in unsimplified boundary\n"; 
             }
             if (verbose)
             {
-                std::cout << "- pulling " << to_pull.size() << " boundary points" << std::endl; 
+                std::cout << "- Pulling " << to_pull.size() << " boundary points" << std::endl; 
             } 
 
             // For each vertex in the boundary, pull along its outward normal
@@ -1342,7 +1319,7 @@ class BoundaryFinder
             }
             if (verbose)
             {
-                std::cout << "- pulling complete; augmented point-set contains "
+                std::cout << "- Pulling complete; augmented point-set contains "
                           << this->N << " points" << std::endl;
             }
 
@@ -1467,7 +1444,7 @@ class BoundaryFinder
             this->N = this->curr_bound.np;
             if (verbose)
             {
-                std::cout << "- removed " << interior_indices_to_delete.size()
+                std::cout << "- Removed " << interior_indices_to_delete.size()
                           << " interior points" << std::endl;
             } 
             
@@ -1553,18 +1530,18 @@ class BoundaryFinder
             if (verbose)
             {
                 std::cout << "[PULL] Iteration " << iter << "; "
-                          << this->curr_bound.nv << " boundary points; " 
                           << this->curr_bound.np << " total points; "
-                          << "enclosed area: " << this->curr_bound.area << "; "
-                          << "change: " << this->curr_bound.area - this->curr_area
+                          << this->curr_bound.nv << " in boundary; "
+                          << "enclosed area = " << this->curr_bound.area << "; "
+                          << "change = " << this->curr_bound.area - this->curr_area
                           << std::endl;
                 if (this->simplified)
                 {
                     std::cout << ">>>>>> Simplified to "
                               << this->curr_simplified.nv
-                              << " boundary points; enclosed area: "
+                              << " boundary points; enclosed area = "
                               << this->curr_simplified.area << "; "
-                              << "change: " << this->curr_simplified.area - this->curr_area
+                              << "change = " << this->curr_simplified.area - this->curr_area
                               << std::endl;
                 }
             }
@@ -1707,7 +1684,7 @@ class BoundaryFinder
             while (j < min_pull_iter || (j < max_pull_iter && !terminate))
             {
                 if (verbose)
-                    std::cout << "- pulling by epsilon = " << epsilon << std::endl;  
+                    std::cout << "- Pulling by epsilon = " << epsilon << std::endl;  
                 bool result = this->pull(
                     optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
                     max_edges, n_keep_interior, n_keep_origbound, n_pull_origbound,
