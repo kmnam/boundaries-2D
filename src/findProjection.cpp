@@ -16,7 +16,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     5/15/2022
+ *     8/1/2022
  */
 using boost::multiprecision::mpq_rational;
 
@@ -47,19 +47,40 @@ int main(int argc, char** argv)
 {
     boost::random::mt19937 rng(1234567890);
 
+    // Default parameter values 
+    int n_init = 200;
+    int max_edges = 30;
+    int n_keep_interior = 100; 
+    int n_keep_origbound = 100;
+    int n_mutate_origbound = 10;
+    int n_pull_origbound = 10;
+    int max_step_iter = 50;
+    int max_pull_iter = 50;
+
     // Check and parse input arguments
     std::string infilename, outprefix;
-    int max_edges = 30;        // Maximum number of 30 edges by default
-    int max_step_iter = 10;    // Maximum number of 10 mutation iterations by default
-    int max_pull_iter = 10;    // Maximum number of 10 pulling iterations by default 
     if (argc == 2)             // Only acceptable call here is "./findProjection --help"
     {
         std::string option(argv[1]);
         if (option == "-h" || option == "--help")
         {
             std::stringstream ss;
-            ss << "\nCommand:\n\t./findProjection [-s NUM_EDGES] [-m MAX_MUTATION_ITER] [-p MAX_PULL_ITER] INPUT OUTPUT\n\n";
-            ss << "\t-s (optional): Simplify alpha shape to contain at most the given number of edges\n";
+            ss << "\nCommand:\n\t./findProjection "
+               << "[-i N_INIT] "
+               << "[-e MAX_EDGES] "
+               << "[-n N_KEEP_INTERIOR] "
+               << "[-o N_KEEP_ORIGBOUND] "
+               << "[-x N_MUTATE/PULL_ORIGBOUND] "
+               << "[-m MAX_MUTATION_ITER] "
+               << "[-p MAX_PULL_ITER] "
+               << "INPUT OUTPUT\n\n";
+            ss << "\t-i (optional): Size of initial sample\n";
+            ss << "\t-e (optional): Maximum number of edges in each simplified boundary\n";
+            ss << "\t-n (optional): Maximum number of points to sample from interior of each boundary\n"; 
+            ss << "\t-o (optional): Maximum number of vertices to preserve from complement of simplified "
+               << "boundary w.r.t unsimplified boundary\n";
+            ss << "\t-x (optional): Maximum number of vertices to mutate/pull from complement of simplified "
+               << "boundary w.r.t unsimplified boundary\n";
             ss << "\t-m (optional): Maximum number of mutation iterations\n";
             ss << "\t-p (optional): Maximum number of pulling iterations\n";
             ss << "\tINPUT: Input file\n";
@@ -81,7 +102,7 @@ int main(int argc, char** argv)
         infilename = argv[1];
         outprefix = argv[2];
     }
-    else if (argc == 5 || argc == 7 || argc == 9)    // Optional arguments specified
+    else if (argc >= 5 && argc <= 17 && argc % 2 == 1)    // Optional arguments specified
     {
         std::vector<std::string> options;
         std::vector<std::string> tokens;
@@ -111,9 +132,18 @@ int main(int argc, char** argv)
         // Interpret each token 
         for (std::string token : tokens)
         {
+            // Each token should be an positive integer 
             if (std::regex_match(token, std::regex("((\\+|-)?[[:digit:]]+)")))
             {
                 int arg = std::stoi(token);
+                if (arg <= 0)
+                {
+                    std::stringstream ss;
+                    ss << "Invalid zero or negative argument specified\n\n";
+                    ss << "Help:\n\t./findProjection --help\n\n";
+                    std::cerr << ss.str(); 
+                    return -1;
+                }
                 args.push_back(arg); 
             }
             else 
@@ -127,9 +157,26 @@ int main(int argc, char** argv)
         }
         for (int i = 0; i < options.size(); ++i)
         { 
-            if (options[i] == "-s")
+            if (options[i] == "-i")
+            {
+                n_init = args[i];
+            }
+            else if (options[i] == "-e")
             {
                 max_edges = args[i];
+            }
+            else if (options[i] == "-o")
+            {
+                n_keep_origbound = args[i];
+            }
+            else if (options[i] == "-x")
+            {
+                n_mutate_origbound = args[i];
+                n_pull_origbound = args[i];
+            }
+            else if (options[i] == "-n")
+            {
+                n_keep_interior = args[i];
             }
             else if (options[i] == "-m")
             {
@@ -159,7 +206,7 @@ int main(int argc, char** argv)
         std::cerr << ss.str();
         return -1;
     }
-
+    
     // Parse the input polytope and instantiate a BoundaryFinder object
     const double area_tol = 1e-8;
     Polytopes::LinearConstraints<mpq_rational>* constraints = new Polytopes::LinearConstraints<mpq_rational>(
@@ -181,11 +228,10 @@ int main(int argc, char** argv)
     {
         return false; 
     };
-    const int n_init = 50; 
     MatrixXd init_input = finder->sampleInput(n_init);
     const int min_step_iter = 1;
     const int min_pull_iter = 1;
-    const unsigned sqp_max_iter = 100;
+    const int sqp_max_iter = 100;
     const double sqp_tol = 1e-6;
     const double tau = 0.5; 
     const double delta = 1e-8; 
@@ -197,11 +243,14 @@ int main(int argc, char** argv)
     const double c2 = 0.9; 
     const bool verbose = true;
     const bool sqp_verbose = false;
+    const bool write_pulled_points = true; 
     finder->run(
         mutate_delta, filter, init_input, min_step_iter, max_step_iter, min_pull_iter,
-        max_pull_iter, sqp_max_iter, sqp_tol, max_edges, tau, delta, beta,
-        use_only_armijo, use_strong_wolfe, hessian_modify_max_iter, outprefix,
-        c1, c2, verbose, sqp_verbose
+        max_pull_iter, sqp_max_iter, sqp_tol, max_edges, n_keep_interior,
+        n_keep_origbound, n_mutate_origbound, n_pull_origbound, tau, delta,
+        beta, use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
+        outprefix, RegularizationMethod::NOREG, 0, c1, c2, verbose, sqp_verbose,
+        write_pulled_points
     );
     
     return 0;
