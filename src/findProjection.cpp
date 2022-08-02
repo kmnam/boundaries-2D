@@ -48,14 +48,14 @@ int main(int argc, char** argv)
     boost::random::mt19937 rng(1234567890);
 
     // Default parameter values 
-    int n_init = 200;
+    int n_init = 50;
     int max_edges = 30;
     int n_keep_interior = 100; 
     int n_keep_origbound = 100;
     int n_mutate_origbound = 10;
     int n_pull_origbound = 10;
-    int max_step_iter = 50;
-    int max_pull_iter = 50;
+    int max_step_iter = 10;
+    int max_pull_iter = 10;
 
     // Check and parse input arguments
     std::string infilename, outprefix;
@@ -136,14 +136,6 @@ int main(int argc, char** argv)
             if (std::regex_match(token, std::regex("((\\+|-)?[[:digit:]]+)")))
             {
                 int arg = std::stoi(token);
-                if (arg <= 0)
-                {
-                    std::stringstream ss;
-                    ss << "Invalid zero or negative argument specified\n\n";
-                    ss << "Help:\n\t./findProjection --help\n\n";
-                    std::cerr << ss.str(); 
-                    return -1;
-                }
                 args.push_back(arg); 
             }
             else 
@@ -159,31 +151,87 @@ int main(int argc, char** argv)
         { 
             if (options[i] == "-i")
             {
+                if (args[i] <= 0)
+                {
+                    std::stringstream ss;
+                    ss << "Invalid zero or negative argument specified\n\n";
+                    ss << "Help:\n\t./findProjection --help\n\n";
+                    std::cerr << ss.str(); 
+                    return -1;
+                }
                 n_init = args[i];
             }
             else if (options[i] == "-e")
             {
+                if (args[i] <= 0)
+                {
+                    std::stringstream ss;
+                    ss << "Invalid zero or negative argument specified\n\n";
+                    ss << "Help:\n\t./findProjection --help\n\n";
+                    std::cerr << ss.str(); 
+                    return -1;
+                }
                 max_edges = args[i];
             }
             else if (options[i] == "-o")
             {
+                if (args[i] < 0)
+                {
+                    std::stringstream ss;
+                    ss << "Invalid negative argument specified\n\n";
+                    ss << "Help:\n\t./findProjection --help\n\n";
+                    std::cerr << ss.str(); 
+                    return -1;
+                }
                 n_keep_origbound = args[i];
             }
             else if (options[i] == "-x")
             {
+                if (args[i] < 0)
+                {
+                    std::stringstream ss;
+                    ss << "Invalid negative argument specified\n\n";
+                    ss << "Help:\n\t./findProjection --help\n\n";
+                    std::cerr << ss.str(); 
+                    return -1;
+                }
                 n_mutate_origbound = args[i];
                 n_pull_origbound = args[i];
             }
             else if (options[i] == "-n")
             {
+                if (args[i] <= 0)
+                {
+                    std::stringstream ss;
+                    ss << "Invalid zero or negative argument specified\n\n";
+                    ss << "Help:\n\t./findProjection --help\n\n";
+                    std::cerr << ss.str(); 
+                    return -1;
+                }
                 n_keep_interior = args[i];
             }
             else if (options[i] == "-m")
             {
+                if (args[i] <= 0)
+                {
+                    std::stringstream ss;
+                    ss << "Invalid zero or negative argument specified\n\n";
+                    ss << "Help:\n\t./findProjection --help\n\n";
+                    std::cerr << ss.str(); 
+                    return -1;
+                }
                 max_step_iter = args[i];
             }
             else if (options[i] == "-p")
             {
+                if (args[i] <= 0)
+                {
+                    std::stringstream ss;
+                    ss << "Invalid zero or negative argument specified\n\n";
+                    ss << "Help:\n\t./findProjection --help\n\n";
+                    std::cerr << ss.str(); 
+                    return -1;
+                }
                 max_pull_iter = args[i];
             }
             else 
@@ -208,7 +256,7 @@ int main(int argc, char** argv)
     }
     
     // Parse the input polytope and instantiate a BoundaryFinder object
-    const double area_tol = 1e-8;
+    const double area_tol = 1e-6;
     Polytopes::LinearConstraints<mpq_rational>* constraints = new Polytopes::LinearConstraints<mpq_rational>(
         Polytopes::InequalityType::LessThanOrEqualTo
     );
