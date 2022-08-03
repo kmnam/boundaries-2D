@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     7/26/2022
+ *     8/3/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -20,13 +20,16 @@
 #include <vector>
 #include <unordered_set>
 #include <unordered_map>
+#include <CGAL/Exact_predicates_exact_constructions_kernel.h>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Aff_transformation_2.h>
 #include <CGAL/Alpha_shape_2.h>
 #include <CGAL/Alpha_shape_vertex_base_2.h>
 #include <CGAL/Alpha_shape_face_base_2.h>
 #include <CGAL/Delaunay_triangulation_2.h>
+#include <CGAL/Boolean_set_operations_2.h>
 #include <CGAL/Polygon_2.h>
+#include <CGAL/Polygon_with_holes_2.h>
 #include <CGAL/Polyline_simplification_2/simplify.h>
 #include <CGAL/algorithm.h>
 #include <CGAL/exceptions.h>
@@ -579,7 +582,7 @@ class Boundary2D
             auto alpha = shape.get_nth_alpha(alpha_index);  
             shape.set_alpha(alpha);
             if (verbose)
-                std::cout << "- setting alpha = " << CGAL::to_double(alpha) << std::endl; 
+                std::cout << "- Setting alpha = " << CGAL::to_double(alpha) << std::endl; 
 
             // Establish an ordering for the vertices in the alpha shape
             vertices_to_indices.clear();
@@ -699,7 +702,7 @@ class Boundary2D
             {
                 if (verbose)
                 { 
-                    std::cout << "- traversed " << nvisited << "/" << nvertices
+                    std::cout << "- Traversed " << nvisited << "/" << nvertices
                               << " boundary vertices in a simple cycle" << std::endl;
                 }
                 return std::make_pair(nvertices, true); 
@@ -708,7 +711,7 @@ class Boundary2D
             {
                 if (verbose)
                 {
-                    std::cout << "- traversed " << nvisited << "/" << nvertices 
+                    std::cout << "- Traversed " << nvisited << "/" << nvertices 
                               << " boundary vertices; boundary contains "
                               << nedges << " edges" << std::endl;
                 }
@@ -971,10 +974,10 @@ class Boundary2D
             }
             if (verbose)
             {
-                std::cout << "- optimal value of alpha = " << opt_alpha << std::endl
-                          << "- enclosed area = " << total_area << std::endl
-                          << "- number of vertices = " << nvertices << std::endl
-                          << "- number of edges = " << nedges << std::endl;
+                std::cout << "- Optimal value of alpha = " << opt_alpha << std::endl
+                          << "- Enclosed area = " << total_area << std::endl
+                          << "- Number of vertices = " << nvertices << std::endl
+                          << "- Number of edges = " << nedges << std::endl;
             } 
 
             // Finally collect the boundary vertices and edges in arbitrary order 
@@ -1139,10 +1142,10 @@ class Boundary2D
             }
             if (verbose)
             {
-                std::cout << "- optimal value of alpha = " << opt_alpha << std::endl
-                          << "- enclosed area = " << total_area << std::endl
-                          << "- number of vertices = " << nvertices << std::endl
-                          << "- number of edges = " << nedges << std::endl;
+                std::cout << "- Optimal value of alpha = " << opt_alpha << std::endl
+                          << "- Enclosed area = " << total_area << std::endl
+                          << "- Number of vertices = " << nvertices << std::endl
+                          << "- Number of edges = " << nedges << std::endl;
             } 
 
             // Finally collect the boundary vertices and edges in arbitrary order 
@@ -1261,7 +1264,7 @@ class Boundary2D
             int high = shape.number_of_alphas() - 1;
             if (verbose)
             { 
-                std::cout << "- searching between alpha = "
+                std::cout << "- Searching between alpha = "
                           << CGAL::to_double(shape.get_nth_alpha(low))
                           << " and "
                           << CGAL::to_double(shape.get_nth_alpha(high))
@@ -1348,10 +1351,10 @@ class Boundary2D
             }
             if (verbose)
             {
-                std::cout << "- optimal value of alpha = " << opt_alpha << std::endl
-                          << "- number of vertices = " << nvertices << std::endl
-                          << "- number of edges = " << nedges << std::endl
-                          << "- enclosed area = " << total_area << std::endl;
+                std::cout << "- Optimal value of alpha = " << opt_alpha << std::endl
+                          << "- Number of vertices = " << nvertices << std::endl
+                          << "- Number of edges = " << nedges << std::endl
+                          << "- Enclosed area = " << total_area << std::endl;
             } 
 
             return AlphaShape2DProperties(
@@ -1371,21 +1374,28 @@ class Boundary2D
  *                  if the number of edges in the alpha shape exceeds this value,
  *                  the alpha shape is simplified.
  * @param verbose   If true, output intermittent messages to `stdout`.
- * @returns A new `AlphaShape2DProperties` instance containing the simplified
- *          shape. 
+ * @returns A new `AlphaShape2DProperties` instance containing the simplified shape.
+ * @throws std::runtime_error If the given shape is empty. 
  */
 AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const int max_edges,
                                           const bool verbose = false)
 {
     if (verbose)
-        std::cout << "- simplifying boundary ..." << std::endl;
+        std::cout << "- Simplifying boundary ..." << std::endl;
 
-    // Instantiate a Polygon object with the vertices given in the
-    // order in which they were traversed
-    std::vector<Point_2> points; 
-    for (auto it = shape.vertices.begin(); it != shape.vertices.end(); ++it)
+    // Check that the shape has at least 3 vertices 
+    if (shape.nv < 3)
+        throw std::runtime_error("Cannot simplify shape with < 3 vertices");
+
+    // Instantiate a Polygon object from the given shape 
+    std::vector<Point_2> points;
+    int v = shape.vertices[0];
+    Point_2 p0(shape.x[v], shape.y[v]);
+    points.push_back(p0); 
+    for (int i = 0; i < shape.nv - 1; ++i)
     {
-        Point_2 p(shape.x[*it], shape.y[*it]); 
+        v = shape.edges[i].second; 
+        Point_2 p(shape.x[v], shape.y[v]); 
         points.push_back(p);
     }
     Polygon_2 polygon(points.begin(), points.end());
@@ -1438,11 +1448,11 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
     double total_area = std::abs(CGAL::to_double(simplified_polygon.area()));
     if (verbose)
     { 
-        std::cout << "- enclosed area of simplified boundary = "
+        std::cout << "- Enclosed area of simplified boundary = "
                   << total_area << std::endl
-                  << "- number of vertices of simplified boundary = "
+                  << "- Number of vertices of simplified boundary = "
                   << nvertices_simplified << std::endl
-                  << "- number of edges of simplified boundary = "
+                  << "- Number of edges of simplified boundary = "
                   << nedges_simplified << std::endl;
     } 
     
@@ -1450,6 +1460,74 @@ AlphaShape2DProperties simplifyAlphaShape(AlphaShape2DProperties& shape, const i
         shape.x, shape.y, vertex_indices_in_order_simplified,
         edge_indices_in_order_simplified, shape.alpha, total_area, true
     );
+}
+
+/**
+ * Return the area of the symmetric difference of the two given alpha shapes.
+ *
+ * @param shape1 First alpha shape.
+ * @param shape2 Second alpha shape.
+ * @returns Area of symmetric difference.  
+ */
+double getSymmetricDifferenceArea(AlphaShape2DProperties& shape1,
+                                  AlphaShape2DProperties& shape2)
+{
+    typedef CGAL::Exact_predicates_exact_constructions_kernel K_exact;
+    typedef CGAL::Polygon_2<K_exact>                          Polygon_2_exact; 
+    typedef CGAL::Polygon_with_holes_2<K_exact>               Polygon_with_holes_2;  
+
+    // Check that both shapes have at least 3 vertices 
+    if (shape1.nv < 3 || shape2.nv < 3)
+        throw std::runtime_error("Cannot compute symmetric difference of shapes with < 3 vertices");
+
+    // Instantiate Polygon objects from the given shapes
+    //
+    // Use *exact predicates and exact constructions* to define these objects 
+    std::vector<K_exact::Point_2> points1, points2;
+    int v = shape1.vertices[0];
+    K_exact::Point_2 init1(shape1.x[v], shape1.y[v]);
+    points1.push_back(init1);
+    for (int i = 0; i < shape1.nv - 1; ++i)
+    {
+        v = shape1.edges[i].second; 
+        K_exact::Point_2 p(shape1.x[v], shape1.y[v]);
+        points1.push_back(p);
+    }
+    Polygon_2_exact polygon1(points1.begin(), points1.end());
+    v = shape2.vertices[0];
+    K_exact::Point_2 init2(shape2.x[v], shape2.y[v]);
+    points2.push_back(init2);
+    for (int i = 0; i < shape2.nv - 1; ++i)
+    {
+        v = shape2.edges[i].second; 
+        K_exact::Point_2 p(shape2.x[v], shape2.y[v]); 
+        points2.push_back(p);
+    }
+    Polygon_2_exact polygon2(points2.begin(), points2.end());
+
+    // Re-orient polygons if either is clockwise-oriented (negative orientation)
+    if (polygon1.orientation() < 0)
+        polygon1.reverse_orientation(); 
+    if (polygon2.orientation() < 0)
+        polygon2.reverse_orientation();  
+
+    // Compute the symmetric difference between the two polygons
+    std::vector<Polygon_with_holes_2> sym_diff; 
+    CGAL::symmetric_difference(polygon1, polygon2, std::back_inserter(sym_diff));
+
+    // Compute the area of each piece of this symmetric difference 
+    double area = 0.0;
+    for (auto it = sym_diff.begin(); it != sym_diff.end(); ++it)
+    {
+        // Each piece is a polygon with holes
+        //
+        // Note that area() returns the *signed* area of each polygon
+        area += std::abs(CGAL::to_double(it->outer_boundary().area()));
+        for (auto hit = it->holes_begin(); hit != it->holes_end(); ++hit)
+            area -= std::abs(CGAL::to_double(hit->area()));  
+    }
+
+    return area;  
 }
 
 #endif
