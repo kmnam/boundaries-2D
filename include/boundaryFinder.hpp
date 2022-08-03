@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     8/1/2022
+ *     8/4/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -106,12 +106,12 @@ class BoundaryFinder
 {
     private:
         int N;                        // Number of points
-        double area_tol;              // Terminate sampling when the area of the 
-                                      // symmetric difference of successive alpha
-                                      // shapes is less than this value 
         int max_iter;                 // Maximum number of sampling iterations
         double curr_area;             // Area of current boundary 
         double curr_sym_diff_area;    // Area of last computed symmetric difference
+        double sym_diff_area_tol;     // Terminate sampling when the area of the 
+                                      // symmetric difference of successive alpha
+                                      // shapes is less than this value 
 
         // Mapping from convex polytope to the plane 
         std::function<VectorXd(const Ref<const VectorXd>&)> func;  
