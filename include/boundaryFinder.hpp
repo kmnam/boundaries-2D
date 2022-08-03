@@ -105,12 +105,13 @@ std::vector<int> sampleWithoutReplacement(const int n, const int k,
 class BoundaryFinder 
 {
     private:
-        int N;               // Number of points
-        double area_tol;     // Terminate sampling when difference in area of 
-                             // region bounded by alpha shapes in successive 
-                             // iterations is less than this value
-        int max_iter;        // Maximum number of sampling iterations
-        double curr_area;    // Area enclosed by last computed boundary
+        int N;                        // Number of points
+        double area_tol;              // Terminate sampling when the area of the 
+                                      // symmetric difference of successive alpha
+                                      // shapes is less than this value 
+        int max_iter;                 // Maximum number of sampling iterations
+        double curr_area;             // Area of current boundary 
+        double curr_sym_diff_area;    // Area of last computed symmetric difference
 
         // Mapping from convex polytope to the plane 
         std::function<VectorXd(const Ref<const VectorXd>&)> func;  
@@ -149,23 +150,24 @@ class BoundaryFinder
          * Constructor with input polytope constraints given as `Eigen::Matrix`
          * instances.
          *
-         * @param dim      Domain (input polytope) dimension.
-         * @param area_tol Area tolerance for sampling termination. 
-         * @param rng      Random number generator instance. 
-         * @param A        Left-hand matrix for polytope constraints. 
-         * @param b        Right-hand vector for polytope constraints.
-         * @param type     Inequality type. 
-         * @param func     Mapping from the input polytope into the plane.  
+         * @param dim               Domain (input polytope) dimension.
+         * @param sym_diff_area_tol Area tolerance for sampling termination. 
+         * @param rng               Random number generator instance. 
+         * @param A                 Left-hand matrix for polytope constraints. 
+         * @param b                 Right-hand vector for polytope constraints.
+         * @param type              Inequality type. 
+         * @param func              Mapping from the input polytope into the plane.  
          */
-        BoundaryFinder(const double area_tol, boost::random::mt19937& rng, 
+        BoundaryFinder(const double sym_diff_area_tol, boost::random::mt19937& rng, 
                        const Ref<const Matrix<mpq_rational, Dynamic, Dynamic> >& A,
                        const Ref<const Matrix<mpq_rational, Dynamic, 1> >& b,
                        const Polytopes::InequalityType type, 
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
         {
             this->N = 0;
-            this->area_tol = area_tol;
-            this->curr_area = 0.0;
+            this->sym_diff_area_tol = sym_diff_area_tol;
+            this->curr_area = 0; 
+            this->curr_sym_diff_area = std::numeric_limits<double>::infinity();
             this->rng = rng;
             this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type, A, b);
             this->tri = new Delaunay_triangulation(A.cols()); 
@@ -185,20 +187,21 @@ class BoundaryFinder
          * Constructor with input polytope constraints to be parsed from
          * a text file.
          *
-         * @param area_tol             Area tolerance for sampling termination. 
+         * @param sym_diff_area_tol    Area tolerance for sampling termination. 
          * @param rng                  Random number generator instance. 
          * @param constraints_filename Name of input file of polytope constraints.
          * @param func                 Mapping from the input polytope into
          *                             the plane.  
          */
-        BoundaryFinder(const double area_tol, boost::random::mt19937& rng, 
+        BoundaryFinder(const double sym_diff_area_tol, boost::random::mt19937& rng, 
                        const std::string constraints_filename,
                        const Polytopes::InequalityType type, 
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
         {
             this->N = 0;
-            this->area_tol = area_tol;
-            this->curr_area = 0.0;
+            this->sym_diff_area_tol = sym_diff_area_tol;
+            this->curr_area = 0;
+            this->curr_sym_diff_area = std::numeric_limits<double>::infinity();
             this->rng = rng;
             this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type);
             this->constraints->parse(constraints_filename);
@@ -223,22 +226,23 @@ class BoundaryFinder
          *
          * The vertices are used to triangulate the polytope.
          *
-         * @param area_tol             Area tolerance for sampling termination. 
+         * @param sym_diff_area_tol    Area tolerance for sampling termination. 
          * @param rng                  Random number generator instance. 
          * @param constraints_filename Name of input file of polytope constraints. 
          * @param vertices_filename    Name of input file of polytope vertices.
          * @param func                 Mapping from the input polytope into
          *                             the plane.  
          */
-        BoundaryFinder(const double area_tol, boost::random::mt19937& rng, 
+        BoundaryFinder(const double sym_diff_area_tol, boost::random::mt19937& rng, 
                        const std::string constraints_filename,
                        const std::string vertices_filename,
                        const Polytopes::InequalityType type, 
                        std::function<VectorXd(const Ref<const VectorXd>&)>& func)
         {
             this->N = 0;
-            this->area_tol = area_tol;
-            this->curr_area = 0.0;
+            this->sym_diff_area_tol = sym_diff_area_tol;
+            this->curr_area = 0;
+            this->curr_sym_diff_area = std::numeric_limits<double>::infinity(); 
             this->rng = rng;
             this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type); 
             this->constraints->parse(constraints_filename);
@@ -551,7 +555,8 @@ class BoundaryFinder
                 }
             }
 
-            // Compute enclosed area and test for convergence
+            // Compute enclosed area
+            this->curr_area = this->curr_bound.area; 
             if (verbose)
             {
                 std::cout << "[INIT] Initializing; "
@@ -561,15 +566,8 @@ class BoundaryFinder
                           << std::endl; 
                 if (this->simplified)
                 {
-                    std::cout << ">>>>>> Simplified to "
-                              << this->curr_simplified.nv
-                              << " boundary points; enclosed area = " 
-                              << this->curr_simplified.area << std::endl;
-                    this->curr_area = this->curr_simplified.area; 
-                }
-                else
-                {
-                    this->curr_area = this->curr_bound.area; 
+                    std::cout << ">>>>>> Simplified to " << this->curr_simplified.nv
+                              << " boundary points" << std::endl;
                 }
             }
         }
@@ -584,8 +582,9 @@ class BoundaryFinder
          * 3) Evaluate the stored mapping on these new input points.
          *
          * The return value indicates whether or not the area enclosed by the 
-         * boundary *obtained prior to mutation* has converged to within
-         * `this->area_tol`.
+         * symmetric difference between previous boundary and the new boundary 
+         * (*computed prior to mutation*) has converged to within
+         * `this->sym_diff_area_tol`.
          *
          * Note that this method assumes that the boundary is simply connected.
          *
@@ -614,8 +613,9 @@ class BoundaryFinder
          *                           the boundary obtained in this iteration.
          * @param verbose            If true, output intermittent messages to
          *                           `stdout`.
-         * @returns True if the area enclosed by the boundary (obtained prior 
-         *          to mutation) has converged to within `this->area_tol`. 
+         * @returns True if the area enclosed by the symmetric difference between
+         *          the last computed boundary and the new boundary has converged
+         *          to within `this->sym_diff_area_tol`. 
          */
         bool step(boost::random::uniform_real_distribution<double>& dist,
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
@@ -809,12 +809,13 @@ class BoundaryFinder
             VectorXd::Map(&x[0], this->N) = this->points.col(0);
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
             Boundary2D boundary(x, y);
+            AlphaShape2DProperties new_bound; 
             try
             {
                 // This line may throw:
                 // - CGAL::Assertion_exception (while instantiating the alpha shape) 
                 // - std::runtime_error (if polygon is not simple)
-                this->curr_bound = boundary.getSimplyConnectedBoundary<true>(verbose);
+                new_bound = boundary.getSimplyConnectedBoundary<true>(verbose);
             }
             catch (CGAL::Assertion_exception& e) 
             {
@@ -824,7 +825,7 @@ class BoundaryFinder
                 // instantiating the alpha shape) 
                 try 
                 {
-                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
+                    new_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -839,7 +840,7 @@ class BoundaryFinder
                 // the alpha shape) 
                 try 
                 {
-                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
+                    new_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -848,36 +849,36 @@ class BoundaryFinder
             }
 
             // Re-orient the points so that the boundary is traversed clockwise
-            this->curr_bound.orient(CGAL::RIGHT_TURN);
+            new_bound.orient(CGAL::RIGHT_TURN);
 
             // Update input parameters as necessary
-            n_interior = this->curr_bound.np - this->curr_bound.nv;   // New number of interior points 
+            n_interior = new_bound.np - new_bound.nv;   // New number of interior points 
             if (n_keep_interior > n_interior)
                 n_keep_interior = n_interior; 
 
             // Remove as many points from the interior as desired
             boundary_indices.clear(); 
             boundary_indices.insert(
-                this->curr_bound.vertices.begin(), this->curr_bound.vertices.end()
+                new_bound.vertices.begin(), new_bound.vertices.end()
             );
             std::vector<int> interior_indices; 
-            for (int i = 0; i < this->curr_bound.np; ++i)
+            for (int i = 0; i < new_bound.np; ++i)
             {
                 if (boundary_indices.find(i) == boundary_indices.end())
                     interior_indices.push_back(i); 
             }
             std::vector<int> interior_indices_to_delete;
-            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_interior;
+            int n_to_delete = new_bound.np - new_bound.nv - n_keep_interior; 
             if (n_to_delete < 0)
             {   // Check that the number of points to be deleted is not negative 
                 n_to_delete = 0; 
             }
             std::vector<int> idx = sampleWithoutReplacement(
-                this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
+                new_bound.np - new_bound.nv, n_to_delete, this->rng
             );
             for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
-            this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
+            new_bound.deleteInteriorPoints(interior_indices_to_delete);
 
             // Update this->N, this->input, this->points accordingly 
             std::vector<int> indices_to_keep; 
@@ -891,14 +892,17 @@ class BoundaryFinder
             }
             this->input = this->input(indices_to_keep, Eigen::all).eval(); 
             this->points = this->points(indices_to_keep, Eigen::all).eval(); 
-            this->N = this->curr_bound.np;
+            this->N = new_bound.np;
             if (verbose)
             {
                 std::cout << "- Removed " << interior_indices_to_delete.size()
                           << " interior points" << std::endl;
             } 
 
-            // If desired, simplify the current boundary
+            // Update the current boundary and simplify if desired
+            this->curr_area = new_bound.area;
+            this->curr_sym_diff_area = getSymmetricDifferenceArea(this->curr_bound, new_bound);  
+            this->curr_bound = new_bound; 
             if (max_edges > 0 && this->curr_bound.edges.size() > max_edges)
             {
                 try
@@ -971,35 +975,23 @@ class BoundaryFinder
                 }
             }
 
-            // Compute enclosed area and test for convergence
-            double change = (
-                this->simplified
-                ? this->curr_simplified.area - this->curr_area
-                : this->curr_bound.area - this->curr_area
-            );
             if (verbose)
             {
                 std::cout << "[STEP] Iteration " << iter << "; "
                           << this->curr_bound.np << " total points; "
                           << this->curr_bound.nv << " in boundary; "
-                          << "enclosed area = " << this->curr_bound.area << "; "
-                          << "change = " << this->curr_bound.area - this->curr_area
+                          << "enclosed area = " << this->curr_area << "; "
+                          << "area of symmetric difference = " << this->curr_sym_diff_area
                           << std::endl;
                 if (this->simplified)
                 {
-                    std::cout << ">>>>>> Simplified to "
-                              << this->curr_simplified.nv
-                              << " boundary points; enclosed area = "
-                              << this->curr_simplified.area << "; "
-                              << "change = " << this->curr_simplified.area - this->curr_area
-                              << std::endl;
+                    std::cout << ">>>>>> Simplified to " << this->curr_simplified.nv
+                              << " boundary points" << std::endl;
                 }
             }
-            bool converged = (std::abs(change) < this->area_tol * this->curr_area); 
-            this->curr_area = (
-                this->simplified ? this->curr_simplified.area : this->curr_bound.area
-            ); 
-
+           
+            // Does the symmetric difference have a sufficiently small area? 
+            bool converged = (this->curr_sym_diff_area < this->sym_diff_area_tol * this->curr_area); 
             return converged;
         }
 
@@ -1007,8 +999,10 @@ class BoundaryFinder
          * "Pull" the boundary points along their outward normal vectors
          * with sequential quadratic programming.
          *
-         * The return value indicates whether or not the enclosed area has 
-         * converged to within `this->area_tol`.
+         * The return value indicates whether or not the area enclosed by the 
+         * symmetric difference between previous boundary and the new boundary 
+         * (*computed prior to mutation*) has converged to within
+         * `this->sym_diff_area_tol`.
          *
          * Note that this method assumes that the boundary is simply connected.
          *
@@ -1077,8 +1071,9 @@ class BoundaryFinder
          *                                pulled, their corresponding normal 
          *                                vectors, and the resulting points 
          *                                to file. 
-         * @returns True if the area enclosed by the boundary (obtained prior 
-         *          to pulling) has converged to within `this->area_tol`. 
+         * @returns True if the area enclosed by the symmetric difference between
+         *          the last computed boundary and the new boundary has converged
+         *          to within `this->sym_diff_area_tol`. 
          */
         bool pull(SQPOptimizer<double>* optimizer, 
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
@@ -1359,12 +1354,13 @@ class BoundaryFinder
             VectorXd::Map(&x[0], this->N) = this->points.col(0);
             VectorXd::Map(&y[0], this->N) = this->points.col(1);
             Boundary2D boundary(x, y);
+            AlphaShape2DProperties new_bound; 
             try
             {
                 // This line may throw:
                 // - CGAL::Assertion_exception (while instantiating the alpha shape) 
                 // - std::runtime_error (if polygon is not simple)
-                this->curr_bound = boundary.getSimplyConnectedBoundary<true>(verbose);
+                new_bound = boundary.getSimplyConnectedBoundary<true>(verbose);
             }
             catch (CGAL::Assertion_exception& e) 
             {
@@ -1374,7 +1370,7 @@ class BoundaryFinder
                 // instantiating the alpha shape) 
                 try 
                 {
-                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
+                    new_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -1389,7 +1385,7 @@ class BoundaryFinder
                 // the alpha shape) 
                 try 
                 {
-                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
+                    new_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -1398,36 +1394,36 @@ class BoundaryFinder
             }
 
             // Re-orient the points so that the boundary is traversed clockwise
-            this->curr_bound.orient(CGAL::RIGHT_TURN);
+            new_bound.orient(CGAL::RIGHT_TURN);
 
             // Update input parameters as necessary
-            n_interior = this->curr_bound.np - this->curr_bound.nv;   // New number of interior points 
+            n_interior = new_bound.np - new_bound.nv;   // New number of interior points 
             if (n_keep_interior > n_interior)
                 n_keep_interior = n_interior; 
 
             // Remove as many points from the interior as desired
             boundary_indices.clear(); 
             boundary_indices.insert(
-                this->curr_bound.vertices.begin(), this->curr_bound.vertices.end()
+                new_bound.vertices.begin(), new_bound.vertices.end()
             );
             std::vector<int> interior_indices; 
-            for (int i = 0; i < this->curr_bound.np; ++i)
+            for (int i = 0; i < new_bound.np; ++i)
             {
                 if (boundary_indices.find(i) == boundary_indices.end())
                     interior_indices.push_back(i); 
             }
             std::vector<int> interior_indices_to_delete;
-            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_interior;
+            int n_to_delete = new_bound.np - new_bound.nv - n_keep_interior;
             if (n_to_delete < 0)
             {   // Check that the number of points to be deleted is not negative 
                 n_to_delete = 0; 
             }
             std::vector<int> idx = sampleWithoutReplacement(
-                this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
+                new_bound.np - new_bound.nv, n_to_delete, this->rng
             );
             for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
-            this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
+            new_bound.deleteInteriorPoints(interior_indices_to_delete);
 
             // Update this->N, this->input, this->points accordingly 
             std::vector<int> indices_to_keep; 
@@ -1441,14 +1437,17 @@ class BoundaryFinder
             }
             this->input = this->input(indices_to_keep, Eigen::all).eval(); 
             this->points = this->points(indices_to_keep, Eigen::all).eval(); 
-            this->N = this->curr_bound.np;
+            this->N = new_bound.np;
             if (verbose)
             {
                 std::cout << "- Removed " << interior_indices_to_delete.size()
                           << " interior points" << std::endl;
             } 
             
-            // If desired, simplify the current boundary
+            // Update the current boundary and simplify if desired
+            this->curr_area = new_bound.area;
+            this->curr_sym_diff_area = getSymmetricDifferenceArea(this->curr_bound, new_bound);  
+            this->curr_bound = new_bound; 
             if (max_edges > 0 && this->curr_bound.edges.size() > max_edges)
             {
                 try
@@ -1521,35 +1520,23 @@ class BoundaryFinder
                 }
             }
 
-            // Compute enclosed area and test for convergence
-            double change = (
-                this->simplified
-                ? this->curr_simplified.area - this->curr_area
-                : this->curr_bound.area - this->curr_area
-            );
             if (verbose)
             {
                 std::cout << "[PULL] Iteration " << iter << "; "
                           << this->curr_bound.np << " total points; "
                           << this->curr_bound.nv << " in boundary; "
-                          << "enclosed area = " << this->curr_bound.area << "; "
-                          << "change = " << this->curr_bound.area - this->curr_area
+                          << "enclosed area = " << this->curr_area << "; "
+                          << "area of symmetric difference = " << this->curr_sym_diff_area
                           << std::endl;
                 if (this->simplified)
                 {
-                    std::cout << ">>>>>> Simplified to "
-                              << this->curr_simplified.nv
-                              << " boundary points; enclosed area = "
-                              << this->curr_simplified.area << "; "
-                              << "change = " << this->curr_simplified.area - this->curr_area
-                              << std::endl;
+                    std::cout << ">>>>>> Simplified to " << this->curr_simplified.nv
+                              << " boundary points" << std::endl;
                 }
             }
-            bool converged = (std::abs(change) < this->area_tol * this->curr_area); 
-            this->curr_area = (
-                this->simplified ? this->curr_simplified.area : this->curr_bound.area
-            ); 
 
+            // Does the symmetric difference have a sufficiently small area? 
+            bool converged = (this->curr_sym_diff_area < this->sym_diff_area_tol * this->curr_area); 
             return converged; 
         }
 
