@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     8/3/2022
+ *     8/4/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -1507,12 +1507,12 @@ double getSymmetricDifferenceArea(AlphaShape2DProperties& shape1,
 
     // Re-orient polygons if either is clockwise-oriented (negative orientation)
     if (polygon1.orientation() < 0)
-        polygon1.reverse_orientation(); 
+        polygon1.reverse_orientation();
     if (polygon2.orientation() < 0)
-        polygon2.reverse_orientation();  
+        polygon2.reverse_orientation();
 
     // Compute the symmetric difference between the two polygons
-    std::vector<Polygon_with_holes_2> sym_diff; 
+    std::vector<Polygon_with_holes_2> sym_diff;
     CGAL::symmetric_difference(polygon1, polygon2, std::back_inserter(sym_diff));
 
     // Compute the area of each piece of this symmetric difference 
@@ -1524,7 +1524,7 @@ double getSymmetricDifferenceArea(AlphaShape2DProperties& shape1,
         // Note that area() returns the *signed* area of each polygon
         area += std::abs(CGAL::to_double(it->outer_boundary().area()));
         for (auto hit = it->holes_begin(); hit != it->holes_end(); ++hit)
-            area -= std::abs(CGAL::to_double(hit->area()));  
+            area -= std::abs(CGAL::to_double(hit->area()));
     }
 
     return area;  
