@@ -401,6 +401,14 @@ class BoundaryFinder
         }
 
         /**
+         * Return the dimension of the input polytope. 
+         */
+        int getD()
+        {
+            return this->constraints->getD(); 
+        }
+
+        /**
          * Return the stored input points. 
          */ 
         MatrixXd getInput()
