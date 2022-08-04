@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     8/4/2022
+ *     8/5/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -148,6 +148,43 @@ class BoundaryFinder
     public:
         /**
          * Constructor with input polytope constraints given as `Eigen::Matrix`
+         * instances and no input function.
+         *
+         * Function is set to the zero function. 
+         *
+         * @param dim               Domain (input polytope) dimension.
+         * @param sym_diff_area_tol Area tolerance for sampling termination. 
+         * @param rng               Random number generator instance. 
+         * @param A                 Left-hand matrix for polytope constraints. 
+         * @param b                 Right-hand vector for polytope constraints.
+         * @param type              Inequality type. 
+         */
+        BoundaryFinder(const double sym_diff_area_tol, boost::random::mt19937& rng, 
+                       const Ref<const Matrix<mpq_rational, Dynamic, Dynamic> >& A,
+                       const Ref<const Matrix<mpq_rational, Dynamic, 1> >& b,
+                       const Polytopes::InequalityType type) 
+        {
+            this->N = 0;
+            this->sym_diff_area_tol = sym_diff_area_tol;
+            this->curr_area = 0; 
+            this->curr_sym_diff_area = std::numeric_limits<double>::infinity();
+            this->rng = rng;
+            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type, A, b);
+            this->tri = new Delaunay_triangulation(A.cols()); 
+            this->func = [](const Ref<const VectorXd>& x) -> VectorXd { return VectorXd::Zero(2); };
+            this->simplified = false; 
+
+            // Enumerate the vertices of the input polytope
+            Polytopes::PolyhedralDictionarySystem* dict = new Polytopes::PolyhedralDictionarySystem(type, A, b); 
+            Matrix<mpq_rational, Dynamic, Dynamic> vertices = dict->enumVertices(); 
+            delete dict; 
+
+            // Obtain the Delaunay triangulation of the input polytope 
+            Polytopes::triangulate(vertices, this->tri); 
+        }
+
+        /**
+         * Constructor with input polytope constraints given as `Eigen::Matrix`
          * instances.
          *
          * @param dim               Domain (input polytope) dimension.
@@ -185,11 +222,49 @@ class BoundaryFinder
 
         /**
          * Constructor with input polytope constraints to be parsed from
+         * a text file and no input function.
+         *
+         * Function is set to the zero function. 
+         *
+         * @param sym_diff_area_tol    Area tolerance for sampling termination. 
+         * @param rng                  Random number generator instance.
+         * @param constraints_filename Name of input file of polytope constraints.
+         * @param type                 Inequality type (not specified in file).  
+         */
+        BoundaryFinder(const double sym_diff_area_tol, boost::random::mt19937& rng, 
+                       const std::string constraints_filename,
+                       const Polytopes::InequalityType type) 
+        {
+            this->N = 0;
+            this->sym_diff_area_tol = sym_diff_area_tol;
+            this->curr_area = 0;
+            this->curr_sym_diff_area = std::numeric_limits<double>::infinity();
+            this->rng = rng;
+            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type);
+            this->constraints->parse(constraints_filename);
+            this->tri = new Delaunay_triangulation(this->constraints->getD());  
+            this->func = [](const Ref<const VectorXd>& x) -> VectorXd { return VectorXd::Zero(2); }; 
+            this->simplified = false; 
+
+            // Enumerate the vertices of the input polytope
+            Matrix<mpq_rational, Dynamic, Dynamic> A = this->constraints->getA(); 
+            Matrix<mpq_rational, Dynamic, 1> b = this->constraints->getb();
+            Polytopes::PolyhedralDictionarySystem* dict = new Polytopes::PolyhedralDictionarySystem(type, A, b); 
+            Matrix<mpq_rational, Dynamic, Dynamic> vertices = dict->enumVertices(); 
+            delete dict; 
+
+            // Obtain the Delaunay triangulation of the input polytope 
+            Polytopes::triangulate(vertices, this->tri); 
+        }
+
+        /**
+         * Constructor with input polytope constraints to be parsed from
          * a text file.
          *
          * @param sym_diff_area_tol    Area tolerance for sampling termination. 
          * @param rng                  Random number generator instance. 
          * @param constraints_filename Name of input file of polytope constraints.
+         * @param type                 Inequality type (not specified in file). 
          * @param func                 Mapping from the input polytope into
          *                             the plane.  
          */
@@ -222,7 +297,44 @@ class BoundaryFinder
 
         /**
          * Constructor with input polytope constraints and vertices to 
-         * be parsed from separate text files.
+         * be parsed from separate text files (which are assumed to be
+         * consistent) and no input function.
+         *
+         * The vertices are used to triangulate the polytope.
+         *
+         * Function is set to the zero function. 
+         *
+         * @param sym_diff_area_tol    Area tolerance for sampling termination. 
+         * @param rng                  Random number generator instance. 
+         * @param constraints_filename Name of input file of polytope constraints. 
+         * @param vertices_filename    Name of input file of polytope vertices.
+         * @param type                 Inequality type (not specified in file). 
+         */
+        BoundaryFinder(const double sym_diff_area_tol, boost::random::mt19937& rng, 
+                       const std::string constraints_filename,
+                       const std::string vertices_filename,
+                       const Polytopes::InequalityType type) 
+        {
+            this->N = 0;
+            this->sym_diff_area_tol = sym_diff_area_tol;
+            this->curr_area = 0;
+            this->curr_sym_diff_area = std::numeric_limits<double>::infinity(); 
+            this->rng = rng;
+            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type); 
+            this->constraints->parse(constraints_filename);
+            this->tri = new Delaunay_triangulation(this->constraints->getD());  
+            this->func = [](const Ref<const VectorXd>& x) -> VectorXd { return VectorXd::Zero(2); };
+            this->simplified = false; 
+
+            // Parse the vertices from the given file and obtain the Delaunay
+            // triangulation of the polytope  
+            Polytopes::parseVerticesFile(vertices_filename, this->tri);
+        }
+
+        /**
+         * Constructor with input polytope constraints and vertices to 
+         * be parsed from separate text files (which are assumed to be
+         * consistent).
          *
          * The vertices are used to triangulate the polytope.
          *
@@ -230,6 +342,7 @@ class BoundaryFinder
          * @param rng                  Random number generator instance. 
          * @param constraints_filename Name of input file of polytope constraints. 
          * @param vertices_filename    Name of input file of polytope vertices.
+         * @param type                 Inequality type (not specified in file). 
          * @param func                 Mapping from the input polytope into
          *                             the plane.  
          */
@@ -275,6 +388,16 @@ class BoundaryFinder
                             const Ref<const Matrix<mpq_rational, Dynamic, 1> >& b)
         {
             this->constraints->setAb(A, b);
+        }
+
+        /**
+         * Update the stored function from the input polytope into the plane.
+         *
+         * @param func Mapping from the input polytope into the plane.  
+         */
+        void setFunc(std::function<VectorXd(const Ref<const VectorXd>&)>& func)
+        {
+            this->func = func; 
         }
 
         /**
