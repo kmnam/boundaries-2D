@@ -56,41 +56,6 @@ typedef CGAL::Polyline_simplification_2::Stop_below_count_threshold  Stop;
  */
 struct AlphaShape2DProperties
 {
-    private:
-        /**
-         * Re-direct the edges (i.e., change the edge `(p, q)` to `(q, p)`) so
-         * that every edge exhibits the given orientation.
-         *
-         * @param orientation            Desired orientation of edges.
-         * @throws std::invalid_argument If the specified orientation is invalid 
-         *                               (is not `CGAL::LEFT_TURN` or
-         *                               `CGAL::RIGHT_TURN`).  
-         */
-        void orient(Orientation orientation)
-        {
-            if (orientation != CGAL::LEFT_TURN && orientation != CGAL::RIGHT_TURN)
-                throw std::invalid_argument("Invalid orientation specified");
-
-            // If the given orientation is the opposite of the current orientation
-            // and there are three or more vertices ...
-            if (orientation != this->orientation && this->nv >= 3)
-            {
-                std::vector<int> vertices;
-                std::vector<std::pair<int, int> > edges; 
-
-                vertices.push_back(this->vertices[0]);
-                edges.push_back(std::make_pair(this->vertices[0], this->vertices[this->nv-1]));
-                for (int i = this->nv - 1; i > 0; --i)
-                {
-                    vertices.push_back(this->vertices[i]);
-                    edges.push_back(std::make_pair(this->vertices[i], this->vertices[i-1]));
-                }
-                this->vertices = vertices;
-                this->edges = edges;
-                this->orientation = orientation;
-            }
-        }
-
     public:
         /** x-coordinates of the points in the point-set. */
         std::vector<double> x;
@@ -239,33 +204,20 @@ struct AlphaShape2DProperties
 
             // Find the orientation of the edges (given there are at least
             // three vertices)
-            if (this->nv >= 3)
+            if (this->is_simple_cycle && this->nv >= 3)
             {
-                Point_2 p, q, r;
-                if (this->min == 0)
-                {
-                    p = Point_2(this->x[this->vertices[this->nv-1]], this->y[this->vertices[this->nv-1]]);
-                    q = Point_2(this->x[this->vertices[0]], this->y[this->vertices[0]]);
-                    r = Point_2(this->x[this->vertices[1]], this->y[this->vertices[1]]);
-                }
+                std::vector<Point_2> points_in_order;
+                for (auto it = this->edges.begin(); it != this->edges.end(); ++it)
+                    points_in_order.emplace_back(Point_2(this->x[it->first], this->y[it->first])); 
+                Polygon_2 polygon(points_in_order.begin(), points_in_order.end());
+                if (polygon.orientation() == CGAL::CLOCKWISE)
+                    this->orientation = CGAL::RIGHT_TURN;
                 else
-                {
-                    p = Point_2(
-                        this->x[this->vertices[(this->min-1) % this->nv]],
-                        this->y[this->vertices[(this->min-1) % this->nv]]
-                    );
-                    q = Point_2(
-                        this->x[this->vertices[this->min]],
-                        this->y[this->vertices[this->min]]
-                    );
-                    r = Point_2(
-                        this->x[this->vertices[(this->min+1) % this->nv]],
-                        this->y[this->vertices[(this->min+1) % this->nv]]
-                    );
-                }
-                this->orientation = CGAL::orientation(p, q, r);
+                    this->orientation = CGAL::LEFT_TURN; 
             }
-            else    // If there are fewer than three vertices, set to LEFT_TURN
+            // If there are fewer than three vertices or the shape is not a
+            // simple cycle, set to LEFT_TURN
+            else 
             {
                 this->orientation = CGAL::LEFT_TURN;
             }
@@ -397,6 +349,40 @@ struct AlphaShape2DProperties
             }
 
             return normals;
+        }
+
+        /**
+         * Re-direct the edges (i.e., change the edge `(p, q)` to `(q, p)`) so
+         * that every edge exhibits the given orientation.
+         *
+         * @param orientation            Desired orientation of edges.
+         * @throws std::invalid_argument If the specified orientation is invalid 
+         *                               (is not `CGAL::LEFT_TURN` or
+         *                               `CGAL::RIGHT_TURN`).  
+         */
+        void orient(Orientation orientation)
+        {
+            if (orientation != CGAL::LEFT_TURN && orientation != CGAL::RIGHT_TURN)
+                throw std::invalid_argument("Invalid orientation specified");
+
+            // If the given orientation is the opposite of the current
+            // orientation and there are three or more vertices ...
+            if (orientation != this->orientation && this->nv >= 3)
+            {
+                std::vector<int> vertices;
+                std::vector<std::pair<int, int> > edges; 
+
+                vertices.push_back(this->vertices[0]);
+                edges.push_back(std::make_pair(this->vertices[0], this->vertices[this->nv-1]));
+                for (int i = this->nv - 1; i > 0; --i)
+                {
+                    vertices.push_back(this->vertices[i]);
+                    edges.push_back(std::make_pair(this->vertices[i], this->vertices[i-1]));
+                }
+                this->vertices = vertices;
+                this->edges = edges;
+                this->orientation = orientation;
+            }
         }
 
         /**
