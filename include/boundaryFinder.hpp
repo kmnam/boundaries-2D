@@ -1156,8 +1156,8 @@ class BoundaryFinder
                 n_keep_interior = n_interior; 
             if (n_keep_origbound > origbound_nv)
                 n_keep_origbound = origbound_nv; 
-            if (n_mutate_origbound > n_keep_origbound)
-                n_mutate_origbound = n_keep_origbound;
+            if (n_pull_origbound > n_keep_origbound)
+                n_pull_origbound = n_keep_origbound;
 
             // First, if the boundary was simplified, identify the subset of 
             // boundary vertices in the unsimplified boundary and not in 
