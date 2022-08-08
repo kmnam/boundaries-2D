@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     8/5/2022
+ *     8/8/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -571,48 +571,6 @@ class BoundaryFinder
             // Re-orient the points so that the boundary is traversed clockwise
             this->curr_bound.orient(CGAL::RIGHT_TURN);
 
-            // Remove as many points from the interior as desired
-            std::unordered_set<int> boundary_indices(
-                this->curr_bound.vertices.begin(), this->curr_bound.vertices.end()
-            );
-            std::vector<int> interior_indices; 
-            for (int i = 0; i < this->curr_bound.np; ++i)
-            {
-                if (boundary_indices.find(i) == boundary_indices.end())
-                    interior_indices.push_back(i); 
-            }
-            std::vector<int> interior_indices_to_delete;
-            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_interior;
-            if (n_to_delete < 0)
-            {   // Check that the number of points to be deleted is not negative 
-                n_to_delete = 0; 
-            }
-            std::vector<int> idx = sampleWithoutReplacement(
-                this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
-            );
-            for (const int i : idx)
-                interior_indices_to_delete.push_back(interior_indices[i]);  
-            this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
-
-            // Update this->N, this->input, this->points accordingly 
-            std::vector<int> indices_to_keep; 
-            std::unordered_set<int> interior_indices_to_delete_set(
-                interior_indices_to_delete.begin(), interior_indices_to_delete.end()
-            ); 
-            for (int i = 0; i < this->N; ++i)
-            {
-                if (interior_indices_to_delete_set.find(i) == interior_indices_to_delete_set.end())
-                    indices_to_keep.push_back(i); 
-            }
-            this->input = this->input(indices_to_keep, Eigen::all).eval(); 
-            this->points = this->points(indices_to_keep, Eigen::all).eval(); 
-            this->N = this->curr_bound.np;
-            if (verbose)
-            {
-                std::cout << "- Removed " << interior_indices_to_delete.size()
-                          << " interior points" << std::endl;
-            } 
-
             // If desired, simplify the current boundary
             if (max_edges > 0 && this->curr_bound.edges.size() > max_edges)
             {
@@ -757,10 +715,12 @@ class BoundaryFinder
             // Reset input parameters if necessary 
             int n_interior = this->curr_bound.np - this->curr_bound.nv; 
             int origbound_nv = this->curr_bound.nv - this->curr_simplified.nv;
+            if (n_keep_interior > n_interior)
+                n_keep_interior = n_interior; 
             if (n_keep_origbound > origbound_nv)
                 n_keep_origbound = origbound_nv; 
             if (n_mutate_origbound > n_keep_origbound)
-                n_mutate_origbound = n_keep_origbound; 
+                n_mutate_origbound = n_keep_origbound;
 
             // First, if the boundary was simplified, identify the subset of 
             // boundary vertices in the unsimplified boundary and not in 
@@ -800,54 +760,70 @@ class BoundaryFinder
                     origbound_indices_to_keep.push_back(origbound_indices[i]); 
             }
 
-            // Keep only the vertices in the unsimplified boundary chosen above
+            // Third, remove as many points from the interior as desired
+            std::vector<int> interior_indices;
+            for (int i = 0; i < this->curr_bound.np; ++i)
+            {
+                if (boundary_indices.find(i) == boundary_indices.end())
+                    interior_indices.push_back(i); 
+            }
+            std::vector<int> interior_indices_to_delete;
+            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_interior;
+            if (n_to_delete < 0)
+            {   // Check that the number of points to be deleted is not negative 
+                n_to_delete = 0; 
+            }
+            std::vector<int> idx = sampleWithoutReplacement(
+                this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
+            );
+            for (const int i : idx)
+                interior_indices_to_delete.push_back(interior_indices[i]);  
+            this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
+
+            // Update this->N, this->input, this->points accordingly 
             //
-            // Note that this slicing is only necessary if the boundary was 
-            // simplified  
+            // First collect the indices of all interior points to keep ... 
+            std::vector<int> all_indices_to_keep; 
+            std::unordered_set<int> interior_indices_to_delete_set(
+                interior_indices_to_delete.begin(), interior_indices_to_delete.end()
+            ); 
+            for (auto it = interior_indices.begin(); it != interior_indices.end(); ++it)
+            {
+                if (interior_indices_to_delete_set.find(*it) == interior_indices_to_delete_set.end())
+                    all_indices_to_keep.push_back(*it); 
+            }
+
+            // ... then collect the indices of all (original) boundary vertices
+            // to keep ... 
+            for (auto it = origbound_indices_to_keep.begin(); it != origbound_indices_to_keep.end(); ++it)
+                all_indices_to_keep.push_back(*it);
+            
+            // ... then collect the indices of all simplified boundary vertices,
+            // if the boundary was simplified ...
             if (this->simplified)
             {
-                int n_keep_prior = this->curr_simplified.nv + n_interior + n_keep_origbound;
-                VectorXi indices_to_keep_prior(n_keep_prior); 
-                int j = 0;
-
-                // Keep all vertices in the simplified boundary, all points
-                // in the interior, and the vertices in the unsimplified 
-                // boundary chosen above
-                for (int i = 0; i < this->curr_bound.np; ++i)
-                {
-                    if (boundary_indices.find(i) == boundary_indices.end())
-                    {
-                        indices_to_keep_prior(j) = i;
-                        j++;
-                    }
-                }
-                for (const int i : this->curr_simplified.vertices) 
-                {
-                    indices_to_keep_prior(j) = i; 
-                    j++;
-                }
-                for (const int i : origbound_indices_to_keep)
-                {
-                    indices_to_keep_prior(j) = i;
-                    j++; 
-                }
-                this->N = n_keep_prior; 
-                this->input = this->input(indices_to_keep_prior, Eigen::all).eval(); 
-                this->points = this->points(indices_to_keep_prior, Eigen::all).eval();
+                for (const int i : this->curr_simplified.vertices)
+                    all_indices_to_keep.push_back(i); 
             }
+
+            // ... and finally update this->N, this->input, this->points  
+            this->input = this->input(all_indices_to_keep, Eigen::all).eval(); 
+            this->points = this->points(all_indices_to_keep, Eigen::all).eval(); 
+            this->N = all_indices_to_keep.size(); 
+           
             if (verbose)
             {
                 if (!this->simplified)
                 {
                     std::cout << "- Preserved " << this->N << " points: "
-                              << n_interior << " interior, "
+                              << n_keep_interior << " interior, "
                               << this->curr_bound.nv << " boundary"
                               << std::endl; 
                 } 
                 else 
                 {
                     std::cout << "- Preserved " << this->N << " points: "
-                              << n_interior << " interior, "
+                              << n_keep_interior << " interior, "
                               << this->curr_simplified.nv + n_keep_origbound
                               << " boundary" << std::endl;
                 }
@@ -872,9 +848,9 @@ class BoundaryFinder
                 to_mutate.resize(n_mutate);
 
                 // The vertices in the simplified boundary are now in one 
-                // contiguous chunk in this->input / this->points (see above)
+                // contiguous chunk in this->input / this->points (see above):
                 for (int i = 0; i < this->curr_simplified.nv; ++i)
-                    to_mutate(i) = n_interior + i;
+                    to_mutate(i) = n_keep_interior + n_keep_origbound + i; 
                 
                 // Choose n_mutate_origbound number of vertices among the 
                 // vertices in the unsimplified boundary *that were chosen to 
@@ -883,7 +859,7 @@ class BoundaryFinder
                     n_keep_origbound, n_mutate_origbound, this->rng
                 );
                 for (int i = 0; i < n_mutate_origbound; ++i)
-                    to_mutate(this->curr_simplified.nv + i) = n_interior + this->curr_simplified.nv + idx[i];
+                    to_mutate(this->curr_simplified.nv + i) = n_keep_interior + idx[i]; 
             }
             if (verbose)
             {
@@ -981,54 +957,6 @@ class BoundaryFinder
 
             // Re-orient the points so that the boundary is traversed clockwise
             new_bound.orient(CGAL::RIGHT_TURN);
-
-            // Update input parameters as necessary
-            n_interior = new_bound.np - new_bound.nv;   // New number of interior points 
-            if (n_keep_interior > n_interior)
-                n_keep_interior = n_interior; 
-
-            // Remove as many points from the interior as desired
-            boundary_indices.clear(); 
-            boundary_indices.insert(
-                new_bound.vertices.begin(), new_bound.vertices.end()
-            );
-            std::vector<int> interior_indices; 
-            for (int i = 0; i < new_bound.np; ++i)
-            {
-                if (boundary_indices.find(i) == boundary_indices.end())
-                    interior_indices.push_back(i); 
-            }
-            std::vector<int> interior_indices_to_delete;
-            int n_to_delete = new_bound.np - new_bound.nv - n_keep_interior; 
-            if (n_to_delete < 0)
-            {   // Check that the number of points to be deleted is not negative 
-                n_to_delete = 0; 
-            }
-            std::vector<int> idx = sampleWithoutReplacement(
-                new_bound.np - new_bound.nv, n_to_delete, this->rng
-            );
-            for (const int i : idx)
-                interior_indices_to_delete.push_back(interior_indices[i]);  
-            new_bound.deleteInteriorPoints(interior_indices_to_delete);
-
-            // Update this->N, this->input, this->points accordingly 
-            std::vector<int> indices_to_keep; 
-            std::unordered_set<int> interior_indices_to_delete_set(
-                interior_indices_to_delete.begin(), interior_indices_to_delete.end()
-            ); 
-            for (int i = 0; i < this->N; ++i)
-            {
-                if (interior_indices_to_delete_set.find(i) == interior_indices_to_delete_set.end())
-                    indices_to_keep.push_back(i); 
-            }
-            this->input = this->input(indices_to_keep, Eigen::all).eval(); 
-            this->points = this->points(indices_to_keep, Eigen::all).eval(); 
-            this->N = new_bound.np;
-            if (verbose)
-            {
-                std::cout << "- Removed " << interior_indices_to_delete.size()
-                          << " interior points" << std::endl;
-            } 
 
             // Update the current boundary and simplify if desired
             this->curr_area = new_bound.area;
@@ -1224,10 +1152,12 @@ class BoundaryFinder
             // Reset input parameters if necessary 
             int n_interior = this->curr_bound.np - this->curr_bound.nv; 
             int origbound_nv = this->curr_bound.nv - this->curr_simplified.nv;
+            if (n_keep_interior > n_interior)
+                n_keep_interior = n_interior; 
             if (n_keep_origbound > origbound_nv)
                 n_keep_origbound = origbound_nv; 
-            if (n_pull_origbound > n_keep_origbound)
-                n_pull_origbound = n_keep_origbound; 
+            if (n_mutate_origbound > n_keep_origbound)
+                n_mutate_origbound = n_keep_origbound;
 
             // First, if the boundary was simplified, identify the subset of 
             // boundary vertices in the unsimplified boundary and not in 
@@ -1259,62 +1189,78 @@ class BoundaryFinder
                         origbound_indices.push_back(i); 
                 }
 
-                // Sample a subset of these vertices to keep ... 
+                // Sample a subset of these vertices 
                 std::vector<int> idx = sampleWithoutReplacement(
                     origbound_indices.size(), n_keep_origbound, this->rng
                 ); 
                 for (const int i : idx)
-                    origbound_indices_to_keep.push_back(origbound_indices[i]);
+                    origbound_indices_to_keep.push_back(origbound_indices[i]); 
             }
 
-            // Keep only the vertices in the unsimplified boundary chosen above
+            // Third, remove as many points from the interior as desired
+            std::vector<int> interior_indices;
+            for (int i = 0; i < this->curr_bound.np; ++i)
+            {
+                if (boundary_indices.find(i) == boundary_indices.end())
+                    interior_indices.push_back(i); 
+            }
+            std::vector<int> interior_indices_to_delete;
+            int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_interior;
+            if (n_to_delete < 0)
+            {   // Check that the number of points to be deleted is not negative 
+                n_to_delete = 0; 
+            }
+            std::vector<int> idx = sampleWithoutReplacement(
+                this->curr_bound.np - this->curr_bound.nv, n_to_delete, this->rng
+            );
+            for (const int i : idx)
+                interior_indices_to_delete.push_back(interior_indices[i]);  
+            this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
+
+            // Update this->N, this->input, this->points accordingly 
             //
-            // Note that this slicing is only necessary if the boundary was 
-            // simplified  
+            // First collect the indices of all interior points to keep ... 
+            std::vector<int> all_indices_to_keep; 
+            std::unordered_set<int> interior_indices_to_delete_set(
+                interior_indices_to_delete.begin(), interior_indices_to_delete.end()
+            ); 
+            for (auto it = interior_indices.begin(); it != interior_indices.end(); ++it)
+            {
+                if (interior_indices_to_delete_set.find(*it) == interior_indices_to_delete_set.end())
+                    all_indices_to_keep.push_back(*it); 
+            }
+
+            // ... then collect the indices of all (original) boundary vertices
+            // to keep ... 
+            for (auto it = origbound_indices_to_keep.begin(); it != origbound_indices_to_keep.end(); ++it)
+                all_indices_to_keep.push_back(*it);
+            
+            // ... then collect the indices of all simplified boundary vertices,
+            // if the boundary was simplified ...
             if (this->simplified)
             {
-                int n_keep_prior = this->curr_simplified.nv + n_interior + n_keep_origbound;
-                VectorXi indices_to_keep_prior(n_keep_prior); 
-                int j = 0;
-
-                // Keep all vertices in the simplified boundary, all points
-                // in the interior, and the vertices in the unsimplified 
-                // boundary chosen above
-                for (int i = 0; i < this->curr_bound.np; ++i)
-                {
-                    if (boundary_indices.find(i) == boundary_indices.end())
-                    {
-                        indices_to_keep_prior(j) = i;
-                        j++;
-                    }
-                }
-                for (const int i : this->curr_simplified.vertices) 
-                {
-                    indices_to_keep_prior(j) = i; 
-                    j++;
-                }
-                for (const int i : origbound_indices_to_keep)
-                {
-                    indices_to_keep_prior(j) = i;
-                    j++; 
-                }
-                this->N = n_keep_prior; 
-                this->input = this->input(indices_to_keep_prior, Eigen::all).eval(); 
-                this->points = this->points(indices_to_keep_prior, Eigen::all).eval();
+                for (const int i : this->curr_simplified.vertices)
+                    all_indices_to_keep.push_back(i); 
             }
+
+            // ... and finally update this->N, this->input, this->points  
+            this->input = this->input(all_indices_to_keep, Eigen::all).eval(); 
+            this->points = this->points(all_indices_to_keep, Eigen::all).eval(); 
+            this->N = all_indices_to_keep.size(); 
+            
             if (verbose)
             {
                 if (!this->simplified)
                 {
                     std::cout << "- Preserved " << this->N << " points: "
-                              << n_interior << " interior, "
+                              << n_keep_interior << " interior, "
                               << this->curr_bound.nv << " boundary"
                               << std::endl; 
                 } 
                 else 
                 {
                     std::cout << "- Preserved " << this->N << " points: "
-                              << n_interior << " interior, "
+                              << n_keep_interior << " interior, "
                               << this->curr_simplified.nv + n_keep_origbound
                               << " boundary" << std::endl;
                 }
@@ -1343,7 +1289,7 @@ class BoundaryFinder
                 // The vertices in the simplified boundary are now in one 
                 // contiguous chunk in this->input / this->points (see above)
                 for (int i = 0; i < this->curr_simplified.nv; ++i)
-                    to_pull(i) = n_interior + i;
+                    to_pull(i) = n_keep_interior + n_keep_origbound + i;
                 
                 // Choose n_pull_origbound number of vertices among the 
                 // vertices in the unsimplified boundary *that were chosen to 
@@ -1352,7 +1298,7 @@ class BoundaryFinder
                     n_keep_origbound, n_pull_origbound, this->rng
                 );
                 for (int i = 0; i < n_pull_origbound; ++i)
-                    to_pull(this->curr_simplified.nv + i) = n_interior + this->curr_simplified.nv + idx[i];
+                    to_pull(this->curr_simplified.nv + i) = n_keep_interior + idx[i]; 
 
                 // Rely on the old indexing of points to locate each vertex 
                 // to be pulled in the current unsimplified and simplified
@@ -1363,7 +1309,10 @@ class BoundaryFinder
                 std::vector<Vector_2> normals_origbound; 
                 for (int i = 0; i < n_pull_origbound; ++i)
                 {
+                    // Get the old index (q) of the sampled vertex (idx[i])
                     int q = origbound_indices_to_keep[idx[i]];
+
+                    // Locate q in the original boundary, along with its adjacent vertices 
                     std::vector<int>::iterator qit = std::find(
                         this->curr_bound.vertices.begin(), this->curr_bound.vertices.end(), q
                     );
@@ -1373,13 +1322,13 @@ class BoundaryFinder
                     std::vector<int>::iterator rit = (
                         qit == this->curr_bound.vertices.end() - 1 ? this->curr_bound.vertices.begin() : std::next(qit)
                     );
+
+                    // Get the outward normal vector at q
                     normals.push_back(this->curr_bound.getOutwardVertexNormal(*pit, q, *rit)); 
                 }
             }
             if (verbose)
-            {
                 std::cout << "- Pulling " << to_pull.size() << " boundary points" << std::endl; 
-            } 
 
             // For each vertex in the boundary, pull along its outward normal
             // vector by distance epsilon
@@ -1526,55 +1475,7 @@ class BoundaryFinder
 
             // Re-orient the points so that the boundary is traversed clockwise
             new_bound.orient(CGAL::RIGHT_TURN);
-
-            // Update input parameters as necessary
-            n_interior = new_bound.np - new_bound.nv;   // New number of interior points 
-            if (n_keep_interior > n_interior)
-                n_keep_interior = n_interior; 
-
-            // Remove as many points from the interior as desired
-            boundary_indices.clear(); 
-            boundary_indices.insert(
-                new_bound.vertices.begin(), new_bound.vertices.end()
-            );
-            std::vector<int> interior_indices; 
-            for (int i = 0; i < new_bound.np; ++i)
-            {
-                if (boundary_indices.find(i) == boundary_indices.end())
-                    interior_indices.push_back(i); 
-            }
-            std::vector<int> interior_indices_to_delete;
-            int n_to_delete = new_bound.np - new_bound.nv - n_keep_interior;
-            if (n_to_delete < 0)
-            {   // Check that the number of points to be deleted is not negative 
-                n_to_delete = 0; 
-            }
-            std::vector<int> idx = sampleWithoutReplacement(
-                new_bound.np - new_bound.nv, n_to_delete, this->rng
-            );
-            for (const int i : idx)
-                interior_indices_to_delete.push_back(interior_indices[i]);  
-            new_bound.deleteInteriorPoints(interior_indices_to_delete);
-
-            // Update this->N, this->input, this->points accordingly 
-            std::vector<int> indices_to_keep; 
-            std::unordered_set<int> interior_indices_to_delete_set(
-                interior_indices_to_delete.begin(), interior_indices_to_delete.end()
-            ); 
-            for (int i = 0; i < this->N; ++i)
-            {
-                if (interior_indices_to_delete_set.find(i) == interior_indices_to_delete_set.end())
-                    indices_to_keep.push_back(i); 
-            }
-            this->input = this->input(indices_to_keep, Eigen::all).eval(); 
-            this->points = this->points(indices_to_keep, Eigen::all).eval(); 
-            this->N = new_bound.np;
-            if (verbose)
-            {
-                std::cout << "- Removed " << interior_indices_to_delete.size()
-                          << " interior points" << std::endl;
-            } 
-            
+           
             // Update the current boundary and simplify if desired
             this->curr_area = new_bound.area;
             this->curr_sym_diff_area = getSymmetricDifferenceArea(this->curr_bound, new_bound);  
