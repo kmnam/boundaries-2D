@@ -680,6 +680,28 @@ struct AlphaShape2DProperties
             if (this->area == std::numeric_limits<double>::infinity())
                 throw std::runtime_error("Input file does not specify enclosed area");
 
+            // Is the alpha shape a simple cycle? 
+            this->is_simple_cycle = this->isSimpleCycle();
+
+            // If it is a simple cycle, find the orientation by defining a 
+            // polygon from the vertices 
+            if (this->is_simple_cycle)
+            {
+                std::vector<Point_2> points_in_order;
+                for (auto it = this->edges.begin(); it != this->edges.end(); ++it)
+                    points_in_order.emplace_back(Point_2(this->x[it->first], this->y[it->first])); 
+                Polygon_2 polygon(points_in_order.begin(), points_in_order.end());
+                if (polygon.orientation() == CGAL::CLOCKWISE)
+                    this->orientation = CGAL::RIGHT_TURN;
+                else
+                    this->orientation = CGAL::LEFT_TURN; 
+            } 
+            // Otherwise, set it to LEFT_TURN by default 
+            else 
+            {
+                this->orientation = CGAL::LEFT_TURN; 
+            }
+
             // Find the vertex with minimum y-coordinate, breaking any 
             // ties with whichever point has the smallest x-coordinate
             if (this->nv > 0)
