@@ -835,7 +835,14 @@ class Boundary2D
 
             // Check that there are at least three vertices
             if (nvertices < 3)
-                return std::make_pair(nvertices, false);  
+            {
+                if (verbose)
+                {
+                    std::cout << "- Boundary is not simple cycle: contains < 3 vertices"
+                              << std::endl;
+                } 
+                return std::make_pair(nvertices, false); 
+            } 
            
             // Iterate through the edges in the alpha shape and fill in the adjacency matrix 
             adj.resize(nvertices, nvertices); 
@@ -859,7 +866,14 @@ class Boundary2D
             for (int i = 0; i < nvertices; ++i)
             {
                 if (degrees(i) != 2)
-                    return std::make_pair(nvertices, false); 
+                {
+                    if (verbose)
+                    {
+                        std::cout << "- Boundary is not simple cycle: is not 2-regular"
+                                  << std::endl;
+                    } 
+                    return std::make_pair(nvertices, false);
+                } 
             }
             int nedges = (adj.triangularView<Upper>() * ones).sum(); 
 
@@ -897,6 +911,11 @@ class Boundary2D
                 // contains a more complicated structure
                 else if (visited(first) == 1 && visited(second) == 1)
                 {
+                    if (verbose)
+                    {
+                        std::cout << "- Boundary is not simple cycle: contains non-trivial sub-cycle"
+                                  << std::endl;
+                    } 
                     return std::make_pair(nvertices, false);
                 }
                 // Otherwise, if only the first vertex has been visited, then jump to
@@ -954,11 +973,11 @@ class Boundary2D
 
             // Have we traversed the entire alpha shape and returned to the starting 
             // vertex, and does every vertex lie either along or within the simple cycle?
-            if (returned && visited.sum() == nvertices);  
+            if (returned && visited.sum() == nvertices)  
             {
                 if (verbose)
                 { 
-                    std::cout << "- Traversed " << nvisited << "/" << nvertices
+                    std::cout << "- Traversed " << visited.sum() << "/" << nvertices
                               << " boundary vertices in a simple cycle" << std::endl;
                 }
                 return std::make_pair(nvertices, true); 
@@ -967,7 +986,7 @@ class Boundary2D
             {
                 if (verbose)
                 {
-                    std::cout << "- Traversed " << nvisited << "/" << nvertices 
+                    std::cout << "- Traversed " << visited.sum() << "/" << nvertices 
                               << " boundary vertices; boundary contains "
                               << nedges << " edges" << std::endl;
                 }
