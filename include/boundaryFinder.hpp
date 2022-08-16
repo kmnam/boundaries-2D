@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     8/8/2022
+ *     8/16/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -38,7 +38,7 @@ typedef K::Vector_2                                            Vector_2;
 constexpr int MAX_NUM_MUTATION_ATTEMPTS = 20;
 constexpr int NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE = 5;
 constexpr int INTERNAL_PRECISION = 100;
-constexpr double MINDIST_BETWEEN_POINTS = 1e-8;
+constexpr double MINDIST_BETWEEN_POINTS = 1e-5;
 
 /**
  * Sample `k` items from the range from `0` to `n - 1` (inclusive) without
