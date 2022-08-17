@@ -1272,8 +1272,12 @@ class BoundaryFinder
 
             // If the boundary was not simplified, then pull every point in
             // the boundary
+            // TODO
+            std::cout << "computing normals\n" << std::flush; 
             if (!this->simplified)
             {
+                // TODO
+                std::cout << "    not simplified, computing normals for every boundary point\n" << std::flush; 
                 to_pull.resize(this->curr_bound.nv);
                 for (int i = 0; i < this->curr_bound.nv; ++i)
                     to_pull(i) = this->curr_bound.vertices[i];
@@ -1283,6 +1287,8 @@ class BoundaryFinder
             // plus the desired number of points in the unsimplified boundary 
             else
             {
+                // TODO
+                std::cout << "    simplified, computing normals for selected boundary points\n" << std::flush;
                 const int n_pull = this->curr_simplified.nv + n_pull_origbound;
                 to_pull.resize(n_pull);
 
@@ -1327,8 +1333,9 @@ class BoundaryFinder
                     normals.push_back(this->curr_bound.getOutwardVertexNormal(*pit, q, *rit)); 
                 }
             }
+            // TODO
             if (verbose)
-                std::cout << "- Pulling " << to_pull.size() << " boundary points" << std::endl; 
+                std::cout << "- Pulling " << to_pull.size() << " boundary points" << std::endl << std::flush; 
 
             // For each vertex in the boundary, pull along its outward normal
             // vector by distance epsilon
@@ -1347,6 +1354,8 @@ class BoundaryFinder
                     pulled.row(i) = this->points.row(to_pull(i));
                 }
             }
+            // TODO
+            std::cout << "compiled pulled vectors into array\n" << std::flush; 
 
             // For each vertex in the boundary, minimize the distance to the
             // pulled vertex with a feasible parameter point
@@ -1354,6 +1363,8 @@ class BoundaryFinder
             MatrixXd pull_results_out(to_pull.size(), 2); 
             for (int i = 0; i < to_pull.size(); ++i)
             {
+                // TODO
+                std::cout << "pulling " << i << "-th boundary point\n" << std::flush;
                 // Minimize the appropriate objective function
                 VectorXd target = pulled.row(i);
                 auto obj = [this, target](const Ref<const VectorXd>& x)
@@ -1377,6 +1388,8 @@ class BoundaryFinder
             Matrix<bool, Dynamic, 1> added = Matrix<bool, Dynamic, 1>::Zero(to_pull.size());  
             for (int i = 0; i < to_pull.size(); ++i)
             {
+                // TODO
+                std::cout << "checking distance of " << i << "-th pulled point to every other point\n" << std::flush; 
                 double mindist = (this->points.rowwise() - pull_results_out.row(i)).rowwise().norm().minCoeff();
 
                 // If the resulting point is not filtered and is far enough
@@ -1392,10 +1405,11 @@ class BoundaryFinder
                     this->points.row(this->N-1) = pull_results_out.row(i);
                 }
             }
+            // TODO
             if (verbose)
             {
                 std::cout << "- Pulling complete; augmented point-set contains "
-                          << this->N << " points" << std::endl;
+                          << this->N << " points" << std::endl << std::flush;
             }
 
             // Write the results of the pulling procedure to file, if desired 
