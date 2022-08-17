@@ -1291,11 +1291,14 @@ class BoundaryFinder
                 std::cout << "    simplified, computing normals for selected boundary points\n" << std::flush;
                 const int n_pull = this->curr_simplified.nv + n_pull_origbound;
                 to_pull.resize(n_pull);
+                // TODO 
+                std::cout << "    resized to_pull: " << n_pull << std::endl << std::flush; 
 
                 // The vertices in the simplified boundary are now in one 
                 // contiguous chunk in this->input / this->points (see above)
                 for (int i = 0; i < this->curr_simplified.nv; ++i)
                     to_pull(i) = n_keep_interior + n_keep_origbound + i;
+                std::cout << "    populated to_pull\n" << std::flush; 
                 
                 // Choose n_pull_origbound number of vertices among the 
                 // vertices in the unsimplified boundary *that were chosen to 
@@ -1303,8 +1306,10 @@ class BoundaryFinder
                 std::vector<int> idx = sampleWithoutReplacement(
                     n_keep_origbound, n_pull_origbound, this->rng
                 );
+                std::cout << "    obtained sample indices\n" << std::flush; 
                 for (int i = 0; i < n_pull_origbound; ++i)
-                    to_pull(this->curr_simplified.nv + i) = n_keep_interior + idx[i]; 
+                    to_pull(this->curr_simplified.nv + i) = n_keep_interior + idx[i];
+                std::cout << "    finished populating to_pull\n" << std::flush;  
 
                 // Rely on the old indexing of points to locate each vertex 
                 // to be pulled in the current unsimplified and simplified
@@ -1312,6 +1317,7 @@ class BoundaryFinder
                 std::vector<Vector_2> normals_simplified = this->curr_simplified.getOutwardVertexNormals();
                 for (auto&& v : normals_simplified)
                     normals.push_back(v);
+                std::cout << "    obtained normal vectors for all points in simplified boundary\n"; 
                 std::vector<Vector_2> normals_origbound; 
                 for (int i = 0; i < n_pull_origbound; ++i)
                 {
@@ -1332,6 +1338,7 @@ class BoundaryFinder
                     // Get the outward normal vector at q
                     normals.push_back(this->curr_bound.getOutwardVertexNormal(*pit, q, *rit)); 
                 }
+                std::cout << "    obtained normal vectors for all selected points in original boundary\n";
             }
             // TODO
             if (verbose)
