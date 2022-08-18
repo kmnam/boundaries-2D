@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     8/8/2022
+ *     8/18/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -339,14 +339,24 @@ struct AlphaShape2DProperties
             p = this->vertices[this->nv-1];
             q = this->vertices[0];
             r = this->vertices[1];
+            // TODO
+            std::cout << "    .... computing normal vector at " << q << " (adjacent to " << p << ", " << r << ")\n" << std::flush;
             normals.push_back(this->getOutwardVertexNormal(p, q, r));
-            for (int i = 1; i < this->nv; ++i)
+            for (int i = 1; i < this->nv - 1; ++i)
             {
-                p = this->vertices[(i-1) % this->nv];
+                p = this->vertices[i-1];
                 q = this->vertices[i];
-                r = this->vertices[(i+1) % this->nv];
+                r = this->vertices[i+1];
+                // TODO
+                std::cout << "    .... computing normal vector at " << q << " (adjacent to " << p << ", " << r << ")\n" << std::flush;
                 normals.push_back(this->getOutwardVertexNormal(p, q, r));
             }
+            p = this->vertices[this->nv-2];
+            q = this->vertices[this->nv-1];
+            r = this->vertices[0];
+            // TODO
+            std::cout << "    .... computing normal vector at " << q << " (adjacent to " << p << ", " << r << ")\n" << std::flush;
+            normals.push_back(this->getOutwardVertexNormal(p, q, r));
 
             return normals;
         }

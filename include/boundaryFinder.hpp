@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     8/16/2022
+ *     8/18/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -1314,6 +1314,8 @@ class BoundaryFinder
                 // Rely on the old indexing of points to locate each vertex 
                 // to be pulled in the current unsimplified and simplified
                 // boundaries and determine its outward normal vector
+                std::cout << "    obtaining normal vectors for all points in simplified boundary ("
+                          << this->curr_simplified.nv << std::endl << std::flush; 
                 std::vector<Vector_2> normals_simplified = this->curr_simplified.getOutwardVertexNormals();
                 for (auto&& v : normals_simplified)
                     normals.push_back(v);
