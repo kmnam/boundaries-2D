@@ -1281,7 +1281,7 @@ class BoundaryFinder
                 to_pull.resize(this->curr_bound.nv);
                 for (int i = 0; i < this->curr_bound.nv; ++i)
                     to_pull(i) = this->curr_bound.vertices[i];
-                normals = this->curr_bound.getOutwardVertexNormals();  
+                normals = this->curr_bound.getOutwardVertexNormals();
             }
             // Otherwise, then pull every point in the *simplified* boundary,
             // plus the desired number of points in the unsimplified boundary 

@@ -240,11 +240,32 @@ struct AlphaShape2DProperties
          * @param p Index of first vertex in alpha shape.
          * @param q Index of second vertex in alpha shape. 
          * @param r Index of third vertex in alpha shape. 
-         * @return Outward normal vector at `q`. 
+         * @return Outward normal vector at `q`.
+         * @throws std::invalid_argument If `p`, `q`, or `r` are invalid indices. 
          */
         Vector_2 getOutwardVertexNormal(int p, int q, int r)
         {
             Vector_2 v, w, normal;
+
+            // Check that the indices are valid
+            if (!(p >= 0 && p < this->np))
+            {
+                std::stringstream ss;
+                ss << "Invalid index for p: " << p;  
+                throw std::invalid_argument(ss.str());
+            }
+            else if (!(q >= 0 && q < this->np))
+            {
+                std::stringstream ss;
+                ss << "Invalid index for q: " << q;  
+                throw std::invalid_argument(ss.str());
+            }
+            else if (!(r >= 0 && r < this->np))
+            {
+                std::stringstream ss;
+                ss << "Invalid index for r: " << r;  
+                throw std::invalid_argument(ss.str());
+            }
 
             // Get the vectors from q to p and from q to r 
             v = Vector_2(this->x[p] - this->x[q], this->y[p] - this->y[q]);
@@ -320,7 +341,9 @@ struct AlphaShape2DProperties
          *
          * @returns `std::vector` of outward normal vectors.
          * @throws std::runtime_error If the alpha shape has fewer than three
-         *                            vertices. 
+         *                            vertices.
+         * @throws std::invalid_argument If any of the vertices along the boundary
+         *                               are invalid indices. 
          */
         std::vector<Vector_2> getOutwardVertexNormals()
         {
@@ -341,7 +364,16 @@ struct AlphaShape2DProperties
             r = this->vertices[1];
             // TODO
             std::cout << "    .... computing normal vector at " << q << " (adjacent to " << p << ", " << r << ")\n" << std::flush;
-            normals.push_back(this->getOutwardVertexNormal(p, q, r));
+            Vector_2 normal; 
+            try 
+            {
+                normal = this->getOutwardVertexNormal(p, q, r); 
+            }
+            catch (const std::invalid_argument& e)
+            {
+                throw; 
+            } 
+            normals.push_back(normal); 
             for (int i = 1; i < this->nv - 1; ++i)
             {
                 p = this->vertices[i-1];
@@ -349,14 +381,30 @@ struct AlphaShape2DProperties
                 r = this->vertices[i+1];
                 // TODO
                 std::cout << "    .... computing normal vector at " << q << " (adjacent to " << p << ", " << r << ")\n" << std::flush;
-                normals.push_back(this->getOutwardVertexNormal(p, q, r));
+                try
+                {
+                    normal = this->getOutwardVertexNormal(p, q, r);
+                }
+                catch (const std::invalid_argument& e)
+                {
+                    throw; 
+                }
+                normals.push_back(normal); 
             }
             p = this->vertices[this->nv-2];
             q = this->vertices[this->nv-1];
             r = this->vertices[0];
             // TODO
             std::cout << "    .... computing normal vector at " << q << " (adjacent to " << p << ", " << r << ")\n" << std::flush;
-            normals.push_back(this->getOutwardVertexNormal(p, q, r));
+            try
+            {
+                normal = this->getOutwardVertexNormal(p, q, r);
+            }
+            catch (const std::invalid_argument& e)
+            {
+                throw; 
+            }
+            normals.push_back(normal); 
 
             return normals;
         }
