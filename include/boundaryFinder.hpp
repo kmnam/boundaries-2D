@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     8/18/2022
+ *     8/19/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -37,7 +37,7 @@ typedef K::Vector_2                                            Vector_2;
 
 constexpr int MAX_NUM_MUTATION_ATTEMPTS = 20;
 constexpr int NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE = 5;
-constexpr int INTERNAL_PRECISION = 100;
+constexpr int TRI_VOLUME_INTERNAL_PRECISION = 100;
 constexpr double MINDIST_BETWEEN_POINTS = 1e-5;
 
 /**
@@ -447,7 +447,7 @@ class BoundaryFinder
          */
         MatrixXd sampleInput(const int npoints)
         {
-            return Polytopes::sampleFromConvexPolytope<INTERNAL_PRECISION, INTERNAL_PRECISION>(
+            return Polytopes::sampleFromConvexPolytope<TRI_VOLUME_INTERNAL_PRECISION, TRI_VOLUME_INTERNAL_PRECISION>(
                 this->tri, npoints, 0, this->rng
             );  
         }
@@ -793,8 +793,8 @@ class BoundaryFinder
                     all_indices_to_keep.push_back(*it); 
             }
 
-            // ... then collect the indices of all (original) boundary vertices
-            // to keep ... 
+            // ... then collect the indices of all vertices in the complement 
+            // of the simplified boundary to keep ... 
             for (auto it = origbound_indices_to_keep.begin(); it != origbound_indices_to_keep.end(); ++it)
                 all_indices_to_keep.push_back(*it);
             
@@ -848,7 +848,7 @@ class BoundaryFinder
                 to_mutate.resize(n_mutate);
 
                 // The vertices in the simplified boundary are now in one 
-                // contiguous chunk in this->input / this->points (see above):
+                // contiguous chunk in this->input / this->points (see above)
                 for (int i = 0; i < this->curr_simplified.nv; ++i)
                     to_mutate(i) = n_keep_interior + n_keep_origbound + i; 
                 
@@ -885,12 +885,12 @@ class BoundaryFinder
                     q = this->constraints->template nearestL2<double>(m).template cast<double>();
                     z = this->func(q);
 
-                    // Check that the mutation does not give rise to a
-                    // filtered point 
+                    // Check that the mutation does not give rise to a point
+                    // to be filtered out  
                     filtered = filter(z);
                     
-                    // Check that the mutation does not give rise to an
-                    // already encountered point 
+                    // Check that the mutation does not give rise to a point 
+                    // that is too close to an already encountered point 
                     mindist = (this->points.rowwise() - z.transpose()).rowwise().norm().minCoeff();
                     j++;
                 }
@@ -1163,6 +1163,9 @@ class BoundaryFinder
             // boundary vertices in the unsimplified boundary and not in 
             // the simplified boundary to keep; otherwise, keep every point 
             // in the (unsimplified) boundary
+            //
+            // Note that origbound_indices and origbound_indices_to_keep contain
+            // *point* indices of vertices in the original boundary 
             std::vector<int> origbound_indices, origbound_indices_to_keep;
             std::unordered_set<int> boundary_indices(
                 this->curr_bound.vertices.begin(),
@@ -1298,6 +1301,7 @@ class BoundaryFinder
                 // contiguous chunk in this->input / this->points (see above)
                 for (int i = 0; i < this->curr_simplified.nv; ++i)
                     to_pull(i) = n_keep_interior + n_keep_origbound + i;
+                // TODO
                 std::cout << "    populated to_pull\n" << std::flush; 
                 
                 // Choose n_pull_origbound number of vertices among the 
@@ -1306,9 +1310,11 @@ class BoundaryFinder
                 std::vector<int> idx = sampleWithoutReplacement(
                     n_keep_origbound, n_pull_origbound, this->rng
                 );
+                // TODO
                 std::cout << "    obtained sample indices\n" << std::flush; 
                 for (int i = 0; i < n_pull_origbound; ++i)
                     to_pull(this->curr_simplified.nv + i) = n_keep_interior + idx[i];
+                // TODO
                 std::cout << "    finished populating to_pull\n" << std::flush;  
 
                 // Rely on the old indexing of points to locate each vertex 
@@ -1323,22 +1329,19 @@ class BoundaryFinder
                 std::vector<Vector_2> normals_origbound; 
                 for (int i = 0; i < n_pull_origbound; ++i)
                 {
-                    // Get the old index (q) of the sampled vertex (idx[i])
+                    // Get the old *point* index (q) of the sampled vertex
+                    // (idx[i], which ranges between 0 and n_keep_origbound - 1)
                     int q = origbound_indices_to_keep[idx[i]];
 
-                    // Locate q in the original boundary, along with its adjacent vertices 
-                    std::vector<int>::iterator qit = std::find(
-                        this->curr_bound.vertices.begin(), this->curr_bound.vertices.end(), q
-                    );
-                    std::vector<int>::iterator pit = (
-                        qit == this->curr_bound.vertices.begin() ? this->curr_bound.vertices.end() - 1 : std::prev(qit)
-                    ); 
-                    std::vector<int>::iterator rit = (
-                        qit == this->curr_bound.vertices.end() - 1 ? this->curr_bound.vertices.begin() : std::next(qit)
+                    // Identify the *vertex* index of this point in the original
+                    // boundary 
+                    int qi = std::distance(
+                        this->curr_bound.vertices.begin(),
+                        std::find(this->curr_bound.vertices.begin(), this->curr_bound.vertices.end(), q)
                     );
 
-                    // Get the outward normal vector at q
-                    normals.push_back(this->curr_bound.getOutwardVertexNormal(*pit, q, *rit)); 
+                    // Get the outward normal vector at this point 
+                    normals.push_back(this->curr_bound.getOutwardVertexNormal(qi));
                 }
                 std::cout << "    obtained normal vectors for all selected points in original boundary\n";
             }
@@ -1401,9 +1404,9 @@ class BoundaryFinder
                 std::cout << "checking distance of " << i << "-th pulled point to every other point\n" << std::flush; 
                 double mindist = (this->points.rowwise() - pull_results_out.row(i)).rowwise().norm().minCoeff();
 
-                // If the resulting point is not filtered and is far enough
-                // away from the points already in the point-set, then add to
-                // the point-set 
+                // If the resulting point is not filtered and is far away enough
+                // from the points already in the point-set, then add to the
+                // point-set 
                 if (!filter(pull_results_out.row(i)) && mindist > MINDIST_BETWEEN_POINTS)
                 {
                     added(i) = true; 

@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     8/18/2022
+ *     8/19/2022
  */
 
 #ifndef BOUNDARIES_HPP
@@ -56,216 +56,28 @@ typedef CGAL::Polyline_simplification_2::Stop_below_count_threshold  Stop;
  */
 struct AlphaShape2DProperties
 {
-    public:
-        /** x-coordinates of the points in the point-set. */
-        std::vector<double> x;
-
-        /** y-coordinates of the points in the point-set. */
-        std::vector<double> y;
-
-        /** Vertices in the alpha shape, indicated by their indices in `this->x`. */ 
-        std::vector<int> vertices;
-
-        /** Edges in the alpha shape. */ 
-        std::vector<std::pair<int, int> > edges;
-        
-        /** Number of points in the point-set. */  
-        int np;
-
-        /** Number of vertices in the alpha shape. */ 
-        int nv;
-
-        /** Value of alpha. */ 
-        double alpha;
-
-        /** Area of the region enclosed by the alpha shape. */ 
-        double area;
-
-        /** Whether the alpha shape forms a simple cycle of edges. */  
-        bool is_simple_cycle;
-
-        /** Index of point with minimum y-coordinate. */  
-        int min;
-
-        /** Orientation of edges in the alpha shape. */ 
-        Orientation orientation;
-
-        /**
-         * Trivial constructor. 
-         */
-        AlphaShape2DProperties()
-        {
-        }
-
-        /**
-         * Constructor with a non-empty point-set and alpha shape.
-         *
-         * Setting `is_simple_cycle = true` and `check_order = true` enforces
-         * an explicit check that the boundary is a simple cycle and the
-         * vertices and edges are specified "in order," as in `edges[0]` lies
-         * between `vertices[0]` and `vertices[1]`, `edges[1]` between
-         * `vertices[1]` and `vertices[2]`, and so on.
-         *
-         * @param x               x-coordinates of input point-set. 
-         * @param y               y-coordinates of input point-set. 
-         * @param vertices        Indices of vertices lying in input alpha shape.
-         * @param edges           Pairs of indices of vertices connected by 
-         *                        edges in input alpha shape.
-         * @param alpha           Corresponding value of alpha. 
-         * @param area            Area of region enclosed by the alpha shape. 
-         * @param is_simple_cycle If true, the alpha shape consists of one 
-         *                        simple cycle of edges.
-         * @param check_order     If true (and `is_simple_cycle` is also true), 
-         *                        this constructor checks whether the alpha
-         *                        shape indeed consists of one simple cycle of 
-         *                        edges, and whether the vertices and edges have
-         *                        been specified in order, as described above.
-         * @throws std::invalid_argument If `x`, `y`, and `vertices` do not all 
-         *                               have the same size, or if `is_simple_cycle`
-         *                               is true and yet `vertices` and `edges`
-         *                               do not have the same size. 
-         * @throws std::runtime_error    If `check_order` and `is_simple_cycle`
-         *                               are true, but the vertices and edges 
-         *                               do not form a simple cycle or have not 
-         *                               been specified in order. 
-         */
-        AlphaShape2DProperties(std::vector<double> x, std::vector<double> y,
-                               std::vector<int> vertices,
-                               std::vector<std::pair<int, int> > edges, 
-                               double alpha, double area, bool is_simple_cycle,
-                               bool check_order = false)
-        {
-            // The number of x- and y-coordinates should be the same  
-            if (!(x.size() == y.size() && y.size() >= vertices.size()))
-                throw std::invalid_argument("Invalid dimensions for input points");
-
-            // If the boundary is assumed to be a simple cycle, then the 
-            // number of vertices and edges should be the same
-            if (is_simple_cycle && vertices.size() != edges.size())
-                throw std::invalid_argument(
-                    "Simple-cycle boundary should have the same number of vertices and edges"
-                ); 
-             
-            this->x = x;
-            this->y = y;
-            this->vertices = vertices;
-            this->edges = edges;
-            this->np = this->x.size();
-            this->nv = this->vertices.size();
-            this->alpha = alpha;
-            this->area = area;
-            this->is_simple_cycle = is_simple_cycle; 
-
-            // Find the vertex with minimum y-coordinate, breaking any 
-            // ties with whichever point has the smallest x-coordinate
-            if (this->nv > 0)
-            {
-                this->min = 0;
-                double xmin = this->x[this->vertices[0]];
-                double ymin = this->y[this->vertices[0]];
-                for (int i = 1; i < this->nv; ++i)
-                {
-                    if (this->y[this->vertices[i]] < ymin)
-                    {
-                        this->min = i;
-                        xmin = this->x[this->vertices[i]];
-                        ymin = this->y[this->vertices[i]];
-                    }
-                    else if (this->y[this->vertices[i]] == ymin && this->x[this->vertices[i]] < xmin)
-                    {
-                        this->min = i;
-                        xmin = this->x[this->vertices[i]];
-                        ymin = this->y[this->vertices[i]];
-                    }
-                }
-            }
-            else 
-            {
-                this->min = std::numeric_limits<double>::quiet_NaN();  
-            }
-
-            // Check that the edges and vertices were specified in order
-            // *given that the boundary is a simple cycle*
-            if (this->is_simple_cycle && check_order)
-            {
-                int i = 0;
-                // Check the first vertex first 
-                bool ordered = (vertices[0] == edges[0].first && vertices[0] == edges[this->nv-1].second);
-                while (ordered && i < this->nv - 1)
-                {
-                    i++;
-                    ordered = (vertices[i] == edges[i-1].second && vertices[i] == edges[i].first);
-                }
-                if (!ordered)
-                    throw std::runtime_error(
-                        "Vertices and edges were not specified in order in given simple-cycle boundary"
-                    );
-            }
-
-            // Find the orientation of the edges (given there are at least
-            // three vertices)
-            if (this->is_simple_cycle && this->nv >= 3)
-            {
-                std::vector<Point_2> points_in_order;
-                for (auto it = this->edges.begin(); it != this->edges.end(); ++it)
-                    points_in_order.emplace_back(Point_2(this->x[it->first], this->y[it->first])); 
-                Polygon_2 polygon(points_in_order.begin(), points_in_order.end());
-                if (polygon.orientation() == CGAL::CLOCKWISE)
-                    this->orientation = CGAL::RIGHT_TURN;
-                else
-                    this->orientation = CGAL::LEFT_TURN; 
-            }
-            // If there are fewer than three vertices or the shape is not a
-            // simple cycle, set to LEFT_TURN
-            else 
-            {
-                this->orientation = CGAL::LEFT_TURN;
-            }
-        }
-        
-        /**
-         * Trivial destructor. 
-         */
-        ~AlphaShape2DProperties()
-        {
-        }
-
+    private:
         /**
          * Given the indices of three *consecutive* vertices `p`, `q`, `r` in
          * the alpha shape, return the outward normal vector at the middle
          * vertex, `q`.
          *
-         * The alpha shape is assumed to contain the edges `(p,q)` and `(q,r)`.
+         * `p`, `q`, `r` are assumed to be entries in `this->vertices`, and 
+         * the pairs `(p, q)` and `(q, r)` are assumed to be entries in 
+         * `this->edges`.
+         *
+         * This method is the private method used in `getOutwardVertexNormal(int)`,
+         * which is public; the validity of `p`, `q`, `r` as indices of points 
+         * in the alpha shape is not checked.  
          *
          * @param p Index of first vertex in alpha shape.
          * @param q Index of second vertex in alpha shape. 
          * @param r Index of third vertex in alpha shape. 
          * @return Outward normal vector at `q`.
-         * @throws std::invalid_argument If `p`, `q`, or `r` are invalid indices. 
          */
         Vector_2 getOutwardVertexNormal(int p, int q, int r)
         {
             Vector_2 v, w, normal;
-
-            // Check that the indices are valid
-            if (!(p >= 0 && p < this->np))
-            {
-                std::stringstream ss;
-                ss << "Invalid index for p: " << p;  
-                throw std::invalid_argument(ss.str());
-            }
-            else if (!(q >= 0 && q < this->np))
-            {
-                std::stringstream ss;
-                ss << "Invalid index for q: " << q;  
-                throw std::invalid_argument(ss.str());
-            }
-            else if (!(r >= 0 && r < this->np))
-            {
-                std::stringstream ss;
-                ss << "Invalid index for r: " << r;  
-                throw std::invalid_argument(ss.str());
-            }
 
             // Get the vectors from q to p and from q to r 
             v = Vector_2(this->x[p] - this->x[q], this->y[p] - this->y[q]);
@@ -335,76 +147,293 @@ struct AlphaShape2DProperties
             return normal;
         }
 
+    public:
+        /** x-coordinates of the points in the point-set. */
+        std::vector<double> x;
+
+        /** y-coordinates of the points in the point-set. */
+        std::vector<double> y;
+
+        /** Vertices in the alpha shape, indicated by their indices in `this->x`. */ 
+        std::vector<int> vertices;
+
+        /** Edges in the alpha shape. */ 
+        std::vector<std::pair<int, int> > edges;
+        
+        /** Number of points in the point-set. */  
+        int np;
+
+        /** Number of vertices in the alpha shape. */ 
+        int nv;
+
+        /** Value of alpha. */ 
+        double alpha;
+
+        /** Area of the region enclosed by the alpha shape. */ 
+        double area;
+
+        /** Whether the alpha shape forms a simple cycle of edges. */  
+        bool is_simple_cycle;
+
+        /** Index of point with minimum y-coordinate. */  
+        int min;
+
+        /** Orientation of edges in the alpha shape. */ 
+        Orientation orientation;
+
+        /**
+         * Trivial constructor. 
+         */
+        AlphaShape2DProperties()
+        {
+        }
+
+        /**
+         * Constructor with a non-empty point-set and alpha shape.
+         *
+         * Setting `is_simple_cycle = true` and `check_order = true` enforces
+         * an explicit check that the boundary is a simple cycle and the
+         * vertices and edges are specified "in order," as in `edges[0]` lies
+         * between `vertices[0]` and `vertices[1]`, `edges[1]` between
+         * `vertices[1]` and `vertices[2]`, and so on.
+         *
+         * @param x               x-coordinates of input point-set. 
+         * @param y               y-coordinates of input point-set. 
+         * @param vertices        Indices of vertices lying in input alpha shape.
+         * @param edges           Pairs of indices of vertices connected by 
+         *                        edges in input alpha shape.
+         * @param alpha           Corresponding value of alpha. 
+         * @param area            Area of region enclosed by the alpha shape. 
+         * @param is_simple_cycle If true, the alpha shape consists of one 
+         *                        simple cycle of edges.
+         * @param check_order     If true (and `is_simple_cycle` is also true), 
+         *                        this constructor checks whether the alpha
+         *                        shape indeed consists of one simple cycle of 
+         *                        edges, and whether the vertices and edges have
+         *                        been specified in order, as described above.
+         * @throws std::invalid_argument If `x`, `y`, and `vertices` do not all 
+         *                               have the same size, or if `is_simple_cycle`
+         *                               is true and yet `vertices` and `edges`
+         *                               do not have the same size. 
+         * @throws std::runtime_error    If `vertices` or `edges` contain invalid
+         *                               vertices, or if `check_order` and
+         *                               `is_simple_cycle` are true but the
+         *                               vertices and edges do not form a simple
+         *                               cycle or have not been specified in order. 
+         */
+        AlphaShape2DProperties(std::vector<double> x, std::vector<double> y,
+                               std::vector<int> vertices,
+                               std::vector<std::pair<int, int> > edges, 
+                               double alpha, double area, bool is_simple_cycle,
+                               bool check_order = false)
+        {
+            // The number of x- and y-coordinates should be the same  
+            if (!(x.size() == y.size() && y.size() >= vertices.size()))
+                throw std::invalid_argument("Invalid dimensions for input points");
+
+            // Check that each vertex is valid
+            this->np = x.size();
+            this->nv = vertices.size();
+            std::stringstream ss; 
+            for (auto it = vertices.begin(); it != vertices.end(); ++it)
+            {
+                if (!(*it >= 0 && *it < this->np))
+                {
+                    ss << "Invalid vertex index specified: " << *it
+                       << " (number of vertices = " << this->np << ")"; 
+                    throw std::runtime_error(ss.str()); 
+                }
+            }
+            for (auto it = edges.begin(); it != edges.end(); ++it)
+            {
+                if (!(it->first >= 0 && it->first < this->np))
+                {
+                    ss << "Invalid vertex index specified: " << it->first 
+                       << " (number of vertices = " << this->np << ")";
+                    throw std::runtime_error(ss.str()); 
+                }
+                if (!(it->second >= 0 && it->second < this->np))
+                {
+                    ss << "Invalid vertex index specified: " << it->second 
+                       << " (number of vertices = " << this->np << ")";
+                    throw std::runtime_error(ss.str()); 
+                }
+            }
+
+            // If the boundary is assumed to be a simple cycle, then the 
+            // number of vertices and edges should be the same
+            if (is_simple_cycle && vertices.size() != edges.size())
+                throw std::invalid_argument(
+                    "Simple-cycle boundary should have the same number of vertices and edges"
+                ); 
+             
+            this->x = x;
+            this->y = y;
+            this->vertices = vertices;
+            this->edges = edges;
+            this->alpha = alpha;
+            this->area = area;
+            this->is_simple_cycle = is_simple_cycle; 
+
+            // Find the vertex with minimum y-coordinate, breaking any 
+            // ties with whichever point has the smallest x-coordinate
+            if (this->nv > 0)
+            {
+                this->min = 0;
+                double xmin = this->x[this->vertices[0]];
+                double ymin = this->y[this->vertices[0]];
+                for (int i = 1; i < this->nv; ++i)
+                {
+                    if (this->y[this->vertices[i]] < ymin)
+                    {
+                        this->min = i;
+                        xmin = this->x[this->vertices[i]];
+                        ymin = this->y[this->vertices[i]];
+                    }
+                    else if (this->y[this->vertices[i]] == ymin && this->x[this->vertices[i]] < xmin)
+                    {
+                        this->min = i;
+                        xmin = this->x[this->vertices[i]];
+                        ymin = this->y[this->vertices[i]];
+                    }
+                }
+            }
+            else 
+            {
+                this->min = std::numeric_limits<double>::quiet_NaN();  
+            }
+
+            // Check that the edges and vertices were specified in order, 
+            // given that the boundary is a simple cycle
+            if (this->is_simple_cycle && check_order)
+            {
+                int i = 0;
+                // Check the first vertex first 
+                bool ordered = (vertices[0] == edges[0].first && vertices[0] == edges[this->nv-1].second);
+                while (ordered && i < this->nv - 1)
+                {
+                    i++;
+                    ordered = (vertices[i] == edges[i-1].second && vertices[i] == edges[i].first);
+                }
+                if (!ordered)
+                    throw std::runtime_error(
+                        "Vertices and edges were not specified in order in given simple-cycle boundary"
+                    );
+            }
+
+            // Find the orientation of the edges (given there are at least
+            // three vertices)
+            if (this->is_simple_cycle && this->nv >= 3)
+            {
+                std::vector<Point_2> points_in_order;
+                for (auto it = this->edges.begin(); it != this->edges.end(); ++it)
+                    points_in_order.emplace_back(Point_2(this->x[it->first], this->y[it->first])); 
+                Polygon_2 polygon(points_in_order.begin(), points_in_order.end());
+                if (polygon.orientation() == CGAL::CLOCKWISE)
+                    this->orientation = CGAL::RIGHT_TURN;
+                else
+                    this->orientation = CGAL::LEFT_TURN; 
+            }
+            // If there are fewer than three vertices or the shape is not a
+            // simple cycle, set to LEFT_TURN
+            else 
+            {
+                this->orientation = CGAL::LEFT_TURN;
+            }
+        }
+        
+        /**
+         * Trivial destructor. 
+         */
+        ~AlphaShape2DProperties()
+        {
+        }
+
+        /**
+         * Given the index `i` of a vertex *in `this->vertices`*, return the 
+         * outward normal vector at `this->vertices[i]`.
+         *
+         * The boundary is assumed to a simple cycle. 
+         *
+         * @param i Index of first vertex in alpha shape *in `this->vertices`*.
+         * @return Outward normal vector at `this->vertices[i]`.
+         * @throws std::invalid_argument If `i` is an invalid vertex index.
+         * @throws std::runtime_error    If the boundary is not a simple cycle. 
+         */
+        Vector_2 getOutwardVertexNormal(const int i)
+        {
+            // Check that i is a valid vertex index 
+            if (!(i >= 0 && i < this->nv))
+            {
+                std::stringstream ss;
+                ss << "Invalid vertex index specified: " << i
+                   << " (number of vertices = " << this->nv << ")";
+                throw std::invalid_argument(ss.str());
+            }
+
+            // Check that the boundary is a simple cycle 
+            if (!this->is_simple_cycle)
+                throw std::runtime_error(
+                    "Boundary is not simple cycle; outward normal vectors are not well-defined"
+                );
+
+            // Check that there are fewer than three vertices
+            if (this->nv < 3)
+                throw std::runtime_error(
+                    "Outward normal vectors undefined for alpha shape with < 3 vertices"
+                );  
+
+            if (i == 0)
+                return this->getOutwardVertexNormal(
+                    this->vertices[this->nv - 1], this->vertices[0], this->vertices[1]
+                );
+            else if (i == this->nv - 1)
+                return this->getOutwardVertexNormal(
+                    this->vertices[this->nv - 2], this->vertices[this->nv - 1], this->vertices[0]
+                );
+            else 
+                return this->getOutwardVertexNormal(
+                    this->vertices[i - 1], this->vertices[i], this->vertices[i + 1]
+                );
+        }
+
         /**
          * Return the outward normal vectors from all vertices along the alpha
          * shape.
          *
          * @returns `std::vector` of outward normal vectors.
-         * @throws std::runtime_error If the alpha shape has fewer than three
-         *                            vertices.
-         * @throws std::invalid_argument If any of the vertices along the boundary
-         *                               are invalid indices. 
+         * @throws std::runtime_error If `getOutwardVertexNormal()` throws such
+         *                            an error.
+         * @throws std::invalid_argument If `getOutwardVertexNormal()` throws
+         *                               such an error. 
          */
         std::vector<Vector_2> getOutwardVertexNormals()
         {
             int p, q, r;
             std::vector<Vector_2> normals;
 
-            // Throw an exception if there are fewer than three vertices
-            if (this->nv < 3)
-            {
-                throw std::runtime_error(
-                    "Outward normal vectors undefined for alpha shape with < 3 vertices"
-                );  
-            } 
-
             // Obtain the outward normal vector at each vertex 
-            p = this->vertices[this->nv-1];
-            q = this->vertices[0];
-            r = this->vertices[1];
-            // TODO
-            std::cout << "    .... computing normal vector at " << q << " (adjacent to " << p << ", " << r << ")\n" << std::flush;
-            Vector_2 normal; 
-            try 
+            for (int i = 0; i < this->nv; ++i)
             {
-                normal = this->getOutwardVertexNormal(p, q, r); 
-            }
-            catch (const std::invalid_argument& e)
-            {
-                throw; 
-            } 
-            normals.push_back(normal); 
-            for (int i = 1; i < this->nv - 1; ++i)
-            {
-                p = this->vertices[i-1];
-                q = this->vertices[i];
-                r = this->vertices[i+1];
                 // TODO
-                std::cout << "    .... computing normal vector at " << q << " (adjacent to " << p << ", " << r << ")\n" << std::flush;
+                std::cout << "    .... computing normal vector at " << this->vertices[i]
+                          << " (adjacent to " << this->vertices[(i - 1) % this->nv] << ", "
+                          << this->vertices[(i + 1) % this->nv] << ")\n"
+                          << std::flush;
                 try
                 {
-                    normal = this->getOutwardVertexNormal(p, q, r);
+                    normal = this->getOutwardVertexNormal(i);
                 }
                 catch (const std::invalid_argument& e)
                 {
                     throw; 
                 }
+                catch (const std::runtime_error& e)
+                {
+                    throw; 
+                }
                 normals.push_back(normal); 
             }
-            p = this->vertices[this->nv-2];
-            q = this->vertices[this->nv-1];
-            r = this->vertices[0];
-            // TODO
-            std::cout << "    .... computing normal vector at " << q << " (adjacent to " << p << ", " << r << ")\n" << std::flush;
-            try
-            {
-                normal = this->getOutwardVertexNormal(p, q, r);
-            }
-            catch (const std::invalid_argument& e)
-            {
-                throw; 
-            }
-            normals.push_back(normal); 
 
             return normals;
         }
@@ -460,10 +489,14 @@ struct AlphaShape2DProperties
                 boundary_indices.insert(this->vertices[i]);
             for (const int i : indices)
             {
-                if (i < 0 || i >= this->np)
-                    throw std::runtime_error("Invalid index specified for point to be removed");
+                if (!(i >= 0 && i < this->np))
+                    throw std::runtime_error(
+                        "Invalid index specified for point to be removed"
+                    );
                 else if (boundary_indices.find(i) != boundary_indices.end())
-                    throw std::runtime_error("Specified point lies in boundary, not in interior");  
+                    throw std::runtime_error(
+                        "Specified point lies in boundary, not in interior"
+                    );  
             }
 
             // Maintain a vector of indices of points to be removed 
@@ -641,11 +674,12 @@ struct AlphaShape2DProperties
          * - The final block of lines contains the indices of the endpoints
          *   of the edges in the alpha shape.
          *
-         * This method clears all stored boundary data. 
+         * This method overwrites all stored boundary data. 
          *
          * @param filename Input file name.
          * @param is_simple_cycle Whether or not the 
-         * @throws std::runtime_error If the file is incorrectly formatted. 
+         * @throws std::runtime_error If the file is incorrectly formatted, 
+         *                            or if any parsed vertex is invalid. 
          */
         void parse(std::string filename)
         {
@@ -679,39 +713,41 @@ struct AlphaShape2DProperties
                 if (tokens[0] == "ALPHA")
                 {
                     if (tokens.size() != 2)
-                        throw std::runtime_error("Unrecognized file format"); 
+                        throw std::runtime_error("Unrecognized file format: anomalous ALPHA line"); 
                     this->alpha = std::stod(tokens[1]); 
                 } 
                 else if (tokens[0] == "AREA")
                 {
                     if (tokens.size() != 2)
-                        throw std::runtime_error("Unrecognized file format"); 
+                        throw std::runtime_error("Unrecognized file format: anomalous AREA line"); 
                     this->area = std::stod(tokens[1]); 
                 }
                 else if (tokens[0] == "POINT")
                 {
                     if (tokens.size() != 3)
-                        throw std::runtime_error("Unrecognized file format"); 
+                        throw std::runtime_error("Unrecognized file format: anomalous POINT line"); 
                     this->x.push_back(std::stod(tokens[1]));
                     this->y.push_back(std::stod(tokens[2])); 
                 }
                 else if (tokens[0] == "VERTEX")
                 {
                     if (tokens.size() != 2)
-                        throw std::runtime_error("Unrecognized file format"); 
+                        throw std::runtime_error("Unrecognized file format: anomalous VERTEX line"); 
                     this->vertices.push_back(std::stoi(tokens[1]));
                 }
                 else if (tokens[0] == "EDGE")
                 {
                     if (tokens.size() != 3)
-                        throw std::runtime_error("Unrecognized file format"); 
-                    this->edges.emplace_back(std::make_pair(std::stoi(tokens[1]), std::stoi(tokens[2]))); 
+                        throw std::runtime_error("Unrecognized file format: anomalous EDGE line"); 
+                    this->edges.emplace_back(
+                        std::make_pair(std::stoi(tokens[1]), std::stoi(tokens[2]))
+                    ); 
                 }
                 else if (tokens[0] != "INPUT")    // The only other acceptable line heading is INPUT
                 {
-                    std::stringstream err_msg; 
-                    err_msg << "Unrecognized file heading: " << tokens[0];
-                    throw std::runtime_error(err_msg.str()); 
+                    std::stringstream ss;
+                    ss << "Unrecognized file heading: " << tokens[0];
+                    throw std::runtime_error(ss.str()); 
                 }
             }
             infile.close();
@@ -723,6 +759,33 @@ struct AlphaShape2DProperties
                 throw std::runtime_error("Input file does not specify alpha"); 
             if (this->area == std::numeric_limits<double>::infinity())
                 throw std::runtime_error("Input file does not specify enclosed area");
+
+            // Check that each vertex is valid
+            std::stringstream ss; 
+            for (auto it = this->vertices.begin(); it != this->vertices.end(); ++it)
+            {
+                if (!(*it >= 0 && *it < this->np))
+                {
+                    ss << "Invalid vertex index specified: " << *it
+                       << " (number of vertices = " << this->np << ")"; 
+                    throw std::runtime_error(ss.str()); 
+                }
+            }
+            for (auto it = this->edges.begin(); it != this->edges.end(); ++it)
+            {
+                if (!(it->first >= 0 && it->first < this->np))
+                {
+                    ss << "Invalid vertex index specified: " << it->first 
+                       << " (number of vertices = " << this->np << ")";
+                    throw std::runtime_error(ss.str()); 
+                }
+                if (!(it->second >= 0 && it->second < this->np))
+                {
+                    ss << "Invalid vertex index specified: " << it->second 
+                       << " (number of vertices = " << this->np << ")";
+                    throw std::runtime_error(ss.str()); 
+                }
+            }
 
             // Is the alpha shape a simple cycle? 
             this->is_simple_cycle = this->isSimpleCycle();
