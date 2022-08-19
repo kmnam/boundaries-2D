@@ -1169,6 +1169,10 @@ class BoundaryFinder
             //
             // This needs to be done first because it re-indexes the points
             // (and vertices) in the alpha shape 
+            std::unordered_set<int> boundary_indices(
+                this->curr_bound.vertices.begin(),
+                this->curr_bound.vertices.end()
+            );
             std::vector<int> interior_indices;
             for (int i = 0; i < this->curr_bound.np; ++i)
             {
@@ -1196,10 +1200,6 @@ class BoundaryFinder
             // Note that origbound_indices and origbound_indices_to_keep contain
             // *point* indices of vertices in the original boundary 
             std::vector<int> origbound_indices, origbound_indices_to_keep;
-            std::unordered_set<int> boundary_indices(
-                this->curr_bound.vertices.begin(),
-                this->curr_bound.vertices.end()
-            );
             std::unordered_set<int> simplified_indices; 
             if (!this->simplified)
             {
