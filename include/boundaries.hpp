@@ -411,6 +411,7 @@ struct AlphaShape2DProperties
         {
             int p, q, r;
             std::vector<Vector_2> normals;
+            Vector_2 normal; 
 
             // Obtain the outward normal vector at each vertex 
             for (int i = 0; i < this->nv; ++i)
