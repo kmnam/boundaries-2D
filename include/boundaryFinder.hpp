@@ -1347,6 +1347,7 @@ class BoundaryFinder
                     // Get the old *point* index (q) of the sampled vertex
                     // (idx[i], which ranges between 0 and n_keep_origbound - 1)
                     int q = origbound_indices_to_keep[idx[i]];
+                    std::cout << i << "-th choice: " << idx[i] << " ----> " << q << " in origbound_indices_to_keep\n" << std::flush;
 
                     // Identify the *vertex* index of this point in the original
                     // boundary 
@@ -1354,6 +1355,7 @@ class BoundaryFinder
                         this->curr_bound.vertices.begin(),
                         std::find(this->curr_bound.vertices.begin(), this->curr_bound.vertices.end(), q)
                     );
+                    std::cout << "----> found as index " << qi << " in this->curr_bound.vertices\n" << std::endl; 
 
                     // Get the outward normal vector at this point 
                     normals.push_back(this->curr_bound.getOutwardVertexNormal(qi));
