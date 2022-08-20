@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     8/19/2022
+ *     8/20/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -748,6 +748,7 @@ class BoundaryFinder
             for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
+            this->curr_simplified.deleteInteriorPoints(interior_indices_to_delete);
 
             // First, if the boundary was simplified, identify the subset of 
             // boundary vertices in the unsimplified boundary and not in 
@@ -1191,6 +1192,7 @@ class BoundaryFinder
             for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
+            this->curr_simplified.deleteInteriorPoints(interior_indices_to_delete);
 
             // Second, if the boundary was simplified, identify the subset of 
             // boundary vertices in the unsimplified boundary and not in 
