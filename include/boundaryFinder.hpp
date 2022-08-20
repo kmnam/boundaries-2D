@@ -750,7 +750,7 @@ class BoundaryFinder
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
             this->curr_simplified.deleteInteriorPoints(interior_indices_to_delete);
 
-            // First, if the boundary was simplified, identify the subset of 
+            // Second, if the boundary was simplified, identify the subset of 
             // boundary vertices in the unsimplified boundary and not in 
             // the simplified boundary to keep; otherwise, keep every point 
             // in the (unsimplified) boundary
