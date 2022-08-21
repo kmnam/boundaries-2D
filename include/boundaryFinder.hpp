@@ -756,8 +756,11 @@ class BoundaryFinder
             // the simplified boundary to keep; otherwise, keep every point 
             // in the (unsimplified) boundary
             //
-            // Note that origbound_indices and origbound_indices_to_keep contain
-            // *point* indices of vertices in the original boundary 
+            // Re-obtain indices of points within the boundary after the 
+            // above re-indexing
+            boundary_indices.clear(); 
+            for (const int i : this->curr_bound.vertices) 
+                boundary_indices.insert(i); 
             std::vector<int> origbound_indices, origbound_indices_to_keep;
             std::unordered_set<int> simplified_indices; 
             if (!this->simplified)
@@ -1201,8 +1204,11 @@ class BoundaryFinder
             // the simplified boundary to keep; otherwise, keep every point 
             // in the (unsimplified) boundary
             //
-            // Note that origbound_indices and origbound_indices_to_keep contain
-            // *point* indices of vertices in the original boundary 
+            // Re-obtain indices of points within the boundary after the 
+            // above re-indexing
+            boundary_indices.clear(); 
+            for (const int i : this->curr_bound.vertices) 
+                boundary_indices.insert(i); 
             std::vector<int> origbound_indices, origbound_indices_to_keep;
             std::unordered_set<int> simplified_indices; 
             if (!this->simplified)
