@@ -762,16 +762,22 @@ class BoundaryFinder
                 std::cout << "deleted selected interior points from original boundary\n" << std::flush;
             }
 
-            // Second, if the boundary was simplified, identify the subset of 
-            // boundary vertices in the unsimplified boundary and not in 
-            // the simplified boundary to keep; otherwise, keep every point 
-            // in the (unsimplified) boundary
-            //
             // Re-obtain indices of points within the boundary after the 
             // above re-indexing
             boundary_indices.clear(); 
             for (const int i : this->curr_bound.vertices) 
-                boundary_indices.insert(i); 
+                boundary_indices.insert(i);
+            interior_indices.clear();
+            for (int i = 0; i < this->curr_bound.np; ++i)
+            {
+                if (boundary_indices.find(i) == boundary_indices.end())
+                    interior_indices.push_back(i); 
+            }
+
+            // Second, if the boundary was simplified, identify the subset of 
+            // boundary vertices in the unsimplified boundary and not in 
+            // the simplified boundary to keep; otherwise, keep every point 
+            // in the (unsimplified) boundary
             std::vector<int> origbound_indices, origbound_indices_to_keep;
             std::unordered_set<int> simplified_indices; 
             if (!this->simplified)
@@ -1215,16 +1221,22 @@ class BoundaryFinder
             if (this->simplified)
                 this->curr_simplified.deleteInteriorPoints(interior_indices_to_delete);
 
-            // Second, if the boundary was simplified, identify the subset of 
-            // boundary vertices in the unsimplified boundary and not in 
-            // the simplified boundary to keep; otherwise, keep every point 
-            // in the (unsimplified) boundary
-            //
             // Re-obtain indices of points within the boundary after the 
             // above re-indexing
             boundary_indices.clear(); 
             for (const int i : this->curr_bound.vertices) 
-                boundary_indices.insert(i); 
+                boundary_indices.insert(i);
+            interior_indices.clear();
+            for (int i = 0; i < this->curr_bound.np; ++i)
+            {
+                if (boundary_indices.find(i) == boundary_indices.end())
+                    interior_indices.push_back(i); 
+            }
+
+            // Second, if the boundary was simplified, identify the subset of 
+            // boundary vertices in the unsimplified boundary and not in 
+            // the simplified boundary to keep; otherwise, keep every point 
+            // in the (unsimplified) boundary
             std::vector<int> origbound_indices, origbound_indices_to_keep;
             std::unordered_set<int> simplified_indices; 
             if (!this->simplified)
