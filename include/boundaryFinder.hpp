@@ -590,6 +590,11 @@ class BoundaryFinder
                 this->curr_simplified.orient(CGAL::RIGHT_TURN); 
                 this->simplified = true; 
             }
+            else 
+            {
+                // Update flag (since the boundary could have been previously simplified)
+                this->simplified = false; 
+            }
 
             // Write boundary information to file if desired
             if (write_prefix.compare(""))
@@ -748,8 +753,14 @@ class BoundaryFinder
             for (const int i : idx)
                 interior_indices_to_delete.push_back(interior_indices[i]);  
             this->curr_bound.deleteInteriorPoints(interior_indices_to_delete);
+            // TODO
+            std::cout << "deleted selected interior points from original boundary\n" << std::flush;
             if (this->simplified)
+            {
                 this->curr_simplified.deleteInteriorPoints(interior_indices_to_delete);
+                // TODO
+                std::cout << "deleted selected interior points from original boundary\n" << std::flush;
+            }
 
             // Second, if the boundary was simplified, identify the subset of 
             // boundary vertices in the unsimplified boundary and not in 
@@ -990,6 +1001,11 @@ class BoundaryFinder
                 // clockwise
                 this->curr_simplified.orient(CGAL::RIGHT_TURN); 
                 this->simplified = true; 
+            }
+            else 
+            {
+                // Update flag (since the boundary could have been previously simplified)
+                this->simplified = false; 
             }
 
             // Write boundary information to file if desired
@@ -1550,6 +1566,11 @@ class BoundaryFinder
                 // clockwise
                 this->curr_simplified.orient(CGAL::RIGHT_TURN); 
                 this->simplified = true; 
+            }
+            else 
+            {
+                // Update flag (since the boundary could have been previously simplified)
+                this->simplified = false; 
             }
 
             // Write boundary information to file if desired
