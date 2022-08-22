@@ -75,7 +75,7 @@ struct AlphaShape2DProperties
          * @param r Index of third vertex in alpha shape. 
          * @return Outward normal vector at `q`.
          */
-        Vector_2 getOutwardVertexNormal(int p, int q, int r)
+        Vector_2 getOutwardVertexNormal(const int p, const int q, const int r)
         {
             Vector_2 v, w, normal;
 
@@ -416,11 +416,6 @@ struct AlphaShape2DProperties
             // Obtain the outward normal vector at each vertex 
             for (int i = 0; i < this->nv; ++i)
             {
-                // TODO
-                std::cout << "    .... computing normal vector at " << this->vertices[i]
-                          << " (adjacent to " << this->vertices[(i - 1) % this->nv] << ", "
-                          << this->vertices[(i + 1) % this->nv] << ")\n"
-                          << std::flush;
                 try
                 {
                     normal = this->getOutwardVertexNormal(i);
@@ -485,9 +480,9 @@ struct AlphaShape2DProperties
         {
             // Maintain a set of boundary point indices, to ensure that none 
             // of the points being deleted are boundary points 
-            std::unordered_set<int> boundary_indices; 
-            for (int i = 0; i < this->nv; ++i)
-                boundary_indices.insert(this->vertices[i]);
+            std::unordered_set<int> boundary_indices(
+                this->vertices.begin(), this->vertices.end()
+            ); 
             for (const int i : indices)
             {
                 if (!(i >= 0 && i < this->np))
@@ -515,15 +510,15 @@ struct AlphaShape2DProperties
 
                 for (int j = 0; j < this->nv; ++j)
                 {
-                    // Note that this->vertices[i] should never equal index_to_remove 
+                    // Note that this->vertices[j] should never equal index to remove
                     // (former is in boundary, latter is in interior)
                     if (this->vertices[j] > interior_indices[i])
                         this->vertices[j]--;
                 }
                 for (int j = 0; j < this->edges.size(); ++j)
                 {
-                    // Note that neither vertex of each edge should never equal 
-                    // index_to_remove (former is in boundary, latter is in interior)
+                    // Note that neither vertex of each edge should never equal index
+                    // to remove (former is in boundary, latter is in interior)
                     if (this->edges[j].first > interior_indices[i])
                         this->edges[j].first--;
                     if (this->edges[j].second > interior_indices[i])
