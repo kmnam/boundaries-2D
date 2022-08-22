@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     8/21/2022
+ *     8/22/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -401,7 +401,9 @@ class BoundaryFinder
         }
 
         /**
-         * Return the dimension of the input polytope. 
+         * Return the dimension of the input polytope.
+         *
+         * @returns Dimension of input polytope.  
          */
         int getD()
         {
@@ -409,7 +411,9 @@ class BoundaryFinder
         }
 
         /**
-         * Return the stored input points. 
+         * Return the stored input points, lying within the input polytope.
+         *
+         * @returns Matrix of input point coordinates. 
          */ 
         MatrixXd getInput()
         {
@@ -418,7 +422,9 @@ class BoundaryFinder
 
         /**
          * Return the vertices of the input polytope, by traversing over them
-         * in the stored Delaunay triangulation.  
+         * in the stored Delaunay triangulation.
+         *
+         * @returns Matrix of vertex coordinates for the input polytope.  
          */
         MatrixXd getVertices()
         {
@@ -439,6 +445,31 @@ class BoundaryFinder
         }
 
         /**
+         * Return the currently stored boundary of the output points.
+         *
+         * @returns The currently stored boundary. 
+         */
+        AlphaShape2DProperties getBoundary()
+        {
+            return this->curr_bound; 
+        }
+
+        /**
+         * Return the simplified boundary of the output points.
+         *
+         * This method raises an exception if `this->simplified` is false. 
+         *
+         * @returns The currently stored simplified boundary.
+         * @throws std::runtime_error If `this->simplified` is false. 
+         */
+        AlphaShape2DProperties getSimplifiedBoundary()
+        {
+            if (!this->simplified)
+                throw std::runtime_error("Currently stored boundary was not simplified"); 
+            return this->curr_simplified; 
+        }
+
+        /**
          * Randomly sample the given number of points from the uniform density 
          * on the input polytope.
          *
@@ -450,22 +481,6 @@ class BoundaryFinder
             return Polytopes::sampleFromConvexPolytope<TRI_VOLUME_INTERNAL_PRECISION, TRI_VOLUME_INTERNAL_PRECISION>(
                 this->tri, npoints, 0, this->rng
             );  
-        }
-
-        /**
-         * Return the currently stored boundary of the output points.
-         */
-        AlphaShape2DProperties getBoundary()
-        {
-            return this->curr_bound; 
-        }
-
-        /**
-         * Return the simplified boundary of the output points. 
-         */
-        AlphaShape2DProperties getSimplifiedBoundary()
-        {
-            return this->curr_simplified; 
         }
 
         /**
