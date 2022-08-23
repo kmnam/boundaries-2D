@@ -1294,16 +1294,24 @@ class BoundaryFinder
             }
 
             const int D = this->constraints->getD();
-            VectorXi to_pull;
+            VectorXi to_pull, prev, next;
             std::vector<Vector_2> normals;
 
             // If the boundary was not simplified, then pull every point in
             // the boundary
             if (!this->simplified)
             {
+                // The vertices in the simplified boundary are now in one 
+                // contiguous chunk in this->input / this->points (see above)
                 to_pull.resize(this->curr_bound.nv);
+                prev.resize(this->curr_bound.nv); 
+                next.resize(this->curr_bound.nv); 
                 for (int i = 0; i < this->curr_bound.nv; ++i)
-                    to_pull(i) = this->curr_bound.vertices[i];
+                {
+                    to_pull(i) = n_keep_interior + i;
+                    prev(i) = n_keep_interior + ((i - 1) % this->curr_bound.nv); 
+                    next(i) = n_keep_interior + ((i + 1) % this->curr_bound.nv); 
+                }
                 normals = this->curr_bound.getOutwardVertexNormals();
             }
             // Otherwise, then pull every point in the *simplified* boundary,
@@ -1312,11 +1320,17 @@ class BoundaryFinder
             {
                 const int n_pull = this->curr_simplified.nv + n_pull_origbound;
                 to_pull.resize(n_pull);
+                prev.resize(n_pull); 
+                next.resize(n_pull); 
 
                 // The vertices in the simplified boundary are now in one 
                 // contiguous chunk in this->input / this->points (see above)
                 for (int i = 0; i < this->curr_simplified.nv; ++i)
+                {
                     to_pull(i) = n_keep_interior + n_keep_origbound + i;
+                    prev(i) = n_keep_interior + n_keep_origbound + ((i - 1) % this->curr_simplified.nv); 
+                    next(i) = n_keep_interior + n_keep_origbound + ((i + 1) % this->curr_simplified.nv); 
+                }
                 
                 // Choose n_pull_origbound number of vertices among the 
                 // vertices in the unsimplified boundary *that were chosen to 
@@ -1325,7 +1339,11 @@ class BoundaryFinder
                     n_keep_origbound, n_pull_origbound, this->rng
                 );
                 for (int i = 0; i < n_pull_origbound; ++i)
+                {
                     to_pull(this->curr_simplified.nv + i) = n_keep_interior + idx[i];
+                    prev(this->curr_simplified.nv + i) = n_keep_interior + ((idx[i] - 1) % n_keep_origbound); 
+                    next(this->curr_simplified.nv + i) = n_keep_interior + ((idx[i] + 1) % n_keep_origbound); 
+                }
 
                 // Rely on the old indexing of points to locate each vertex 
                 // to be pulled in the current unsimplified and simplified
@@ -1348,7 +1366,7 @@ class BoundaryFinder
                     );
 
                     // Get the outward normal vector at this point 
-                    normals.push_back(this->curr_bound.getOutwardVertexNormal(qi));
+                    normals.push_back(this->curr_bound.getOutwardVertexNormal(qi)); 
                 }
             }
             if (verbose)
@@ -1430,7 +1448,7 @@ class BoundaryFinder
                 ss << write_prefix << "-pass" << iter << "-pull.txt";
                 outfile.open(ss.str());
                 outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
-                outfile << "START_X\tSTART_Y\tNORMAL_X\tNORMAL_Y\tTARGET_X\tTARGET_Y\t"; 
+                outfile << "START_X\tSTART_Y\tPREV_X\tPREV_Y\tNEXT_X\tNEXT_Y\tNORMAL_X\tNORMAL_Y\tTARGET_X\tTARGET_Y\t"; 
                 for (int i = 0; i < D; ++i)
                     outfile << "RESULT_IN_" << i << '\t'; 
                 outfile << "RESULT_OUT_X\tRESULT_OUT_Y\tADDED\n"; 
@@ -1438,6 +1456,10 @@ class BoundaryFinder
                 {
                     outfile << this->points(to_pull(i), 0) << '\t'
                             << this->points(to_pull(i), 1) << '\t'
+                            << this->points(prev(i), 0) << '\t'
+                            << this->points(prev(i), 1) << '\t'
+                            << this->points(next(i), 0) << '\t'
+                            << this->points(next(i), 1) << '\t'
                             << CGAL::to_double(normals[i].x()) << '\t'
                             << CGAL::to_double(normals[i].y()) << '\t'
                             << pulled(i, 0) << '\t'
