@@ -50,6 +50,87 @@ typedef CGAL::Polyline_simplification_2::Squared_distance_cost       Cost;
 typedef CGAL::Polyline_simplification_2::Stop_below_count_threshold  Stop;
 
 /**
+ * Given three points `p`, `q`, and `r` and a choice of "outward side," return
+ * the outward normal vector at the middle vertex, `q`.
+ *
+ * @param p First point.
+ * @param q Second point.
+ * @param r Third point.
+ * @returns Outward normal vector at `q`.
+ */
+Vector_2 getOutwardVertexNormal(const double p_x, const double p_y, 
+                                const double q_x, const double q_y,
+                                const double r_x, const double r_y, 
+                                const Orientation orientation)
+{
+    Vector_2 v, w, normal;
+
+    // Get the vectors from q to p and from q to r 
+    v = Vector_2(p_x - q_x, p_y - q_y); 
+    w = Vector_2(r_x - q_x, r_y - q_y);
+
+    // Get the angle between the two vectors
+    double arg = CGAL::scalar_product(v, w) / std::sqrt(v.squared_length() * w.squared_length());
+    if (arg > 1)         // Check that the argument passed to acos() is between -1 and 1
+        arg = 1; 
+    else if (arg < -1)
+        arg = -1; 
+    double angle = std::acos(arg);
+
+    // Get the orientation of w with respect to -v (left or right turn)
+    Orientation v_to_w = CGAL::orientation(-v, w);
+
+    // Case 1: The outward side is on the left and -v and w form a right turn
+    if (orientation == CGAL::RIGHT_TURN && v_to_w == CGAL::RIGHT_TURN)
+    {
+        // Rotate w by (2*pi - angle) / 2 counterclockwise
+        Transformation rotate(CGAL::ROTATION, std::sin((TWO_PI - angle) / 2.0), std::cos((TWO_PI - angle) / 2.0)); 
+        normal = rotate(w);
+    }
+    // Case 2: The outward side is on the left and -v and w form a left turn
+    else if (orientation == CGAL::RIGHT_TURN && v_to_w == CGAL::LEFT_TURN)
+    {
+        // Rotate w by angle / 2 counterclockwise
+        Transformation rotate(CGAL::ROTATION, std::sin(angle / 2.0), std::cos(angle / 2.0));
+        normal = rotate(w);
+    }
+    // Case 3: The outward side is on the right and -v and w form a right turn
+    else if (orientation == CGAL::LEFT_TURN && v_to_w == CGAL::RIGHT_TURN)
+    {
+        // Rotate v by angle / 2 counterclockwise
+        Transformation rotate(CGAL::ROTATION, std::sin(angle / 2.0), std::cos(angle / 2.0));
+        normal = rotate(v);
+    }
+    // Case 4: The outward side is on the right and -v and w form a left turn
+    else if (orientation == CGAL::LEFT_TURN && v_to_w == CGAL::LEFT_TURN)
+    {
+        // Rotate v by (2*pi - angle) / 2 counterclockwise
+        Transformation rotate(CGAL::ROTATION, std::sin((TWO_PI - angle) / 2.0), std::cos((TWO_PI - angle) / 2.0));
+        normal = rotate(v);
+    }
+    // Case 5: -v and w are collinear
+    else
+    {
+        // If the outward side is on the left, rotate w by 90 degrees counterclockwise
+        if (orientation == CGAL::RIGHT_TURN)
+        {
+            Transformation rotate(CGAL::ROTATION, 1.0, 0.0);
+            normal = rotate(w);
+        }
+        // Otherwise, rotate v by 90 degrees counterclockwise
+        else
+        {
+            Transformation rotate(CGAL::ROTATION, 1.0, 0.0);
+            normal = rotate(v);
+        }
+    }
+
+    // Normalize the vector by its length and return
+    normal /= std::sqrt(normal.squared_length());
+    return normal;
+}
+
+/**
  * A container that stores a planar point-set along with the indices of the 
  * points lying in an alpha shape of the point-set, together with the
  * corresponding value of alpha and the area of the enclosed region. 
@@ -73,78 +154,14 @@ struct AlphaShape2DProperties
          * @param p Index of first vertex in alpha shape.
          * @param q Index of second vertex in alpha shape. 
          * @param r Index of third vertex in alpha shape. 
-         * @return Outward normal vector at `q`.
+         * @returns Outward normal vector at `q`.
          */
         Vector_2 getOutwardVertexNormal(const int p, const int q, const int r)
         {
-            Vector_2 v, w, normal;
-
-            // Get the vectors from q to p and from q to r 
-            v = Vector_2(this->x[p] - this->x[q], this->y[p] - this->y[q]);
-            w = Vector_2(this->x[r] - this->x[q], this->y[r] - this->y[q]);
-
-            // Get the angle between the two vectors
-            double arg = CGAL::scalar_product(v, w) / std::sqrt(v.squared_length() * w.squared_length());
-            if (arg > 1)         // Check that the argument passed to acos() is between -1 and 1
-                arg = 1; 
-            else if (arg < -1)
-                arg = -1; 
-            double angle = std::acos(arg);
-            Orientation v_to_w = CGAL::orientation(-v, w);
-
-            // Case 1: The boundary is oriented by right turns and -v and w
-            // form a right turn
-            if (this->orientation == CGAL::RIGHT_TURN && v_to_w == CGAL::RIGHT_TURN)
-            {
-                // Rotate w by (2*pi - angle) / 2 counterclockwise
-                Transformation rotate(CGAL::ROTATION, std::sin((TWO_PI - angle) / 2.0), std::cos((TWO_PI - angle) / 2.0)); 
-                normal = rotate(w);
-            }
-            // Case 2: The boundary is oriented by right turns and -v and w
-            // form a left turn
-            else if (this->orientation == CGAL::RIGHT_TURN && v_to_w == CGAL::LEFT_TURN)
-            {
-                // Rotate w by angle / 2 counterclockwise
-                Transformation rotate(CGAL::ROTATION, std::sin(angle / 2.0), std::cos(angle / 2.0));
-                normal = rotate(w);
-            }
-            // Case 3: The boundary is oriented by left turns and -v and w
-            // form a right turn
-            else if (this->orientation == CGAL::LEFT_TURN && v_to_w == CGAL::RIGHT_TURN)
-            {
-                // Rotate v by angle / 2 counterclockwise
-                Transformation rotate(CGAL::ROTATION, std::sin(angle / 2.0), std::cos(angle / 2.0));
-                normal = rotate(v);
-            }
-            // Case 4: The boundary is oriented by left turns and -v and w 
-            // form a left turn
-            else if (this->orientation == CGAL::LEFT_TURN && v_to_w == CGAL::LEFT_TURN)
-            {
-                // Rotate v by (2*pi - angle) / 2 counterclockwise
-                Transformation rotate(CGAL::ROTATION, std::sin((TWO_PI - angle) / 2.0), std::cos((TWO_PI - angle) / 2.0));
-                normal = rotate(v);
-            }
-            // Case 5: -v and w are collinear
-            else
-            {
-                // If the interior of the boundary is to the right, rotate
-                // w by 90 degrees counterclockwise
-                if (this->orientation == CGAL::RIGHT_TURN)
-                {
-                    Transformation rotate(CGAL::ROTATION, 1.0, 0.0);
-                    normal = rotate(w);
-                }
-                // Otherwise, rotate v by 90 degrees counterclockwise
-                else
-                {
-                    Transformation rotate(CGAL::ROTATION, 1.0, 0.0);
-                    normal = rotate(v);
-                }
-            }
-
-            // Normalize the vector by its length and return
-            normal /= std::sqrt(normal.squared_length());
-            return normal;
+            return ::getOutwardVertexNormal(
+                this->x[p], this->y[p], this->x[q], this->y[q], this->x[r], 
+                this->y[r], this->orientation
+            );  
         }
 
     public:
@@ -356,7 +373,7 @@ struct AlphaShape2DProperties
          * The boundary is assumed to a simple cycle. 
          *
          * @param i Index of first vertex in alpha shape *in `this->vertices`*.
-         * @return Outward normal vector at `this->vertices[i]`.
+         * @returns Outward normal vector at `this->vertices[i]`.
          * @throws std::invalid_argument If `i` is an invalid vertex index.
          * @throws std::runtime_error    If the boundary is not a simple cycle. 
          */
@@ -928,15 +945,14 @@ class Boundary2D
          *                            whether the alpha shape is a simple cycle.  
          */
         template <typename Dt, typename ExactAlphaComparisonTag>
-        std::pair<int, bool> traverseSimpleCycle(CGAL::Alpha_shape_2<Dt, ExactAlphaComparisonTag>& shape, 
-                                                 std::vector<Point_2>& points, 
-                                                 std::vector<int>& traversal,
-                                                 std::unordered_map<typename Dt::Vertex_handle, int>& vertices_to_indices,
-                                                 std::vector<typename Dt::Vertex_handle>& indices_to_vertices,
-                                                 std::unordered_map<typename Dt::Vertex_handle, std::pair<int, double> >&
-                                                     vertices_to_points, 
-                                                 SparseMatrix<int, RowMajor>& adj, 
-                                                 const int alpha_index, const bool verbose = false)
+        bool traverseSimpleCycle(CGAL::Alpha_shape_2<Dt, ExactAlphaComparisonTag>& shape, 
+                                 std::vector<Point_2>& points, 
+                                 std::vector<int>& traversal,
+                                 std::unordered_map<typename Dt::Vertex_handle, int>& vertices_to_indices,
+                                 std::vector<typename Dt::Vertex_handle>& indices_to_vertices,
+                                 std::unordered_map<typename Dt::Vertex_handle, std::pair<int, double> >& vertices_to_points, 
+                                 SparseMatrix<int, RowMajor>& adj, 
+                                 const int alpha_index, const bool verbose = false)
         {
             traversal.clear();
             vertices_to_indices.clear();
@@ -966,7 +982,7 @@ class Boundary2D
                     std::cout << "- Boundary is not simple cycle: contains < 3 vertices"
                               << std::endl;
                 } 
-                return std::make_pair(nvertices, false); 
+                return false;
             } 
            
             // Iterate through the edges in the alpha shape and fill in the adjacency matrix 
@@ -997,7 +1013,7 @@ class Boundary2D
                         std::cout << "- Boundary is not simple cycle: is not 2-regular"
                                   << std::endl;
                     } 
-                    return std::make_pair(nvertices, false);
+                    return false;
                 } 
             }
             int nedges = (adj.triangularView<Upper>() * ones).sum(); 
@@ -1040,8 +1056,8 @@ class Boundary2D
                     {
                         std::cout << "- Boundary is not simple cycle: contains non-trivial sub-cycle"
                                   << std::endl;
-                    } 
-                    return std::make_pair(nvertices, false);
+                    }
+                    return false; 
                 }
                 // Otherwise, if only the first vertex has been visited, then jump to
                 // the second vertex
@@ -1105,7 +1121,7 @@ class Boundary2D
                     std::cout << "- Traversed " << visited.sum() << "/" << nvertices
                               << " boundary vertices in a simple cycle" << std::endl;
                 }
-                return std::make_pair(nvertices, true); 
+                return true; 
             }
             else
             {
@@ -1115,7 +1131,7 @@ class Boundary2D
                               << " boundary vertices; boundary contains "
                               << nedges << " edges" << std::endl;
                 }
-                return std::make_pair(nvertices, false);  
+                return false;
             }
         }
 
@@ -1683,12 +1699,12 @@ class Boundary2D
             // back to the starting point)
             for (int mid = low; mid <= high; ++mid)
             {
-                std::pair<int, bool> result = traverseSimpleCycle(
+                bool is_simple = this->traverseSimpleCycle(
                     shape, points, traversal, vertices_to_indices,
                     indices_to_vertices, vertices_to_points, adj, mid, false
                 );
-                nvertices = result.first; 
-                if (result.second)
+                nvertices = std::distance(shape.alpha_shape_vertices_begin(), shape.alpha_shape_vertices_end()); 
+                if (is_simple)
                 { 
                     last_valid = mid; 
                     break; 
@@ -1698,12 +1714,26 @@ class Boundary2D
             // Have we found a value of alpha for which the boundary is a
             // simple cycle? 
             bool is_simple_cycle = (last_valid != INVALID_ALPHA_INDEX);
+
+            // If so, then set the optimal value of alpha to slightly higher 
+            // than this smallest value (the first percentile of the distribution
+            // of alphas between this smallest value and the largest possible value)
             if (is_simple_cycle)
-                opt_alpha_index = last_valid; 
+            {
+                opt_alpha_index = (
+                    last_valid + static_cast<int>(std::ceil(0.1 * (shape.number_of_alphas() - last_valid)))
+                );
+            } 
             else
-                throw std::runtime_error("Could not find any simple-cycle boundary");  
+            {
+                throw std::runtime_error("Could not find any simple-cycle boundary"); 
+            } 
             opt_alpha = CGAL::to_double(shape.get_nth_alpha(opt_alpha_index));
-            shape.set_alpha(shape.get_nth_alpha(opt_alpha_index));
+            this->traverseSimpleCycle(
+                shape, points, traversal, vertices_to_indices, indices_to_vertices,
+                vertices_to_points, adj, opt_alpha_index, false
+            ); 
+            nvertices = std::distance(shape.alpha_shape_vertices_begin(), shape.alpha_shape_vertices_end());
 
             // Count the edges in the alpha shape
             VectorXi ones = VectorXi::Ones(nvertices); 
