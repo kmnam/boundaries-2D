@@ -969,9 +969,27 @@ class Boundary2D
             int nvertices = 0; 
             for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
             {
-                vertices_to_indices[*it] = nvertices;
-                indices_to_vertices.push_back(*it);
-                nvertices++;
+                // Find the point being pointed to by the vertex handle
+                Point_2 point = (*it)->point();
+                double xit = point.x(); 
+                double yit = point.y(); 
+                
+                // Find the nearest point in the point-set to this vertex
+                double nearest_sqdist = std::numeric_limits<double>::infinity(); 
+                int nearest_index = 0; 
+                for (int i = 0; i < this->n; ++i)
+                {
+                    double sqdist = std::pow(this->x[i] - xit, 2) + std::pow(this->y[i] - yit, 2);
+                    if (sqdist < nearest_sqdist)
+                    {
+                        nearest_sqdist = sqdist;
+                        nearest_index = i; 
+                    }
+                }
+                vertices_to_points[*it] = std::make_pair(nearest_index, nearest_sqdist);
+                vertices_to_indices[*it] = nvertices; 
+                indices_to_vertices.push_back(*it); 
+                nvertices++; 
             }
 
             // Check that there are at least three vertices
@@ -1030,6 +1048,7 @@ class Boundary2D
             int i = 0;
             VectorXi visited = VectorXi::Zero(nvertices);
             visited(i) = 1;
+            int nvisited = 1;  
             traversal.push_back(i); 
             bool returned = false;  
             while (!returned)
@@ -1065,6 +1084,7 @@ class Boundary2D
                 {
                     i = second;
                     visited(i) = 1;
+                    nvisited++; 
                     traversal.push_back(i);  
                 } 
                 // Otherwise, if only the second vertex has been visited, then jump to
@@ -1073,6 +1093,7 @@ class Boundary2D
                 {
                     i = first;
                     visited(i) = 1;
+                    nvisited++; 
                     traversal.push_back(i); 
                 }
                 // Otherwise, if we are at the zeroth vertex (we are just starting our
@@ -1081,6 +1102,7 @@ class Boundary2D
                 {
                     i = first;
                     visited(i) = 1;
+                    nvisited++; 
                     traversal.push_back(i); 
                 } 
                 // Otherwise, if neither vertex has been visited, then there is
@@ -1089,32 +1111,9 @@ class Boundary2D
                     throw std::runtime_error("This is not supposed to happen!");  
             }
 
-            // Identify, for each vertex in the alpha shape, the point corresponding to it 
-            for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
-            {
-                // Find the point being pointed to by the boundary vertex 
-                Point_2 point = (*it)->point();
-                double xit = point.x(); 
-                double yit = point.y(); 
-                
-                // Find the nearest point in the point-set to this boundary vertex
-                double nearest_sqdist = std::numeric_limits<double>::infinity(); 
-                int nearest_index = 0; 
-                for (int i = 0; i < this->n; ++i)
-                {
-                    double sqdist = std::pow(this->x[i] - xit, 2) + std::pow(this->y[i] - yit, 2);
-                    if (sqdist < nearest_sqdist)
-                    {
-                        nearest_sqdist = sqdist;
-                        nearest_index = i; 
-                    }
-                }
-                vertices_to_points[*it] = std::make_pair(nearest_index, nearest_sqdist);
-            }
-
             // Have we traversed the entire alpha shape and returned to the starting 
             // vertex, and does every vertex lie either along or within the simple cycle?
-            if (returned && visited.sum() == nvertices)  
+            if (returned && nvisited == nvertices)
             {
                 if (verbose)
                 { 
@@ -1129,7 +1128,7 @@ class Boundary2D
                 {
                     std::cout << "- Traversed " << visited.sum() << "/" << nvertices 
                               << " boundary vertices; boundary contains "
-                              << nedges << " edges" << std::endl;
+                              << nedges << " edges (not simple)" << std::endl;
                 }
                 return false;
             }
@@ -1323,6 +1322,24 @@ class Boundary2D
             nvertices = 0; 
             for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
             {
+                // Find the point being pointed to by the vertex handle
+                Point_2 point = (*it)->point();
+                double xit = point.x(); 
+                double yit = point.y(); 
+                
+                // Find the nearest input point to this vertex 
+                double nearest_sqdist = std::numeric_limits<double>::infinity(); 
+                int nearest_index = 0; 
+                for (int i = 0; i < this->n; ++i)
+                {
+                    double sqdist = std::pow(this->x[i] - xit, 2) + std::pow(this->y[i] - yit, 2);
+                    if (sqdist < nearest_sqdist)
+                    {
+                        nearest_sqdist = sqdist;
+                        nearest_index = i; 
+                    }
+                }
+                vertices_to_points[*it] = std::make_pair(nearest_index, nearest_sqdist);
                 vertices_to_indices[*it] = nvertices;
                 indices_to_vertices.push_back(*it); 
                 nvertices++;
@@ -1491,6 +1508,24 @@ class Boundary2D
             nvertices = 0; 
             for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
             {
+                // Find the point being pointed to by the vertex handle
+                Point_2 point = (*it)->point();
+                double xit = point.x(); 
+                double yit = point.y(); 
+                
+                // Find the nearest point in the point-set to this vertex
+                double nearest_sqdist = std::numeric_limits<double>::infinity(); 
+                int nearest_index = 0; 
+                for (int i = 0; i < this->n; ++i)
+                {
+                    double sqdist = std::pow(this->x[i] - xit, 2) + std::pow(this->y[i] - yit, 2);
+                    if (sqdist < nearest_sqdist)
+                    {
+                        nearest_sqdist = sqdist;
+                        nearest_index = i; 
+                    }
+                }
+                vertices_to_points[*it] = std::make_pair(nearest_index, nearest_sqdist);
                 vertices_to_indices[*it] = nvertices;
                 indices_to_vertices.push_back(*it); 
                 nvertices++;
@@ -1513,29 +1548,6 @@ class Boundary2D
                 triplets.emplace_back(Triplet<int>(target_i, source_i, 1)); 
             }
             adj.setFromTriplets(triplets.begin(), triplets.end());
-
-            // Identify, for each vertex in the alpha shape, the point corresponding to it
-            for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
-            {
-                // Find the point being pointed to by the boundary vertex 
-                Point_2 point = (*it)->point();
-                double xit = point.x(); 
-                double yit = point.y(); 
-                
-                // Find the nearest point in the point-set to this boundary vertex
-                double nearest_sqdist = std::numeric_limits<double>::infinity(); 
-                int nearest_index = 0; 
-                for (int i = 0; i < this->n; ++i)
-                {
-                    double sqdist = std::pow(this->x[i] - xit, 2) + std::pow(this->y[i] - yit, 2);
-                    if (sqdist < nearest_sqdist)
-                    {
-                        nearest_sqdist = sqdist;
-                        nearest_index = i; 
-                    }
-                }
-                vertices_to_points[*it] = std::make_pair(nearest_index, nearest_sqdist);
-            }
 
             // Count the edges in the alpha shape
             VectorXi ones = VectorXi::Ones(nvertices); 
@@ -1593,12 +1605,16 @@ class Boundary2D
          * with the *smallest* value of alpha such that the boundary forms 
          * a simple cycle (i.e., the enclosed region is simply connected).
          *
-         * @param verbose If true, output intermittent messages to `stdout`.
+         * @param verbose           If true, output intermittent messages to
+         *                          `stdout`.
+         * @param traversal_verbose If true, output intermittent messages to
+         *                          `stdout` from `traverseSimpleCycle()`. 
          * @returns `AlphaShape2DProperties` object containing the alpha shape 
          *          representing the boundary of the point-set.  
          */
         template <bool tag = true>
-        AlphaShape2DProperties getSimplyConnectedBoundary(const bool verbose = false)
+        AlphaShape2DProperties getSimplyConnectedBoundary(const bool verbose = false,
+                                                          const bool traversal_verbose = false)
         {
             typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> > Vb;
             typedef CGAL::Alpha_shape_face_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> >   Fb;
@@ -1697,14 +1713,16 @@ class Boundary2D
             // a simple cycle (every vertex has only two incident edges,
             // and traveling along the cycle in one direction gets us 
             // back to the starting point)
+            bool is_simple_cycle = false; 
+            bool found_simple_cycle_alpha = false; 
             for (int mid = low; mid <= high; ++mid)
             {
-                bool is_simple = this->traverseSimpleCycle(
-                    shape, points, traversal, vertices_to_indices,
-                    indices_to_vertices, vertices_to_points, adj, mid, false
+                is_simple_cycle = this->traverseSimpleCycle(
+                    shape, points, traversal, vertices_to_indices, indices_to_vertices,
+                    vertices_to_points, adj, mid, traversal_verbose
                 );
                 nvertices = std::distance(shape.alpha_shape_vertices_begin(), shape.alpha_shape_vertices_end()); 
-                if (is_simple)
+                if (is_simple_cycle)
                 { 
                     last_valid = mid; 
                     break; 
@@ -1713,27 +1731,47 @@ class Boundary2D
             
             // Have we found a value of alpha for which the boundary is a
             // simple cycle? 
-            bool is_simple_cycle = (last_valid != INVALID_ALPHA_INDEX);
+            found_simple_cycle_alpha = (last_valid != INVALID_ALPHA_INDEX);
 
             // If so, then set the optimal value of alpha to slightly higher 
             // than this smallest value (the first percentile of the distribution
             // of alphas between this smallest value and the largest possible value)
-            if (is_simple_cycle)
-            {
-                opt_alpha_index = (
-                    last_valid + static_cast<int>(std::ceil(0.1 * (shape.number_of_alphas() - last_valid)))
-                );
-            } 
-            else
-            {
+            if (!found_simple_cycle_alpha)
                 throw std::runtime_error("Could not find any simple-cycle boundary"); 
-            } 
+            if (verbose)
+            {
+                std::cout << "- Least valid value of alpha = "
+                          << CGAL::to_double(shape.get_nth_alpha(last_valid)) 
+                          << " (index " << last_valid << ", "
+                          << nvertices << " vertices)" << std::endl;
+                std::cout << "- Number of valid values for alpha = "
+                          << shape.number_of_alphas() - last_valid << std::endl; 
+            }
+            int padding = static_cast<int>(std::floor(0.01 * (shape.number_of_alphas() - last_valid)));
+            opt_alpha_index = last_valid + padding;
             opt_alpha = CGAL::to_double(shape.get_nth_alpha(opt_alpha_index));
-            this->traverseSimpleCycle(
+            is_simple_cycle = this->traverseSimpleCycle(
                 shape, points, traversal, vertices_to_indices, indices_to_vertices,
-                vertices_to_points, adj, opt_alpha_index, false
-            ); 
+                vertices_to_points, adj, opt_alpha_index, traversal_verbose
+            );
+            while (!is_simple_cycle)
+            {
+                padding++;
+                opt_alpha_index = last_valid + padding;
+                opt_alpha = CGAL::to_double(shape.get_nth_alpha(opt_alpha_index));
+                is_simple_cycle = this->traverseSimpleCycle(
+                    shape, points, traversal, vertices_to_indices, indices_to_vertices,
+                    vertices_to_points, adj, opt_alpha_index, traversal_verbose
+                );
+            }
             nvertices = std::distance(shape.alpha_shape_vertices_begin(), shape.alpha_shape_vertices_end());
+            if (verbose)
+            {
+                std::cout << "- Chosen value of alpha = "
+                          << CGAL::to_double(shape.get_nth_alpha(opt_alpha_index)) 
+                          << " (index " << opt_alpha_index << ", "
+                          << nvertices << " vertices)" << std::endl;
+            }
 
             // Count the edges in the alpha shape
             VectorXi ones = VectorXi::Ones(nvertices); 
@@ -1749,7 +1787,7 @@ class Boundary2D
             // Accumulate the indices of the boundary vertices in the
             // order in which they were traversed
             auto it = traversal.begin();
-            int curr = vertices_to_points[indices_to_vertices[*it]].first; 
+            int curr = vertices_to_points[indices_to_vertices[*it]].first;
             vertex_indices_in_order.push_back(curr);
             ++it;
             while (it != traversal.end())
@@ -1781,8 +1819,7 @@ class Boundary2D
             }
             if (verbose)
             {
-                std::cout << "- Optimal value of alpha = " << opt_alpha << std::endl
-                          << "- Number of vertices = " << nvertices << std::endl
+                std::cout << "- Number of vertices = " << nvertices << std::endl
                           << "- Number of edges = " << nedges << std::endl
                           << "- Enclosed area = " << total_area << std::endl;
             } 
