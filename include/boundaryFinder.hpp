@@ -488,27 +488,29 @@ class BoundaryFinder
          * at the given set of points in the input polytope, and computing
          * the initial boundary.
          *
-         * @param filter           Boolean function for filtering output points
-         *                         in the plane as desired.
-         * @param input            Initial set of points in the input polytope 
-         *                         at which to evaluate the stored mapping.
-         * @param max_edges        Maximum number of edges to be contained in
-         *                         the boundary. If zero, the boundary is kept
-         *                         unsimplified.
-         * @param n_keep_interior  Number of interior points to keep from the
-         *                         unsimplified boundary. If this number exceeds
-         *                         the total number of interior points, then all 
-         *                         interior points are kept.
-         * @param write_prefix     Prefix of output file name to which to write 
-         *                         the boundary obtained in this iteration.
-         * @param verbose          If true, output intermittent messages to `stdout`.
+         * @param filter            Boolean function for filtering output points
+         *                          in the plane as desired.
+         * @param input             Initial set of points in the input polytope 
+         *                          at which to evaluate the stored mapping.
+         * @param max_edges         Maximum number of edges to be contained in
+         *                          the boundary. If zero, the boundary is kept
+         *                          unsimplified.
+         * @param n_keep_interior   Number of interior points to keep from the
+         *                          unsimplified boundary. If this number exceeds
+         *                          the total number of interior points, then all 
+         *                          interior points are kept.
+         * @param write_prefix      Prefix of output file name to which to write 
+         *                          the boundary obtained in this iteration.
+         * @param verbose           If true, output intermittent messages to `stdout`.
+         * @param traversal_verbose If true, output intermittent messages to
+         *                          `stdout` from `Boundary2D::traverseSimpleCycle()`. 
          * @throws std::invalid_argument If the input points do not have the 
          *                               correct dimension.  
          */
         void initialize(std::function<bool(const Ref<const VectorXd>&)> filter, 
                         const Ref<const MatrixXd>& input, const int max_edges, 
                         const int n_keep_interior, const std::string write_prefix,
-                        const bool verbose = true)
+                        const bool verbose = true, const bool traversal_verbose = false)
         {
             // Check that the input points have the correct dimensionality
             const int D = this->constraints->getD();  
@@ -550,7 +552,9 @@ class BoundaryFinder
                 // This line may throw:
                 // - CGAL::Assertion_exception (while instantiating the alpha shape) 
                 // - std::runtime_error (if polygon is not simple)
-                this->curr_bound = boundary.getSimplyConnectedBoundary<true>(verbose); 
+                this->curr_bound = boundary.getSimplyConnectedBoundary<true>(
+                    verbose, traversal_verbose
+                ); 
             }
             catch (CGAL::Assertion_exception& e) 
             {
@@ -560,7 +564,9 @@ class BoundaryFinder
                 // instantiating the alpha shape) 
                 try 
                 {
-                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(verbose); 
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(
+                        verbose, traversal_verbose
+                    ); 
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -575,7 +581,9 @@ class BoundaryFinder
                 // the alpha shape) 
                 try 
                 {
-                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(
+                        verbose, traversal_verbose
+                    );
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -722,6 +730,8 @@ class BoundaryFinder
          *                           the boundary obtained in this iteration.
          * @param verbose            If true, output intermittent messages to
          *                           `stdout`.
+         * @param traversal_verbose  If true, output intermittent messages to
+         *                           `stdout` from `Boundary2D::traverseSimpleCycle()`. 
          * @returns True if the area enclosed by the symmetric difference between
          *          the last computed boundary and the new boundary has converged
          *          to within `this->sym_diff_area_tol`. 
@@ -730,7 +740,8 @@ class BoundaryFinder
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const int iter, const int max_edges, int n_keep_interior,
                   int n_keep_origbound, int n_mutate_origbound, 
-                  const std::string write_prefix, const bool verbose = true)
+                  const std::string write_prefix, const bool verbose = true,
+                  const bool traversal_verbose = false)
         {
             // Check that n_keep_interior is valid 
             int n_interior = this->curr_bound.np - this->curr_bound.nv; 
@@ -945,7 +956,9 @@ class BoundaryFinder
                 // This line may throw:
                 // - CGAL::Assertion_exception (while instantiating the alpha shape) 
                 // - std::runtime_error (if polygon is not simple)
-                new_bound = boundary.getSimplyConnectedBoundary<true>(verbose);
+                new_bound = boundary.getSimplyConnectedBoundary<true>(
+                    verbose, traversal_verbose
+                );
             }
             catch (CGAL::Assertion_exception& e) 
             {
@@ -955,7 +968,9 @@ class BoundaryFinder
                 // instantiating the alpha shape) 
                 try 
                 {
-                    new_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
+                    new_bound = boundary.getSimplyConnectedBoundary<false>(
+                        verbose, traversal_verbose
+                    );
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -970,7 +985,9 @@ class BoundaryFinder
                 // the alpha shape) 
                 try 
                 {
-                    new_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
+                    new_bound = boundary.getSimplyConnectedBoundary<false>(
+                        verbose, traversal_verbose
+                    );
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -1154,6 +1171,9 @@ class BoundaryFinder
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
          *                                during SQP to `stdout`.
+         * @param traversal_verbose       If true, output intermittent messages
+         *                                to `stdout` from
+         *                                `Boundary2D::traverseSimpleCycle()`. 
          * @param write_pulled_points     If true, write the points that were 
          *                                pulled, their corresponding normal 
          *                                vectors, and the resulting points 
@@ -1175,6 +1195,7 @@ class BoundaryFinder
                   const double regularize_weight = 0, const double c1 = 1e-4,
                   const double c2 = 0.9, const bool verbose = true,
                   const bool sqp_verbose = false,
+                  const bool traversal_verbose = false,
                   const bool write_pulled_points = false)
         {
             // Check that n_keep_interior is valid 
@@ -1486,7 +1507,9 @@ class BoundaryFinder
                 // This line may throw:
                 // - CGAL::Assertion_exception (while instantiating the alpha shape) 
                 // - std::runtime_error (if polygon is not simple)
-                new_bound = boundary.getSimplyConnectedBoundary<true>(verbose);
+                new_bound = boundary.getSimplyConnectedBoundary<true>(
+                    verbose, traversal_verbose
+                );
             }
             catch (CGAL::Assertion_exception& e) 
             {
@@ -1496,7 +1519,9 @@ class BoundaryFinder
                 // instantiating the alpha shape) 
                 try 
                 {
-                    new_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
+                    new_bound = boundary.getSimplyConnectedBoundary<false>(
+                        verbose, traversal_verbose
+                    );
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -1511,7 +1536,9 @@ class BoundaryFinder
                 // the alpha shape) 
                 try 
                 {
-                    new_bound = boundary.getSimplyConnectedBoundary<false>(verbose);
+                    new_bound = boundary.getSimplyConnectedBoundary<false>(
+                        verbose, traversal_verbose
+                    );
                 }
                 catch (CGAL::Assertion_exception& e)
                 {
@@ -1696,6 +1723,9 @@ class BoundaryFinder
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
          *                                during SQP to `stdout`.
+         * @param traversal_verbose       If true, output intermittent messages
+         *                                to `stdout` from
+         *                                `Boundary2D::traverseSimpleCycle()`. 
          * @param write_pulled_points     If true, write the points that were 
          *                                pulled, their corresponding normal 
          *                                vectors, and the resulting points 
@@ -1716,13 +1746,14 @@ class BoundaryFinder
                  const RegularizationMethod regularize = NOREG, 
                  const double regularize_weight = 0, const double c1 = 1e-4,
                  const double c2 = 0.9, const bool verbose = true,
-                 const bool sqp_verbose = false, 
+                 const bool sqp_verbose = false,
+                 const bool traversal_verbose = false, 
                  const bool write_pulled_points = false)
         {
             // Initialize the sampling run ...
             this->initialize(
                 filter, init_input, max_edges, n_keep_interior, write_prefix,
-                verbose
+                verbose, traversal_verbose
             );
 
             // ... then step through the boundary-finding algorithm up to the
@@ -1735,7 +1766,7 @@ class BoundaryFinder
             {
                 bool result = this->step(
                     dist, filter, i, max_edges, n_keep_interior, n_keep_origbound,
-                    n_mutate_origbound, write_prefix, verbose
+                    n_mutate_origbound, write_prefix, verbose, traversal_verbose
                 );
                 if (!result)
                     n_converged = 0;
@@ -1761,7 +1792,7 @@ class BoundaryFinder
                     tau, delta, beta, use_only_armijo, use_strong_wolfe,
                     hessian_modify_max_iter, write_prefix, regularize,
                     regularize_weight, c1, c2, verbose, sqp_verbose,
-                    write_pulled_points
+                    traversal_verbose, write_pulled_points
                 );
                 if (!result)
                     n_converged = 0;
