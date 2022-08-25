@@ -20,7 +20,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     5/12/2022
+ *     8/25/2022
  */
 using namespace Eigen;
 
@@ -41,7 +41,8 @@ typedef typename Delaunay_triangulation_2::Vertex_handle     Vertex_handle_2;
  * output file. 
  */
 std::tuple<std::vector<int>, std::vector<std::pair<int, int> >, double>
-    getBoundary(Alpha_shape& shape, const Ref<const MatrixXd>& A)
+    getBoundary(Alpha_shape& shape, const Ref<const MatrixXd>& A,
+                const bool regular = false)
 {
     // Establish an ordering of the vertices in the alpha shape 
     // (this varies as we change alpha) 
@@ -62,9 +63,12 @@ std::tuple<std::vector<int>, std::vector<std::pair<int, int> >, double>
     nvertices = 0; 
     for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
     {
-        vertices_to_indices[*it] = nvertices;
-        indices_to_vertices.push_back(*it); 
-        nvertices++;
+        if (!regular || (shape.classify(*it) == Alpha_shape::INTERIOR || shape.classify(*it) == Alpha_shape::REGULAR))
+        {
+            vertices_to_indices[*it] = nvertices;
+            indices_to_vertices.push_back(*it); 
+            nvertices++;
+        }
     }
 
     // Iterate through the edges in the alpha shape and fill in
@@ -74,38 +78,44 @@ std::tuple<std::vector<int>, std::vector<std::pair<int, int> >, double>
     for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
     {
         // Add the two corresponding entries to the adjacency 
-        // matrix 
-        int j = it->second; 
-        Vertex_handle_2 source = (it->first)->vertex(Delaunay_triangulation_2::cw(j));
-        Vertex_handle_2 target = (it->first)->vertex(Delaunay_triangulation_2::ccw(j));
-        int source_i = vertices_to_indices[source]; 
-        int target_i = vertices_to_indices[target]; 
-        triplets.emplace_back(Triplet<int>(source_i, target_i, 1)); 
-        triplets.emplace_back(Triplet<int>(target_i, source_i, 1)); 
+        // matrix
+        if (!regular || (shape.classify(*it) == Alpha_shape::INTERIOR || shape.classify(*it) == Alpha_shape::REGULAR))
+        {
+            int j = it->second; 
+            Vertex_handle_2 source = (it->first)->vertex(Delaunay_triangulation_2::cw(j));
+            Vertex_handle_2 target = (it->first)->vertex(Delaunay_triangulation_2::ccw(j));
+            int source_i = vertices_to_indices[source]; 
+            int target_i = vertices_to_indices[target]; 
+            triplets.emplace_back(Triplet<int>(source_i, target_i, 1)); 
+            triplets.emplace_back(Triplet<int>(target_i, source_i, 1));
+        } 
     }
     adj.setFromTriplets(triplets.begin(), triplets.end());
 
     // Identify, for each vertex in the alpha shape, the point corresponding to it 
     for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
     {
-        // Find the point being pointed to by the boundary vertex 
-        Point_2 point = (*it)->point();
-        double x = point.x(); 
-        double y = point.y(); 
-        
-        // Find the nearest input point to this point
-        double nearest_sqdist = std::numeric_limits<double>::infinity(); 
-        int nearest_index = 0; 
-        for (int i = 0; i < A.rows(); ++i)
+        if (!regular || (shape.classify(*it) == Alpha_shape::INTERIOR || shape.classify(*it) == Alpha_shape::REGULAR))
         {
-            double sqdist = std::pow(A(i, 0) - x, 2) + std::pow(A(i, 1) - y, 2);
-            if (sqdist < nearest_sqdist)
+            // Find the point being pointed to by the boundary vertex 
+            Point_2 point = (*it)->point();
+            double x = point.x(); 
+            double y = point.y(); 
+            
+            // Find the nearest input point to this point
+            double nearest_sqdist = std::numeric_limits<double>::infinity(); 
+            int nearest_index = 0; 
+            for (int i = 0; i < A.rows(); ++i)
             {
-                nearest_sqdist = sqdist;
-                nearest_index = i; 
+                double sqdist = std::pow(A(i, 0) - x, 2) + std::pow(A(i, 1) - y, 2);
+                if (sqdist < nearest_sqdist)
+                {
+                    nearest_sqdist = sqdist;
+                    nearest_index = i; 
+                }
             }
+            vertices_to_points[*it] = std::make_pair(nearest_index, nearest_sqdist);
         }
-        vertices_to_points[*it] = std::make_pair(nearest_index, nearest_sqdist);
     }
 
     // Count the edges in the alpha shape
@@ -136,15 +146,23 @@ std::tuple<std::vector<int>, std::vector<std::pair<int, int> >, double>
     std::vector<std::pair<int, int> > edges; 
     for (auto it = shape.alpha_shape_edges_begin(); it != shape.alpha_shape_edges_end(); ++it)
     {
-        Face_handle_2 f = it->first;
-        int i = it->second;
-        Vertex_handle_2 s = f->vertex(f->cw(i));
-        Vertex_handle_2 t = f->vertex(f->ccw(i));
-        edges.emplace_back(std::make_pair(vertices_to_points[s].first, vertices_to_points[t].first));
+        if (!regular || (shape.classify(*it) == Alpha_shape::INTERIOR || shape.classify(*it) == Alpha_shape::REGULAR))
+        {
+            Face_handle_2 f = it->first;
+            int i = it->second;
+            Vertex_handle_2 s = f->vertex(f->cw(i));
+            Vertex_handle_2 t = f->vertex(f->ccw(i));
+            edges.emplace_back(std::make_pair(vertices_to_points[s].first, vertices_to_points[t].first));
+        }
     }
     std::vector<int> vertices;
     for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
-        vertices.push_back(vertices_to_points[*it].first);
+    {
+        if (!regular || (shape.classify(*it) == Alpha_shape::INTERIOR || shape.classify(*it) == Alpha_shape::REGULAR))
+        {
+            vertices.push_back(vertices_to_points[*it].first);
+        }
+    }
 
     return std::make_tuple(vertices, edges, total_area); 
 }
@@ -517,31 +535,34 @@ std::tuple<std::vector<int>, std::vector<std::pair<int, int> >, double, double>
     }
 }
 
-
 int main(int argc, char** argv)
 {
-    std::string filename = "example/figure_eight/figure_eight.tsv";
-    std::ifstream infile(filename);
-    std::string line;
-    int n = 0; 
-    MatrixXd A(n + 1, 2); 
-    while (std::getline(infile, line))
-    {
-        std::stringstream ss; 
-        std::string token;
-        ss << line; 
-        std::getline(ss, token, '\t');
-        A(n, 0) = std::stod(token); 
-        std::getline(ss, token, '\t');
-        A(n, 1) = std::stod(token);  
-        n++;
-        A.conservativeResize(n + 1, 2); 
-    }
+    MatrixXd A(20, 2);
+    A << 0.20, 0.30,
+         0.30, 0.16,
+         0.30, 0.19,
+         0.36, 0.24,
+         0.47, 0.28,    // r
+         0.48, 0.32,
+         0.52, 0.21,
+         0.58, 0.23,
+         0.56, 0.27,
+         0.59, 0.22,
+         0.62, 0.32,
+         0.60, 0.40,    // t
+         0.67, 0.46,
+         0.75, 0.51,    // q
+         0.59, 0.49,
+         0.54, 0.63,    // u
+         0.65, 0.53,    // p
+         0.51, 0.33,    // s
+         0.48, 0.60,
+         0.40, 0.55;
 
     // Instantiate a vector of Point objects
     std::vector<double> points_x, points_y;
     std::vector<Point_2> points;
-    for (int i = 0; i < n; ++i)
+    for (int i = 0; i < A.rows(); ++i)
     {
         double xi = A(i, 0); 
         double yi = A(i, 1);
@@ -560,38 +581,101 @@ int main(int argc, char** argv)
     {
         throw; 
     }
+    shape.set_alpha(0.01);
+    std::tuple<std::vector<int>, std::vector<std::pair<int, int> >, double> bound = getBoundary(shape, A, false);  
+    AlphaShape2DProperties prop(
+        points_x, points_y, std::get<0>(bound), std::get<1>(bound), 0.01, 
+        std::get<2>(bound), false
+    );
+    std::stringstream ss; 
+    ss << "example/alpha_simple/alpha_simple.txt";
+    prop.write(ss.str()); 
+    ss.clear();
+    ss.str(std::string());
+    bound = getBoundary(shape, A, true); 
+    AlphaShape2DProperties prop_reg(
+        points_x, points_y, std::get<0>(bound), std::get<1>(bound), 0.01, 
+        std::get<2>(bound), false
+    );
+    ss << "example/alpha_simple/alpha_simple_regular.txt";
+    prop_reg.write(ss.str()); 
+    ss.clear();
+    ss.str(std::string());
+    
+    // --------------------------------------------------------------- //
+    std::string filename = "example/figure_eight/figure_eight.tsv";
+    std::ifstream infile(filename);
+    std::string line;
+    int n = 0; 
+    A.resize(n + 1, 2); 
+    while (std::getline(infile, line))
+    {
+        std::stringstream ss; 
+        std::string token;
+        ss << line; 
+        std::getline(ss, token, '\t');
+        A(n, 0) = std::stod(token); 
+        std::getline(ss, token, '\t');
+        A(n, 1) = std::stod(token);  
+        n++;
+        A.conservativeResize(n + 1, 2); 
+    }
+
+    // Instantiate a vector of Point objects
+    points_x.clear(); 
+    points_y.clear();
+    points.clear(); 
+    for (int i = 0; i < n; ++i)
+    {
+        double xi = A(i, 0); 
+        double yi = A(i, 1);
+        points_x.push_back(xi);
+        points_y.push_back(yi); 
+        points.emplace_back(Point_2(xi, yi)); 
+    }
+    
+    // Compute the alpha shape from the Delaunay triangulation
+    try
+    {
+        shape.make_alpha_shape(points.begin(), points.end());
+    }
+    catch (CGAL::Assertion_exception& e)
+    {
+        throw; 
+    }
     shape.set_mode(Alpha_shape::REGULARIZED);
 
     // For each larger value of alpha, test that every vertex in the 
     // point-set lies along either along the alpha shape or within 
     // its interior
     FT alpha; 
-    std::tuple<std::vector<int>, std::vector<std::pair<int, int> >, double> bound; 
     for (int alpha_idx = 0; alpha_idx < shape.number_of_alphas(); alpha_idx += 5)
     {
         alpha = CGAL::to_double(shape.get_nth_alpha(alpha_idx));
         shape.set_alpha(alpha);
-        bound = getBoundary(shape, A);  
-        AlphaShape2DProperties prop(
+        bound = getBoundary(shape, A, true);  
+        AlphaShape2DProperties prop_f8(
             points_x, points_y, std::get<0>(bound), std::get<1>(bound), alpha,
             std::get<2>(bound), false
         );
-        std::stringstream ss; 
         ss << "example/figure_eight/figure_eight_alpha" << alpha_idx << ".txt";
-        prop.write(ss.str()); 
+        prop_f8.write(ss.str());
+        ss.clear();
+        ss.str(std::string()); 
     }
 
     // Do the same for the very last boundary (with the largest alpha) ...
     alpha = CGAL::to_double(shape.get_nth_alpha(shape.number_of_alphas() - 1));
     shape.set_alpha(alpha);
-    bound = getBoundary(shape, A);
+    bound = getBoundary(shape, A, true);
     AlphaShape2DProperties prop_final(
         points_x, points_y, std::get<0>(bound), std::get<1>(bound), alpha,
         std::get<2>(bound), false
     );
-    std::stringstream ss;
     ss << "example/figure_eight/figure_eight_alpha" << shape.number_of_alphas() - 1 << ".txt";
     prop_final.write(ss.str()); 
+    ss.clear();
+    ss.str(std::string()); 
 
     // Now set alpha to the least value for which the boundary is a simple cycle
     std::tuple<std::vector<int>, std::vector<std::pair<int, int> >, double, double> scbound = 
@@ -600,8 +684,6 @@ int main(int argc, char** argv)
         points_x, points_y, std::get<0>(scbound), std::get<1>(scbound),
         std::get<2>(scbound), std::get<3>(scbound), true
     );
-    ss.clear();
-    ss.str(std::string()); 
     ss << "example/figure_eight/figure_eight_alpha_simple.txt";
     prop_sc.write(ss.str()); 
 
