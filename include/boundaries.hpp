@@ -1427,7 +1427,9 @@ class Boundary2D
             for (auto it = shape.alpha_shape_vertices_begin(); it != shape.alpha_shape_vertices_end(); ++it)
                 vertices.push_back(vertices_to_points[*it].first);
 
-            return AlphaShape2DProperties(x, y, vertices, edges, opt_alpha, total_area, false);
+            return AlphaShape2DProperties(
+                this->x, this->y, vertices, edges, opt_alpha, total_area, false
+            );
         }
 
         /**
