@@ -700,9 +700,8 @@ class BoundaryFinder
          * @param filter            Boolean function for filtering output points
          *                          in the plane as desired.
          * @param npoints           Number of points to accumulate from the input
-         *                          polytope at which to evaluate the stored 
-         *                          mapping such that they pass the stored 
-         *                          filter function.
+         *                          polytope and evaluate the stored mapping
+         *                          such that they pass the stored filter function.
          * @param max_nsample       Maximum number of points to sample from the 
          *                          input polytope while accumulating `npoints`
          *                          points that pass the stored filter function. 
@@ -1866,6 +1865,233 @@ class BoundaryFinder
             bool converged = (this->curr_sym_diff_area < this->sym_diff_area_tol * this->curr_area); 
             return converged; 
         }
+
+        /**
+         * Run the full boundary-sampling algorithm until convergence, up to
+         * the maximum number of iterations.
+         *
+         * @param mutate_delta            Maximum increment by which any input 
+         *                                point coordinate may be mutated.
+         * @param filter                  Boolean function for filtering output
+         *                                points in the plane as desired.
+         * @param ninit                   Number of points to accumulate from
+         *                                the input polytope and evaluate the
+         *                                stored mapping such that they pass
+         *                                the stored filter function.
+         * @param max_nsample             Maximum number of points to sample
+         *                                from the input polytope while
+         *                                accumulating `npoints` points that
+         *                                pass the stored filter function. 
+         * @param min_step_iter           Minimum number of step iterations. 
+         * @param max_step_iter           Maximum number of step iterations. 
+         * @param min_pull_iter           Minimum number of pull iterations. 
+         * @param max_pull_iter           Maximum number of pull iterations.
+         * @param sqp_max_iter            Maximum number of SQP iterations per
+         *                                pull iteration.
+         * @param sqp_tol                 Tolerance for assessing convergence
+         *                                in SQP.
+         * @param max_edges               Maximum number of edges to be contained
+         *                                in the boundary. If zero, the boundary
+         *                                is kept unsimplified.
+         * @param n_keep_interior         Number of interior points to keep in
+         *                                the unsimplified boundary. If this
+         *                                number exceeds the total number of
+         *                                interior points, then all interior
+         *                                points are kept. 
+         * @param n_keep_origbound        If the boundary is simplified, the
+         *                                number of points in the *original
+         *                                (unsimplified) boundary* that should
+         *                                be randomly sampled (without replacement)
+         *                                to be preserved.
+         * @param n_mutate_origbound      If the boundary is simplified, the
+         *                                number of points *among those chosen
+         *                                to be preserved* that should be further
+         *                                randomly sampled (without replacement)
+         *                                to be mutated. 
+         * @param n_pull_origbound        If the boundary is simplified, the
+         *                                number of points *among those chosen
+         *                                to be preserved* that should be further
+         *                                randomly sampled (without replacement)
+         *                                to be pulled. 
+         * @param tau                     Rate at which step-sizes are decreased
+         *                                during each SQP iteration.
+         * @param delta                   Increment for finite-differences 
+         *                                approximation during each SQP iteration.
+         * @param beta                    Increment for Hessian matrix modification
+         *                                (for ensuring positive semi-definiteness).
+         * @param use_only_armijo         If true, use only the Armijo condition
+         *                                to determine step-size during each 
+         *                                SQP iteration. 
+         * @param use_strong_wolfe        If true, use the strong Wolfe conditions
+         *                                to determine step-size during each 
+         *                                SQP iteration. Disregarded if 
+         *                                `use_only_armijo == true`. 
+         * @param hessian_modify_max_iter Maximum number of Hessian matrix
+         *                                modification iterations (for ensuring
+         *                                positive semi-definiteness).  
+         * @param write_prefix            Prefix of output file name to which to  
+         *                                write the boundary obtained in each
+         *                                iteration.
+         * @param regularize              Regularization method: `NOREG`, `L1`,
+         *                                or `L2`. Set to `NOREG` by default.  
+         * @param regularize_weight       Regularization weight. If `regularize`
+         *                                is `NOREG`, then this value is ignored. 
+         * @param c1                      Pre-factor for testing Armijo's 
+         *                                condition during each SQP iteration.
+         * @param c2                      Pre-factor for testing the curvature 
+         *                                condition during each SQP iteration. 
+         * @param verbose                 If true, output intermittent messages
+         *                                to `stdout`.
+         * @param sqp_verbose             If true, output intermittent messages 
+         *                                during SQP to `stdout`.
+         * @param traversal_verbose       If true, output intermittent messages
+         *                                to `stdout` from
+         *                                `Boundary2D::traverseSimpleCycle()`. 
+         * @param write_pulled_points     If true, write the points that were 
+         *                                pulled, their corresponding normal 
+         *                                vectors, and the resulting points 
+         *                                to file. 
+         */
+        void run(const double mutate_delta,
+                 std::function<bool(const Ref<const VectorXd>&)> filter, 
+                 const int ninit, const int max_nsample, 
+                 const int min_step_iter, const int max_step_iter,
+                 const int min_pull_iter, const int max_pull_iter,
+                 const int sqp_max_iter, const double sqp_tol,
+                 const int max_edges, int n_keep_interior, int n_keep_origbound,
+                 int n_mutate_origbound, int n_pull_origbound,
+                 const double tau, const double delta, const double beta,
+                 const bool use_only_armijo, const bool use_strong_wolfe,
+                 const int hessian_modify_max_iter,
+                 const std::string write_prefix,
+                 const RegularizationMethod regularize = NOREG, 
+                 const double regularize_weight = 0, const double c1 = 1e-4,
+                 const double c2 = 0.9, const bool verbose = true,
+                 const bool sqp_verbose = false,
+                 const bool traversal_verbose = false, 
+                 const bool write_pulled_points = false)
+        {
+            // Initialize the sampling run ...
+            this->initialize(
+                filter, ninit, max_nsample, max_edges, n_keep_interior, write_prefix,
+                verbose, traversal_verbose
+            );
+
+            // ... then step through the boundary-finding algorithm up to the
+            // maximum number of iterations ...
+            int i = 1;
+            bool terminate = false;
+            int n_converged = 0;
+            boost::random::uniform_real_distribution<double> dist(-mutate_delta, mutate_delta);  
+            while (i - 1 < min_step_iter || (i - 1 < max_step_iter && !terminate))
+            {
+                bool result = this->step(
+                    dist, filter, i, max_edges, n_keep_interior, n_keep_origbound,
+                    n_mutate_origbound, write_prefix, verbose, traversal_verbose
+                );
+                if (!result)
+                    n_converged = 0;
+                else
+                    n_converged++; 
+                terminate = (n_converged >= NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE);
+                i++;
+            }
+
+            // ... then turn to pulling the boundary points outward
+            int j = 0;
+            terminate = false;
+            n_converged = 0;
+            double epsilon = 0.1 * std::sqrt(this->curr_area);
+            SQPOptimizer<double>* optimizer = new SQPOptimizer<double>(this->constraints); 
+            while (j < min_pull_iter || (j < max_pull_iter && !terminate))
+            {
+                if (verbose)
+                    std::cout << "- Pulling by epsilon = " << epsilon << std::endl;  
+                bool result = this->pull(
+                    optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
+                    max_edges, n_keep_interior, n_keep_origbound, n_pull_origbound,
+                    tau, delta, beta, use_only_armijo, use_strong_wolfe,
+                    hessian_modify_max_iter, write_prefix, regularize,
+                    regularize_weight, c1, c2, verbose, sqp_verbose,
+                    traversal_verbose, write_pulled_points
+                );
+                if (!result)
+                    n_converged = 0;
+                else
+                    n_converged++; 
+                terminate = (n_converged >= NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE);
+                j++;
+                epsilon = 0.1 * std::sqrt(this->curr_area);
+            }
+            delete optimizer;
+
+            // Write final boundary information to file if desired
+            if (write_prefix.compare(""))
+            {
+                // Write the boundary points, vertices, and edges 
+                std::ofstream outfile; 
+                std::stringstream ss;
+                ss << write_prefix << "-final.txt";
+                this->curr_bound.write(ss.str());
+
+                // Write the input vectors passed into the given function to
+                // yield the boundary points
+                outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
+                if (outfile.is_open())
+                {
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
+                    for (int i = 0; i < this->input.rows(); ++i)
+                    {
+                        outfile << "INPUT\t"; 
+                        for (int j = 0; j < this->input.cols() - 1; ++j)
+                            outfile << this->input(i, j) << '\t'; 
+                        outfile << this->input(i, this->input.cols() - 1) << std::endl;
+                    }
+                }
+                outfile.close();
+                ss.clear(); 
+                ss.str(std::string()); 
+
+                // Also write the simplified boundary to file, if simplification
+                // was performed ... 
+                if (this->simplified)
+                {
+                    // Write the boundary points, vertices, and edges 
+                    ss << write_prefix << "-final-simplified.txt";
+                    this->curr_simplified.write(ss.str());
+
+                    // Write the input vectors passed into the given function to
+                    // yield the boundary points
+                    outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
+                    if (outfile.is_open())
+                    {
+                        outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
+                        for (int i = 0; i < this->input.rows(); ++i)
+                        {
+                            outfile << "INPUT\t"; 
+                            for (int j = 0; j < this->input.cols() - 1; ++j)
+                                outfile << this->input(i, j) << '\t'; 
+                            outfile << this->input(i, this->input.cols() - 1) << std::endl;
+                        }
+                    }
+                    outfile.close(); 
+                }
+            }
+            
+            // Did the loop terminate without achieving convergence?
+            if (!terminate)
+            {
+                std::cout << "Reached maximum number of iterations ("
+                          << max_step_iter + max_pull_iter
+                          << ") without convergence" << std::endl;
+            }
+            else
+            {
+                std::cout << "Reached convergence within " << i + j << " iterations"
+                          << std::endl;
+            }
+        }
+
 
         /**
          * Run the full boundary-sampling algorithm until convergence, up to
