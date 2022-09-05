@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     8/22/2022
+ *     9/5/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -688,6 +688,223 @@ class BoundaryFinder
                 }
             }
         }
+
+        /**
+         * Initialize the sampling run by evaluating the stored mapping 
+         * at a random sample of points from the input polytope of the given 
+         * size, and computing the initial boundary.
+         *
+         * The sampling is performed either until `npoints` points are
+         * accumulated or `max_nsample` points are sampled.
+         *
+         * @param filter            Boolean function for filtering output points
+         *                          in the plane as desired.
+         * @param npoints           Number of points to accumulate from the input
+         *                          polytope at which to evaluate the stored 
+         *                          mapping such that they pass the stored 
+         *                          filter function.
+         * @param max_nsample       Maximum number of points to sample from the 
+         *                          input polytope while accumulating `npoints`
+         *                          points that pass the stored filter function. 
+         * @param max_edges         Maximum number of edges to be contained in
+         *                          the boundary. If zero, the boundary is kept
+         *                          unsimplified.
+         * @param n_keep_interior   Number of interior points to keep from the
+         *                          unsimplified boundary. If this number exceeds
+         *                          the total number of interior points, then all 
+         *                          interior points are kept.
+         * @param write_prefix      Prefix of output file name to which to write 
+         *                          the boundary obtained in this iteration.
+         * @param verbose           If true, output intermittent messages to `stdout`.
+         * @param traversal_verbose If true, output intermittent messages to
+         *                          `stdout` from `Boundary2D::traverseSimpleCycle()`. 
+         * @throws std::invalid_argument If the input points do not have the 
+         *                               correct dimension.  
+         */
+        void initialize(std::function<bool(const Ref<const VectorXd>&)> filter, 
+                        const int npoints, const int max_nsample, const int max_edges, 
+                        const int n_keep_interior, const std::string write_prefix,
+                        const bool verbose = true, const bool traversal_verbose = false)
+        {
+            // Keep track of the total number of points sampled 
+            int nsampled = 0; 
+            this->N = 0;
+            this->input.resize(this->N, D);
+            this->points.resize(this->N, 2);
+            while (nsampled < max_nsample || this->N < npoints)
+            {
+                // Sample a batch of points from the polytope
+                int batchsize = npoints - this->N;
+                MatrixXd input = this->sampleInput(batchsize);
+                nsampled += batchsize;  
+                for (int i = 0; i < input.rows(); ++i)
+                {
+                    VectorXd y = this->func(input.row(i));
+                    
+                    // Check that the output point is not subject to filtering and 
+                    // is not too close to the others 
+                    if (!filter(y)
+                        && (this->N == 0 || (this->points.rowwise() - y.transpose()).rowwise().norm().minCoeff() > MINDIST_BETWEEN_POINTS)
+                    )
+                    {
+                        this->N++;
+                        this->input.conservativeResize(this->N, D); 
+                        this->points.conservativeResize(this->N, 2);
+                        this->input.row(this->N-1) = input.row(i);
+                        this->points.row(this->N-1) = y;
+                    }
+                }
+            }
+
+            // Get new boundary (assuming that the shape is simply connected)
+            std::vector<double> x, y;
+            x.resize(this->N);
+            y.resize(this->N);
+            VectorXd::Map(&x[0], this->N) = this->points.col(0);
+            VectorXd::Map(&y[0], this->N) = this->points.col(1);
+            Boundary2D boundary(x, y);
+            try
+            {
+                // This line may throw:
+                // - CGAL::Assertion_exception (while instantiating the alpha shape) 
+                // - std::runtime_error (if polygon is not simple)
+                this->curr_bound = boundary.getSimplyConnectedBoundary<true>(
+                    verbose, traversal_verbose
+                ); 
+            }
+            catch (CGAL::Assertion_exception& e) 
+            {
+                // Try with tag == false
+                //
+                // This may throw (another) CGAL::Assertion_exception (while
+                // instantiating the alpha shape) 
+                try 
+                {
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(
+                        verbose, traversal_verbose
+                    ); 
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+            catch (std::runtime_error& e)
+            {
+                // Try with tag == false
+                //
+                // This may throw a CGAL::Assertion_exception (while instantiating
+                // the alpha shape) 
+                try 
+                {
+                    this->curr_bound = boundary.getSimplyConnectedBoundary<false>(
+                        verbose, traversal_verbose
+                    );
+                }
+                catch (CGAL::Assertion_exception& e)
+                {
+                    throw; 
+                }
+            }
+
+            // Re-orient the points so that the boundary is traversed clockwise
+            this->curr_bound.orient(CGAL::RIGHT_TURN);
+
+            // If desired, simplify the current boundary
+            if (max_edges > 0 && this->curr_bound.edges.size() > max_edges)
+            {
+                try
+                { 
+                    // This line may raise a CGAL::Precondition_exception while 
+                    // instantiating the polygon for simplification
+                    this->curr_simplified = simplifyAlphaShape(this->curr_bound, max_edges, verbose);  
+                }
+                catch (CGAL::Precondition_exception& e)
+                {
+                    // TODO Perhaps a better option exists here 
+                    throw; 
+                }
+                // Re-orient the points so that the boundary is traversed 
+                // clockwise
+                this->curr_simplified.orient(CGAL::RIGHT_TURN); 
+                this->simplified = true; 
+            }
+            else 
+            {
+                // Update flag (since the boundary could have been previously simplified)
+                this->simplified = false; 
+            }
+
+            // Write boundary information to file if desired
+            if (write_prefix.compare(""))
+            {
+                // Write the boundary points, vertices, and edges
+                std::ofstream outfile;  
+                std::stringstream ss;
+                ss << write_prefix << "-init.txt";
+                this->curr_bound.write(ss.str());
+
+                // Write the input vectors passed into the given function to
+                // yield the boundary points
+                outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
+                if (outfile.is_open())
+                {
+                    outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
+                    for (int i = 0; i < this->input.rows(); ++i)
+                    {
+                        outfile << "INPUT\t"; 
+                        for (int j = 0; j < this->input.cols() - 1; ++j)
+                            outfile << this->input(i, j) << '\t'; 
+                        outfile << this->input(i, this->input.cols() - 1) << std::endl;
+                    }
+                }
+                outfile.close();
+                ss.clear(); 
+                ss.str(std::string()); 
+
+                // Also write the simplified boundary to file, if simplification
+                // was performed ... 
+                if (this->simplified)
+                {
+                    // Write the boundary points, vertices, and edges 
+                    ss << write_prefix << "-init-simplified.txt";
+                    this->curr_simplified.write(ss.str());
+
+                    // Write the input vectors passed into the given function to
+                    // yield the boundary points
+                    outfile.open(ss.str(), std::ofstream::out | std::ofstream::app);
+                    if (outfile.is_open())
+                    {
+                        outfile << std::setprecision(std::numeric_limits<double>::max_digits10 - 1);
+                        for (int i = 0; i < this->input.rows(); ++i)
+                        {
+                            outfile << "INPUT\t"; 
+                            for (int j = 0; j < this->input.cols() - 1; ++j)
+                                outfile << this->input(i, j) << '\t'; 
+                            outfile << this->input(i, this->input.cols() - 1) << std::endl;
+                        }
+                    }
+                    outfile.close(); 
+                }
+            }
+
+            // Compute enclosed area
+            this->curr_area = this->curr_bound.area; 
+            if (verbose)
+            {
+                std::cout << "[INIT] Initializing; "
+                          << this->curr_bound.np << " total points; "
+                          << this->curr_bound.nv << " in boundary; "
+                          << "enclosed area = " << this->curr_bound.area
+                          << std::endl; 
+                if (this->simplified)
+                {
+                    std::cout << ">>>>>> Simplified to " << this->curr_simplified.nv
+                              << " boundary points" << std::endl;
+                }
+            }
+        }
+
 
         /**
          * Take one "step" in the boundary-sampling algorithm as follows: 
