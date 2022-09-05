@@ -726,6 +726,7 @@ class BoundaryFinder
                         const bool verbose = true, const bool traversal_verbose = false)
         {
             // Keep track of the total number of points sampled 
+            const int D = this->constraints->getD();  
             int nsampled = 0; 
             this->N = 0;
             this->input.resize(this->N, D);
