@@ -731,12 +731,11 @@ class BoundaryFinder
             this->N = 0;
             this->input.resize(this->N, D);
             this->points.resize(this->N, 2);
-            while (nsampled < max_nsample || this->N < npoints)
+            while (nsampled < max_nsample && this->N < npoints)
             {
                 // Sample a batch of points from the polytope
-                int batchsize = npoints - this->N;
-                MatrixXd input = this->sampleInput(batchsize);
-                nsampled += batchsize;  
+                MatrixXd input = this->sampleInput(npoints); 
+                nsampled += npoints;
                 for (int i = 0; i < input.rows(); ++i)
                 {
                     VectorXd y = this->func(input.row(i));
@@ -753,6 +752,11 @@ class BoundaryFinder
                         this->input.row(this->N-1) = input.row(i);
                         this->points.row(this->N-1) = y;
                     }
+
+                    // Break if the desired number of points from the polytope
+                    // has been accumulated
+                    if (this->N == npoints)
+                        break; 
                 }
             }
 
