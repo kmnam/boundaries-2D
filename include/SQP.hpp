@@ -24,7 +24,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     7/13/2022
+ *     9/25/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -88,29 +88,35 @@ struct StepData
         }
 };
 
+/**
+ * Following the prescription of Nocedal and Wright (Algorithm 3.3, p.51), 
+ * add successive multiples of the identity until the given matrix is 
+ * positive-definite.
+ *
+ * The input matrix is assumed to be symmetric.
+ *
+ * Note that this function is not necessary with the damped BFGS update 
+ * proposed in Procedure 18.2.
+ *
+ * @param A        Input matrix.
+ * @param max_iter Maximum number of modifications. 
+ * @param beta     Multiple of the identity to add per modification.
+ * @returns        Final modified matrix. 
+ */
 template <typename T>
 Matrix<T, Dynamic, Dynamic> modify(const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
-                                   unsigned max_iter, T beta)
+                                   int max_iter, T beta)
 {
-    /*
-     * Following the prescription of Nocedal and Wright (Algorithm 3.3, p.51), 
-     * add successive multiples of the identity until the given matrix is 
-     * positive-definite.
-     *
-     * The input matrix is assumed to be symmetric.
-     *
-     * Note that this function is not necessary with the damped BFGS update 
-     * proposed in Procedure 18.2. 
-     */
     // Check that A is positive-definite with the Cholesky decomposition
     LLT<Matrix<T, Dynamic, Dynamic> > dec(A);
     bool posdef = (dec.info() == Success);
-    if (posdef) return A; 
+    if (posdef)
+        return A; 
 
     // If A is not positive-definite ...
     Matrix<T, Dynamic, Dynamic> B(A);
     T tau = 0.0;
-    for (unsigned i = 0; i < max_iter; ++i)
+    for (int i = 0; i < max_iter; ++i)
     {
         // Add beta to the diagonal ...
         if (tau == 0.0)
@@ -123,7 +129,8 @@ Matrix<T, Dynamic, Dynamic> modify(const Ref<const Matrix<T, Dynamic, Dynamic> >
         // ... until the matrix is positive-definite
         posdef = (dec.info() == Success);
 
-        if (posdef) break;    // If so, then we are done 
+        if (posdef)
+            break;    // If positive-definite, then we are done 
     }
 
     return B;
@@ -137,12 +144,11 @@ template <typename T>
 class SQPOptimizer
 {
     protected:
-        unsigned D;                                                 // Dimension of input space
-        unsigned N;                                                 // Number of constraints
-        Polytopes::LinearConstraints<mpq_rational>* constraints;    // Linear inequality constraints
-        Program* program;                                           // Internal quadratic program to
-                                                                    // be solved at each step
-        bool deallocate_constraints;           // Whether to deallocate constraints upon destruction  
+        int D;                                                      /** Dimension of input space.      */
+        int N;                                                      /** Number of constraints.         */
+        Polytopes::LinearConstraints<mpq_rational>* constraints;    /** Linear inequality constraints. */
+        Program* program;                                           /** Internal quadratic program to be solved at each step. */
+        bool deallocate_constraints;                                /** Whether to deallocate constraints upon destruction.   */ 
 
         /**
          * Test whether the Armijo condition (Nocedal and Wright, Eq. 3.6a)
@@ -208,7 +214,7 @@ class SQPOptimizer
          *
          * @param D Number of variables.
          */
-        SQPOptimizer(const unsigned D)
+        SQPOptimizer(const int D)
         {
             this->D = D;
             this->N = D;    // One constraint for each variable
@@ -232,7 +238,7 @@ class SQPOptimizer
          * @throws std::invalid_argument If the dimensions of `A` or `b` do not
          *                               match those implied by `D` and `N`.
          */
-        SQPOptimizer(const unsigned D, const unsigned N,
+        SQPOptimizer(const int D, const int N,
                      const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
                      const Ref<const Matrix<T, Dynamic, 1> >& b)
         {
@@ -261,8 +267,7 @@ class SQPOptimizer
          * @throws std::invalid_argument If the dimensions of `A` or `b` do not
          *                               match those implied by `D` and `N`.
          */
-        SQPOptimizer(const unsigned D, const unsigned N,
-                     const Polytopes::InequalityType type, 
+        SQPOptimizer(const int D, const int N, const Polytopes::InequalityType type, 
                      const Ref<const Matrix<T, Dynamic, Dynamic> >& A,
                      const Ref<const Matrix<T, Dynamic, 1> >& b)
         {
@@ -346,7 +351,7 @@ class SQPOptimizer
             // perturbed by +/- delta
             Matrix<T, Dynamic, 1> grad(this->D);
             Matrix<T, Dynamic, 1> x_(x); 
-            for (unsigned i = 0; i < this->D; ++i)
+            for (int i = 0; i < this->D; ++i)
             {
                 x_(i) += delta; 
                 T f1 = func(x_); 
@@ -411,11 +416,11 @@ class SQPOptimizer
          *    constraints of the original problem, and output the new vector.
          */
         StepData<T> step(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
-                         const unsigned iter, const QuasiNewtonMethod quasi_newton,
+                         const int iter, const QuasiNewtonMethod quasi_newton,
                          StepData<T> prev_data, const T tau, const T delta,
                          const T beta, const T tol, const T x_tol, 
                          const bool use_only_armijo, const bool use_strong_wolfe,
-                         const unsigned hessian_modify_max_iter,
+                         const int hessian_modify_max_iter,
                          const T c1 = 1e-4, const T c2 = 0.9, const bool verbose = false)
         {
             using std::abs;
@@ -465,9 +470,9 @@ class SQPOptimizer
              * --------------------------------------------------------------- */
             // Note that, with the damped BFGS update, the Hessian matrix approximation
             // should be positive-definite
-            for (unsigned i = 0; i < this->D; ++i)
+            for (int i = 0; i < this->D; ++i)
             {
-                for (unsigned j = 0; j <= i; ++j)
+                for (int j = 0; j <= i; ++j)
                 {
                     // Sets 2D_ij and 2D_ji (the quadratic part of objective)
                     this->program->set_d(i, j, static_cast<double>(d2L(i,j)));
@@ -475,9 +480,9 @@ class SQPOptimizer
                 // Sets c_i (the linear part of objective)
                 this->program->set_c(i, static_cast<double>(df(i)));
             }
-            for (unsigned i = 0; i < this->N; ++i)
+            for (int i = 0; i < this->N; ++i)
             {
-                for (unsigned j = 0; j < this->D; ++j)
+                for (int j = 0; j < this->D; ++j)
                 {
                     // Sets A_ij (j-th coefficient of i-th constraint)
                     if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
@@ -503,9 +508,9 @@ class SQPOptimizer
                 // positive-semi-definite (this should never be the case), then replace
                 // D with the identity matrix
                 std::cout << "Setting matrix in quadratic part of objective to identity" << std::endl;  
-                for (unsigned i = 0; i < this->D; ++i)
+                for (int i = 0; i < this->D; ++i)
                 {
-                    for (unsigned j = 0; j <= i; ++j)
+                    for (int j = 0; j <= i; ++j)
                     {
                         this->program->set_d(i, j, 2.0);    // Sets 2D_ij and 2D_ji
                     }
@@ -539,7 +544,7 @@ class SQPOptimizer
 
             // Collect the values of the solution into a vector 
             Matrix<T, Dynamic, 1> p(this->D);
-            unsigned i = 0;
+            int i = 0;
             for (auto it = solution.variable_values_begin(); it != solution.variable_values_end(); ++it)
             {
                 p(i) = static_cast<T>(CGAL::to_double(*it));
@@ -676,13 +681,13 @@ class SQPOptimizer
                                   const Ref<const Matrix<T, Dynamic, 1> >& x_init, 
                                   const Ref<const Matrix<T, Dynamic, 1> >& l_init,
                                   const T tau, const T delta, const T beta,
-                                  const unsigned max_iter, const T tol, const T x_tol,
+                                  const int max_iter, const T tol, const T x_tol,
                                   const QuasiNewtonMethod quasi_newton,
                                   const RegularizationMethod regularize,
                                   const T regularize_weight, 
                                   const bool use_only_armijo, 
                                   const bool use_strong_wolfe, 
-                                  const unsigned hessian_modify_max_iter,
+                                  const int hessian_modify_max_iter,
                                   const T c1 = 1e-4, const T c2 = 0.9,
                                   const bool verbose = false)
         {
@@ -723,8 +728,11 @@ class SQPOptimizer
             // Print the input vector and value of the objective function
             if (verbose)
             {
-                std::cout << "Initial vector: x = " << x_init.transpose()
-                          << "; " << "f(x) = " << f << std::endl; 
+                std::cout << "Initial vector: x = (";
+                for (int i = 0; i < this->D - 1; ++i)
+                    std::cout << x_init(i) << ", ";
+                std::cout << x_init(this->D - 1) << "); f(x) = "
+                          << f << std::endl; 
             }
             
             // Evaluate the Lagrangian and its gradient
@@ -743,7 +751,7 @@ class SQPOptimizer
             curr_data.dL = dL;
             curr_data.d2L = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
 
-            unsigned i = 0;
+            int i = 0;
             T change_x = 2 * x_tol;
             T change_f = 2 * tol; 
             while (i < max_iter && (change_x > x_tol || change_f > tol))
@@ -762,6 +770,17 @@ class SQPOptimizer
                 curr_data.dL = next_data.dL;
                 curr_data.d2L = next_data.d2L;
             }
+            
+            // Print the final vector and value of the objective function
+            if (verbose)
+            {
+                std::cout << "Final vector: x = (";
+                for (int j = 0; j < this->D - 1; ++j)
+                    std::cout << curr_data.xl(j) << ", ";
+                std::cout << curr_data.xl(this->D - 1) << "); f(x) = " 
+                          << curr_data.f << std::endl; 
+            }
+
             return curr_data.xl.head(this->D).template cast<T>();
         }
 };
