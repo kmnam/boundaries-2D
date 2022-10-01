@@ -642,6 +642,12 @@ class SQPOptimizer
                 satisfies_armijo = this->wolfeArmijo(p, stepsize, f, f_new, df, c1);
                 change_x = step.norm();
                 change_f = f_new - f;
+                if (verbose)
+                {
+                    std::cout << "... trying step-size = " << stepsize 
+                              << ": Armijo = " << satisfies_armijo
+                              << ", curvature condition not tested" << std::endl;
+                }
                 while ((change_x > x_tol || abs(change_f) > tol) && !satisfies_armijo)
                 {
                     stepsize *= factor;
