@@ -24,7 +24,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     9/25/2022
+ *     10/1/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -572,9 +572,9 @@ class SQPOptimizer
             Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta);  
             bool satisfies_armijo = this->wolfeArmijo(p, stepsize, f, f_new, df, c1);
             bool satisfies_curvature = false; 
-            if (use_only_armijo)
+            if (use_only_armijo)    // If only the Armijo condition is to be tested
                 satisfies_curvature = true;
-            else 
+            else     // Otherwise, test the (weak or strong) curvature condition
                 satisfies_curvature = (
                     use_strong_wolfe
                     ? this->wolfeStrongCurvature(p, df, df_new, c2)
@@ -592,8 +592,13 @@ class SQPOptimizer
                           << ": Armijo = " << satisfies_armijo;
                 if (!use_only_armijo)
                     std::cout << ", curvature = " << satisfies_curvature;
+                else 
+                    std::cout << ", curvature condition not tested";
                 std::cout << std::endl; 
             }
+            // First try to identify the largest stepsize that satisfies both 
+            // of the Wolfe conditions (with the curvature condition satisfied 
+            // by default if only the Armijo condition is to be tested) 
             while ((change_x > x_tol || abs(change_f) > tol) && !(satisfies_armijo && satisfies_curvature))
             {
                 stepsize *= factor;
@@ -619,9 +624,43 @@ class SQPOptimizer
                               << ": Armijo = " << satisfies_armijo;
                     if (!use_only_armijo)
                         std::cout << ", curvature = " << satisfies_curvature;
+                    else 
+                        std::cout << ", curvature condition not tested";
                     std::cout << std::endl; 
                 }
-            }  
+            }
+            // If the Wolfe conditions were *not* satisfied above, then try 
+            // testing just the Armijo condition
+            if (!(satisfies_armijo && satisfies_curvature))
+            {
+                stepsize = 1;
+                factor = tau;
+                step = stepsize * p; 
+                x_new = x + step; 
+                f_new = func(x_new);
+                df_new = this->gradient(func, x_new, delta);  
+                satisfies_armijo = this->wolfeArmijo(p, stepsize, f, f_new, df, c1);
+                change_x = step.norm();
+                change_f = f_new - f;
+                while ((change_x > x_tol || abs(change_f) > tol) && !satisfies_armijo)
+                {
+                    stepsize *= factor;
+                    factor /= 2;
+                    step = stepsize * p; 
+                    x_new = x + step; 
+                    f_new = func(x_new); 
+                    df_new = this->gradient(func, x_new, delta); 
+                    satisfies_armijo = this->wolfeArmijo(p, stepsize, f, f_new, df, c1);
+                    change_x = step.norm();
+                    change_f = f_new - f; 
+                    if (verbose)
+                    {
+                        std::cout << "... trying step-size = " << stepsize 
+                                  << ": Armijo = " << satisfies_armijo
+                                  << ", curvature condition not tested" << std::endl;
+                    }
+                }  
+            }
             xl_new.head(this->D) = x_new;
 
             // Print the new vector and value of the objective function
