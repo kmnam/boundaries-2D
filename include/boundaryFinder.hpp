@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     9/5/2022
+ *     10/7/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -683,7 +683,7 @@ class BoundaryFinder
                           << std::endl; 
                 if (this->simplified)
                 {
-                    std::cout << ">>>>>> Simplified to " << this->curr_simplified.nv
+                    std::cout << "-----> Simplified to " << this->curr_simplified.nv
                               << " boundary points" << std::endl;
                 }
             }
@@ -903,7 +903,7 @@ class BoundaryFinder
                           << std::endl; 
                 if (this->simplified)
                 {
-                    std::cout << ">>>>>> Simplified to " << this->curr_simplified.nv
+                    std::cout << "-----> Simplified to " << this->curr_simplified.nv
                               << " boundary points" << std::endl;
                 }
             }
@@ -1310,7 +1310,7 @@ class BoundaryFinder
                           << std::endl;
                 if (this->simplified)
                 {
-                    std::cout << ">>>>>> Simplified to " << this->curr_simplified.nv
+                    std::cout << "-----> Simplified to " << this->curr_simplified.nv
                               << " boundary points" << std::endl;
                 }
             }
@@ -1361,19 +1361,15 @@ class BoundaryFinder
          *                                to be preserved* that should be further
          *                                randomly sampled (without replacement)
          *                                to be pulled. 
-         * @param tau                     Rate at which step-sizes are decreased
-         *                                during each SQP iteration.
          * @param delta                   Increment for finite-differences 
          *                                approximation during each SQP iteration.
          * @param beta                    Increment for Hessian matrix modification
          *                                (for ensuring positive semi-definiteness).
-         * @param use_only_armijo         If true, use only the Armijo condition
-         *                                to determine step-size during each 
-         *                                SQP iteration.
-         * @param use_strong_wolfe        If true, use the strong Wolfe conditions
-         *                                to determine step-size during each 
-         *                                SQP iteration. Disregarded if
-         *                                `use_only_armijo == true`.  
+         * @param stepsize_multiple       Multiple with which to increment 
+         *                                stepsizes in search during each SQP 
+         *                                iteration.
+         * @param stepsize_min            Minimum allowed stepsize during each
+         *                                SQP iteration. 
          * @param hessian_modify_max_iter Maximum number of Hessian matrix
          *                                modification iterations (for ensuring
          *                                positive semi-definiteness).  
@@ -1392,6 +1388,8 @@ class BoundaryFinder
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
          *                                during SQP to `stdout`.
+         * @param zoom_verbose            If true, output intermittent messages 
+         *                                in `zoom()` during SQP to `stdout`.
          * @param traversal_verbose       If true, output intermittent messages
          *                                to `stdout` from
          *                                `Boundary2D::traverseSimpleCycle()`. 
@@ -1405,17 +1403,16 @@ class BoundaryFinder
          */
         bool pull(SQPOptimizer<double>* optimizer, 
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
-                  const double epsilon, const int max_iter,
-                  const double sqp_tol, const int iter, const int max_edges,
-                  int n_keep_interior, int n_keep_origbound, int n_pull_origbound,
-                  const double tau, const double delta, const double beta,
-                  const bool use_only_armijo, const bool use_strong_wolfe,
-                  const int hessian_modify_max_iter,
+                  const double epsilon, const int max_iter, const double sqp_tol,
+                  const int iter, const int max_edges, int n_keep_interior,
+                  int n_keep_origbound, int n_pull_origbound, const double delta,
+                  const double beta, const double stepsize_multiple,
+                  const double stepsize_min, const int hessian_modify_max_iter,
                   const std::string write_prefix,
                   const RegularizationMethod regularize = NOREG,
                   const double regularize_weight = 0, const double c1 = 1e-4,
                   const double c2 = 0.9, const bool verbose = true,
-                  const bool sqp_verbose = false,
+                  const bool sqp_verbose = false, const bool zoom_verbose = false,
                   const bool traversal_verbose = false,
                   const bool write_pulled_points = false)
         {
@@ -1648,9 +1645,10 @@ class BoundaryFinder
                 VectorXd l_init = VectorXd::Ones(this->constraints->getN())
                     - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
                 VectorXd q = optimizer->run(
-                    obj, x_init, l_init, tau, delta, beta, max_iter, sqp_tol,
-                    sqp_tol, BFGS, regularize, regularize_weight, use_only_armijo,
-                    use_strong_wolfe, hessian_modify_max_iter, c1, c2, sqp_verbose
+                    obj, x_init, l_init, delta, beta, stepsize_multiple, stepsize_min,
+                    max_iter, sqp_tol, sqp_tol, QuasiNewtonMethod::BFGS, regularize,
+                    regularize_weight, hessian_modify_max_iter, c1, c2, sqp_verbose,
+                    zoom_verbose
                 );
                 pull_results_in.row(i) = q;
                 pull_results_out.row(i) = this->func(q);
@@ -1861,7 +1859,7 @@ class BoundaryFinder
                           << std::endl;
                 if (this->simplified)
                 {
-                    std::cout << ">>>>>> Simplified to " << this->curr_simplified.nv
+                    std::cout << "-----> Simplified to " << this->curr_simplified.nv
                               << " boundary points" << std::endl;
                 }
             }
@@ -1918,19 +1916,15 @@ class BoundaryFinder
          *                                to be preserved* that should be further
          *                                randomly sampled (without replacement)
          *                                to be pulled. 
-         * @param tau                     Rate at which step-sizes are decreased
-         *                                during each SQP iteration.
          * @param delta                   Increment for finite-differences 
          *                                approximation during each SQP iteration.
          * @param beta                    Increment for Hessian matrix modification
          *                                (for ensuring positive semi-definiteness).
-         * @param use_only_armijo         If true, use only the Armijo condition
-         *                                to determine step-size during each 
+         * @param stepsize_multiple       Multiple with which to increment 
+         *                                stepsizes in search during each SQP 
+         *                                iteration.
+         * @param stepsize_min            Minimum allowed stepsize during each
          *                                SQP iteration. 
-         * @param use_strong_wolfe        If true, use the strong Wolfe conditions
-         *                                to determine step-size during each 
-         *                                SQP iteration. Disregarded if 
-         *                                `use_only_armijo == true`. 
          * @param hessian_modify_max_iter Maximum number of Hessian matrix
          *                                modification iterations (for ensuring
          *                                positive semi-definiteness).  
@@ -1949,6 +1943,8 @@ class BoundaryFinder
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
          *                                during SQP to `stdout`.
+         * @param zoom_verbose            If true, output intermittent messages 
+         *                                in `zoom()` during SQP to `stdout`.
          * @param traversal_verbose       If true, output intermittent messages
          *                                to `stdout` from
          *                                `Boundary2D::traverseSimpleCycle()`. 
@@ -1959,20 +1955,18 @@ class BoundaryFinder
          */
         void run(const double mutate_delta,
                  std::function<bool(const Ref<const VectorXd>&)> filter, 
-                 const int ninit, const int max_nsample, 
-                 const int min_step_iter, const int max_step_iter,
-                 const int min_pull_iter, const int max_pull_iter,
-                 const int sqp_max_iter, const double sqp_tol,
-                 const int max_edges, int n_keep_interior, int n_keep_origbound,
-                 int n_mutate_origbound, int n_pull_origbound,
-                 const double tau, const double delta, const double beta,
-                 const bool use_only_armijo, const bool use_strong_wolfe,
-                 const int hessian_modify_max_iter,
+                 const int ninit, const int max_nsample, const int min_step_iter,
+                 const int max_step_iter, const int min_pull_iter,
+                 const int max_pull_iter, const int sqp_max_iter,
+                 const double sqp_tol, const int max_edges, int n_keep_interior,
+                 int n_keep_origbound, int n_mutate_origbound, int n_pull_origbound,
+                 const double delta, const double beta, const double stepsize_multiple,
+                 const double stepsize_min, const int hessian_modify_max_iter,
                  const std::string write_prefix,
                  const RegularizationMethod regularize = NOREG, 
                  const double regularize_weight = 0, const double c1 = 1e-4,
                  const double c2 = 0.9, const bool verbose = true,
-                 const bool sqp_verbose = false,
+                 const bool sqp_verbose = false, const bool zoom_verbose = false,
                  const bool traversal_verbose = false, 
                  const bool write_pulled_points = false)
         {
@@ -2015,10 +2009,9 @@ class BoundaryFinder
                 bool result = this->pull(
                     optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
                     max_edges, n_keep_interior, n_keep_origbound, n_pull_origbound,
-                    tau, delta, beta, use_only_armijo, use_strong_wolfe,
-                    hessian_modify_max_iter, write_prefix, regularize,
-                    regularize_weight, c1, c2, verbose, sqp_verbose,
-                    traversal_verbose, write_pulled_points
+                    delta, beta, stepsize_multiple, stepsize_min, hessian_modify_max_iter,
+                    write_prefix, regularize, regularize_weight, c1, c2, verbose,
+                    sqp_verbose, zoom_verbose, traversal_verbose, write_pulled_points
                 );
                 if (!result)
                     n_converged = 0;
@@ -2097,7 +2090,6 @@ class BoundaryFinder
             }
         }
 
-
         /**
          * Run the full boundary-sampling algorithm until convergence, up to
          * the maximum number of iterations.
@@ -2140,19 +2132,15 @@ class BoundaryFinder
          *                                to be preserved* that should be further
          *                                randomly sampled (without replacement)
          *                                to be pulled. 
-         * @param tau                     Rate at which step-sizes are decreased
-         *                                during each SQP iteration.
          * @param delta                   Increment for finite-differences 
          *                                approximation during each SQP iteration.
          * @param beta                    Increment for Hessian matrix modification
          *                                (for ensuring positive semi-definiteness).
-         * @param use_only_armijo         If true, use only the Armijo condition
-         *                                to determine step-size during each 
+         * @param stepsize_multiple       Multiple with which to increment 
+         *                                stepsizes in search during each SQP 
+         *                                iteration.
+         * @param stepsize_min            Minimum allowed stepsize during each 
          *                                SQP iteration. 
-         * @param use_strong_wolfe        If true, use the strong Wolfe conditions
-         *                                to determine step-size during each 
-         *                                SQP iteration. Disregarded if 
-         *                                `use_only_armijo == true`. 
          * @param hessian_modify_max_iter Maximum number of Hessian matrix
          *                                modification iterations (for ensuring
          *                                positive semi-definiteness).  
@@ -2171,6 +2159,8 @@ class BoundaryFinder
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
          *                                during SQP to `stdout`.
+         * @param zoom_verbose            If true, output intermittent messages 
+         *                                in `zoom()` during SQP to `stdout`.
          * @param traversal_verbose       If true, output intermittent messages
          *                                to `stdout` from
          *                                `Boundary2D::traverseSimpleCycle()`. 
@@ -2181,20 +2171,18 @@ class BoundaryFinder
          */
         void run(const double mutate_delta,
                  std::function<bool(const Ref<const VectorXd>&)> filter, 
-                 const Ref<const MatrixXd>& init_input, 
-                 const int min_step_iter, const int max_step_iter,
-                 const int min_pull_iter, const int max_pull_iter,
-                 const int sqp_max_iter, const double sqp_tol,
-                 const int max_edges, int n_keep_interior, int n_keep_origbound,
-                 int n_mutate_origbound, int n_pull_origbound,
-                 const double tau, const double delta, const double beta,
-                 const bool use_only_armijo, const bool use_strong_wolfe,
-                 const int hessian_modify_max_iter,
+                 const Ref<const MatrixXd>& init_input, const int min_step_iter,
+                 const int max_step_iter, const int min_pull_iter,
+                 const int max_pull_iter, const int sqp_max_iter,
+                 const double sqp_tol, const int max_edges, int n_keep_interior,
+                 int n_keep_origbound, int n_mutate_origbound, int n_pull_origbound,
+                 const double delta, const double beta, const double stepsize_multiple,
+                 const double stepsize_min, const int hessian_modify_max_iter,
                  const std::string write_prefix,
                  const RegularizationMethod regularize = NOREG, 
                  const double regularize_weight = 0, const double c1 = 1e-4,
                  const double c2 = 0.9, const bool verbose = true,
-                 const bool sqp_verbose = false,
+                 const bool sqp_verbose = false, const bool zoom_verbose = false,
                  const bool traversal_verbose = false, 
                  const bool write_pulled_points = false)
         {
@@ -2237,10 +2225,9 @@ class BoundaryFinder
                 bool result = this->pull(
                     optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
                     max_edges, n_keep_interior, n_keep_origbound, n_pull_origbound,
-                    tau, delta, beta, use_only_armijo, use_strong_wolfe,
-                    hessian_modify_max_iter, write_prefix, regularize,
-                    regularize_weight, c1, c2, verbose, sqp_verbose,
-                    traversal_verbose, write_pulled_points
+                    delta, beta, stepsize_multiple, stepsize_min, hessian_modify_max_iter,
+                    write_prefix, regularize, regularize_weight, c1, c2, verbose,
+                    sqp_verbose, zoom_verbose, traversal_verbose, write_pulled_points
                 );
                 if (!result)
                     n_converged = 0;
