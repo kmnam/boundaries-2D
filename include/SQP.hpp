@@ -557,7 +557,8 @@ class SQPOptimizer
          * @param beta                    Increment for Hessian matrix modification
          *                                (for ensuring positive semi-definiteness).
          * @param stepsize_multiple       Multiple with which to increment 
-         *                                stepsizes in search (see below). 
+         *                                stepsizes in search (see below).
+         * @param stepsize_min            Minimum stepsize.
          * @param x_tol                   Tolerance of change in input vector 
          *                                (L2 norm between successive iterates).
          * @param hessian_modify_max_iter Maximum number of Hessian modifications.
@@ -572,9 +573,9 @@ class SQPOptimizer
         StepData<T> step(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                          const int iter, const QuasiNewtonMethod quasi_newton,
                          StepData<T> prev_data, const T delta, const T beta, 
-                         const T stepsize_multiple, const T x_tol,
-                         const int hessian_modify_max_iter, const T c1 = 1e-4,
-                         const T c2 = 0.9, const bool verbose = false,
+                         const T stepsize_multiple, const T stepsize_min, 
+                         const T x_tol, const int hessian_modify_max_iter,
+                         const T c1 = 1e-4, const T c2 = 0.9, const bool verbose = false,
                          const bool zoom_verbose = false)
         {
             using std::abs;
@@ -718,9 +719,10 @@ class SQPOptimizer
              * Identify stepsize with an interpolation-based approach 
              * (Nocedal and Wright, Algorithms 3.5 and 3.6)
              *
-             * This algorithm identifies a stepsize between x_tol and 1.0 that 
-             * satisfies the *strong* Wolfe conditions by taking two candidate
-             * stepsizes, stepsize0 and stepsize1, and choosing as the stepsize:
+             * This algorithm identifies a stepsize between stepsize_min and 1.0
+             * that satisfies the *strong* Wolfe conditions by taking two
+             * candidate stepsizes, stepsize0 and stepsize1, and choosing as
+             * the stepsize:
              *
              * - stepsize1 itself if stepsize1 satisfies the strong Wolfe
              *   conditions;
@@ -735,8 +737,7 @@ class SQPOptimizer
              *   the above checks with stepsize1 <- stepsize1 + stepsize_multiple
              *   and stepsize0 <- stepsize1
              * --------------------------------------------------------------- */
-            T stepsize_min = x_tol;
-            T stepsize_max = 1;
+            const T stepsize_max = 1;
             T stepsize0 = stepsize_min;
             T stepsize1 = stepsize_multiple;
             i = 1;
@@ -760,7 +761,10 @@ class SQPOptimizer
                     //
                     // In this case, stepsize0 should still satisfy the Armijo
                     // condition (and hence can be passed first as "\alpha_lo")
-                    auto result = zoom(func, x, f, df, p, stepsize0, stepsize1, x_tol, c1, c2, delta, zoom_verbose);
+                    auto result = zoom(
+                        func, x, f, df, p, stepsize0, stepsize1, stepsize_min,
+                        c1, c2, delta, zoom_verbose
+                    );
                     stepsize = std::get<0>(result);
                     satisfies_armijo = std::get<1>(result); 
                     satisfies_curvature = std::get<2>(result);  
@@ -777,7 +781,10 @@ class SQPOptimizer
                     // In this case, both stepsize0 and stepsize1 should satisfy
                     // the Armijo condition (and hence either can be passed first
                     // as "\alpha_lo")
-                    auto result = zoom(func, x, f, df, p, stepsize0, stepsize1, x_tol, c1, c2, delta, zoom_verbose);
+                    auto result = zoom(
+                        func, x, f, df, p, stepsize0, stepsize1, stepsize_min,
+                        c1, c2, delta, zoom_verbose
+                    );
                     stepsize = std::get<0>(result);
                     satisfies_armijo = std::get<1>(result); 
                     satisfies_curvature = std::get<2>(result);  
@@ -806,7 +813,10 @@ class SQPOptimizer
                     //
                     // In this case, stepsize1 should satisfy the Armijo condition
                     // (and hence can be passed first as "\alpha_lo")
-                    auto result = zoom(func, x, f, df, p, stepsize1, stepsize0, x_tol, c1, c2, delta, zoom_verbose);
+                    auto result = zoom(
+                        func, x, f, df, p, stepsize1, stepsize0, stepsize_min,
+                        c1, c2, delta, zoom_verbose
+                    );
                     stepsize = std::get<0>(result);
                     satisfies_armijo = std::get<1>(result); 
                     satisfies_curvature = std::get<2>(result);  
@@ -818,6 +828,8 @@ class SQPOptimizer
                 stepsize1 += stepsize_multiple;
                 i++;
             }
+            if (stepsize > stepsize_max) 
+                std::cout << "\n\n\nPROBLEM!! WHY???\n\n\n";
             Matrix<T, Dynamic, 1> step = stepsize * p;
             Matrix<T, Dynamic, 1> x_new = x + step;
             T f_new = func(x_new);
@@ -891,7 +903,8 @@ class SQPOptimizer
                                   const Ref<const Matrix<T, Dynamic, 1> >& x_init, 
                                   const Ref<const Matrix<T, Dynamic, 1> >& l_init,
                                   const T delta, const T beta, const T stepsize_multiple, 
-                                  const int max_iter, const T tol, const T x_tol,
+                                  const T stepsize_min, const int max_iter,
+                                  const T tol, const T x_tol,
                                   const QuasiNewtonMethod quasi_newton,
                                   const RegularizationMethod regularize,
                                   const T regularize_weight, 
@@ -967,7 +980,8 @@ class SQPOptimizer
             {
                 StepData<T> next_data = this->step(
                     obj, i, quasi_newton, curr_data, delta, beta, stepsize_multiple,
-                    x_tol, hessian_modify_max_iter, c1, c2, verbose, zoom_verbose
+                    stepsize_min, x_tol, hessian_modify_max_iter, c1, c2, verbose,
+                    zoom_verbose
                 ); 
                 change_x = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm(); 
                 change_f = abs(curr_data.f - next_data.f); 
