@@ -24,7 +24,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     10/6/2022
+ *     10/7/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -235,27 +235,39 @@ class SQPOptimizer
          * @param stepsize_lo Min/max allowed stepsize, together with `stepsize_hi`.
          * @param stepsize_hi Min/max allowed stepsize, together with `stepsize_lo`.
          * @param c1          Constant multiplier in Armijo condition.
-         * @param c2          Constant multiplier in curvature condition.
+         * @param c2          Constant multiplier in strong curvature condition.
          * @param delta       Increment for finite difference approximation.
-         * @returns New stepsize.
+         * @param verbose     If true, output intermittent messages to `stdout`.
+         * @returns New stepsize, together with indicators as to whether the 
+         *          stepsize satisfies the Armijo and strong curvature conditions.
          */
         std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                                        const Ref<const Matrix<T, Dynamic, 1> >& x, const T f,
                                        const Ref<const Matrix<T, Dynamic, 1> >& grad,
                                        const Ref<const Matrix<T, Dynamic, 1> >& dir,
-                                       T stepsize_lo, T stepsize_hi, const T c1,
-                                       const T c2, const T delta)
+                                       T stepsize_lo, T stepsize_hi, const T stepsize_tol, 
+                                       const T c1, const T c2, const T delta,
+                                       const bool verbose)
         {
             bool satisfies_armijo = false; 
             bool satisfies_curvature = false;
-            while (abs(stepsize_lo - stepsize_hi) > 1e-8)
+            while (abs(stepsize_lo - stepsize_hi) > stepsize_tol)
             {
-                T f_lo = func(x + stepsize_lo * dir); 
+                T f_lo = func(x + stepsize_lo * dir);
+                if (verbose)
+                {
+                    std::cout << "... zooming into stepsize interval between "
+                              << stepsize_lo << " and " << stepsize_hi << std::endl;
+                }
 
                 // Determine new stepsize as the average of the two limiting stepsizes 
                 T new_stepsize = (stepsize_lo + stepsize_hi) / 2;
                 T f_new = func(x + new_stepsize * dir);
-                T phi_deriv_zero = dir.dot(grad); 
+                T phi_deriv_zero = dir.dot(grad);
+                if (verbose)
+                {
+                    std::cout << "...... candidate stepsize = " << new_stepsize << std::endl;
+                }
                 
                 // The quantities defined by Nocedal and Wright below are 
                 // given here by:
@@ -268,8 +280,21 @@ class SQPOptimizer
                 // \phi(\alpha_j) = f_new
                 // \phi(\alpha_{lo}) = func(x + stepsize_lo * dir) = f_lo
                 satisfies_armijo = this->wolfeArmijo(dir, new_stepsize, f, f_new, grad, c1);
-                if (!satisfies_armijo || f_new >= f_lo)
+                if (!satisfies_armijo)
                 {
+                    if (verbose)
+                    {
+                        std::cout << "...... violates Armijo condition" << std::endl;
+                    }
+                    stepsize_hi = new_stepsize;
+                }
+                else if (f_new >= f_lo)
+                {
+                    if (verbose)
+                    {
+                        std::cout << "...... causes increase in objective relative to "
+                                  << "stepsize_lo = " << stepsize_lo << std::endl;
+                    }
                     stepsize_hi = new_stepsize;
                 }
                 else 
@@ -277,9 +302,22 @@ class SQPOptimizer
                     Matrix<T, Dynamic, 1> grad_new = this->gradient(func, x + new_stepsize * dir, delta); 
                     satisfies_curvature = this->wolfeStrongCurvature(dir, grad, grad_new, c2); 
                     if (satisfies_curvature)
+                    {
+                        if (verbose)
+                        {
+                            std::cout << "...... found stepsize satisfying both Armijo and strong "
+                                      << "curvature conditions" << std::endl;
+                        }
                         return std::make_tuple(new_stepsize, true, true);   // Loop exits here
+                    }
+                    if (verbose)
+                    {
+                        std::cout << "...... violates strong curvature condition" << std::endl;
+                    }
                     if (dir.dot(grad_new) * (stepsize_hi - stepsize_lo) >= 0)
+                    {
                         stepsize_hi = stepsize_lo;
+                    }
                     stepsize_lo = new_stepsize;
                 }
             }
@@ -288,7 +326,14 @@ class SQPOptimizer
             Matrix<T, Dynamic, 1> grad_final = this->gradient(func, x + final_stepsize * dir, delta); 
             satisfies_armijo = this->wolfeArmijo(dir, final_stepsize, f, phi_final, grad, c1);
             satisfies_curvature = this->wolfeStrongCurvature(dir, grad, grad_final, c2);
-
+            if (verbose)
+            {
+                std::cout << "... terminating zoom (interval between " << stepsize_lo
+                          << " and " << stepsize_hi << ")" << std::endl
+                          << "... final stepsize = " << final_stepsize
+                          << "; Armijo = " << satisfies_armijo 
+                          << "; strong curvature = " << satisfies_curvature << std::endl; 
+            }
             return std::make_tuple(final_stepsize, satisfies_armijo, satisfies_curvature);
         }
 
@@ -511,23 +556,26 @@ class SQPOptimizer
          *                                approximation.
          * @param beta                    Increment for Hessian matrix modification
          *                                (for ensuring positive semi-definiteness).
-         * @param tol                     Tolerance of change in objective value.  
+         * @param stepsize_multiple       Multiple with which to increment 
+         *                                stepsizes in search (see below). 
          * @param x_tol                   Tolerance of change in input vector 
          *                                (L2 norm between successive iterates).
-         * @param use_only_armijo         TODO
-         * @param use_strong_wolfe        TODO
-         * @param hessian_modify_max_iter TODO
+         * @param hessian_modify_max_iter Maximum number of Hessian modifications.
          * @param c1                      Constant multiplier in Armijo condition.
-         * @param c2                      Constant multiplier in curvature condition.
+         * @param c2                      Constant multiplier in strong curvature
+         *                                condition.
          * @param verbose                 If true, output intermittent messages
          *                                to `stdout`.
+         * @param zoom_verbose            If true, output intermittent messages 
+         *                                to `stdout` from `zoom()`.
          */
         StepData<T> step(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                          const int iter, const QuasiNewtonMethod quasi_newton,
                          StepData<T> prev_data, const T delta, const T beta, 
-                         const T tol, const T x_tol, const bool use_only_armijo,
-                         const bool use_strong_wolfe, const int hessian_modify_max_iter,
-                         const T c1 = 1e-4, const T c2 = 0.9, const bool verbose = false)
+                         const T stepsize_multiple, const T x_tol,
+                         const int hessian_modify_max_iter, const T c1 = 1e-4,
+                         const T c2 = 0.9, const bool verbose = false,
+                         const bool zoom_verbose = false)
         {
             using std::abs;
             using boost::multiprecision::abs;
@@ -670,7 +718,7 @@ class SQPOptimizer
              * Identify stepsize with an interpolation-based approach 
              * (Nocedal and Wright, Algorithms 3.5 and 3.6)
              *
-             * This algorithm identifies a stepsize between 1e-8 and 1.0 that 
+             * This algorithm identifies a stepsize between x_tol and 1.0 that 
              * satisfies the *strong* Wolfe conditions by taking two candidate
              * stepsizes, stepsize0 and stepsize1, and choosing as the stepsize:
              *
@@ -684,14 +732,13 @@ class SQPOptimizer
              *      relative to stepsize0, or
              *   3) the descent direction at stepsize1 is nonnegative; *or*
              * - a value in (a subinterval of) [stepsize1, 1.0] by repeating
-             *   the above checks with stepsize1 set to stepsize1 + 0.1 and
-             *   stepsize0 set to stepsize1
+             *   the above checks with stepsize1 <- stepsize1 + stepsize_multiple
+             *   and stepsize0 <- stepsize1
              * --------------------------------------------------------------- */
             T stepsize_min = x_tol;
             T stepsize_max = 1;
-            T stepsize_multiple = 0.2;
             T stepsize0 = stepsize_min;
-            T stepsize1 = stepsize_multiple;   // TODO define stepsize_multiple = 0.2
+            T stepsize1 = stepsize_multiple;
             i = 1;
 
             // Terminate the search when the search exceeds stepsize_max
@@ -713,7 +760,7 @@ class SQPOptimizer
                     //
                     // In this case, stepsize0 should still satisfy the Armijo
                     // condition (and hence can be passed first as "\alpha_lo")
-                    auto result = zoom(func, x, f, df, p, stepsize0, stepsize1, c1, c2, delta);
+                    auto result = zoom(func, x, f, df, p, stepsize0, stepsize1, x_tol, c1, c2, delta, zoom_verbose);
                     stepsize = std::get<0>(result);
                     satisfies_armijo = std::get<1>(result); 
                     satisfies_curvature = std::get<2>(result);  
@@ -730,7 +777,7 @@ class SQPOptimizer
                     // In this case, both stepsize0 and stepsize1 should satisfy
                     // the Armijo condition (and hence either can be passed first
                     // as "\alpha_lo")
-                    auto result = zoom(func, x, f, df, p, stepsize0, stepsize1, c1, c2, delta);
+                    auto result = zoom(func, x, f, df, p, stepsize0, stepsize1, x_tol, c1, c2, delta, zoom_verbose);
                     stepsize = std::get<0>(result);
                     satisfies_armijo = std::get<1>(result); 
                     satisfies_curvature = std::get<2>(result);  
@@ -759,7 +806,7 @@ class SQPOptimizer
                     //
                     // In this case, stepsize1 should satisfy the Armijo condition
                     // (and hence can be passed first as "\alpha_lo")
-                    auto result = zoom(func, x, f, df, p, stepsize1, stepsize0, c1, c2, delta);
+                    auto result = zoom(func, x, f, df, p, stepsize1, stepsize0, x_tol, c1, c2, delta, zoom_verbose);
                     stepsize = std::get<0>(result);
                     satisfies_armijo = std::get<1>(result); 
                     satisfies_curvature = std::get<2>(result);  
@@ -775,107 +822,22 @@ class SQPOptimizer
             Matrix<T, Dynamic, 1> x_new = x + step;
             T f_new = func(x_new);
             Matrix<T, Dynamic, 1> df_new = this->gradient(func, x_new, delta);
-            //satisfies_armijo = this->wolfeArmijo(p, stepsize, f, f_new, df, c1);
-            //satisfies_curvature = this->wolfeStrongCurvature(p, df, df_new, c2)
             T change_x = step.norm(); 
             T change_f = f_new - f; 
+            xl_new.head(this->D) = x_new;
+
+            // Print the stepping direction, stepsize, new vector, and value of
+            // the objective function and its gradient 
             if (verbose)
             {
                 std::cout << "... stepping direction = (";
                 for (int i = 0; i < this->D - 1; ++i)
                     std::cout << p(i) << ", ";
-                std::cout << p(this->D - 1) << ")" << std::endl
-                          << "... trying step-size = " << stepsize
+                std::cout << p(this->D - 1) << ")" << std::endl;
+                std::cout << "... stepsize = " << stepsize
                           << ": Armijo = " << satisfies_armijo
-                          << ", curvature = " << satisfies_curvature
+                          << ", strong curvature = " << satisfies_curvature
                           << std::endl; 
-            }
-
-            // TODO If the above loop terminated without finding a suitable
-            // stepsize ... ?
-
-            /* 
-            // Try updates of decreasing stepsizes from the input vector, 
-            // choosing the largest stepsize that satisfies the Wolfe conditions
-            //
-            // First try to identify the largest stepsize that satisfies both 
-            // of the Wolfe conditions (with the curvature condition satisfied 
-            // by default if only the Armijo condition is to be tested) 
-            while ((change_x > x_tol || abs(change_f) > tol) && !(satisfies_armijo && satisfies_curvature))
-            {
-                stepsize *= factor;
-                factor /= 2;
-                step = stepsize * p; 
-                x_new = x + step; 
-                f_new = func(x_new); 
-                df_new = this->gradient(func, x_new, delta); 
-                satisfies_armijo = this->wolfeArmijo(p, stepsize, f, f_new, df, c1);
-                if (use_only_armijo)
-                    satisfies_curvature = true;
-                else
-                    satisfies_curvature = (
-                        use_strong_wolfe
-                        ? this->wolfeStrongCurvature(p, df, df_new, c2)
-                        : this->wolfeCurvature(p, df, df_new, c2)
-                    );
-                change_x = step.norm();
-                change_f = f_new - f; 
-                if (verbose)
-                {
-                    std::cout << "... trying step-size = " << stepsize 
-                              << ": Armijo = " << satisfies_armijo;
-                    if (!use_only_armijo)
-                        std::cout << ", curvature = " << satisfies_curvature;
-                    else 
-                        std::cout << ", curvature condition not tested";
-                    std::cout << std::endl; 
-                }
-            }
-            // If the Wolfe conditions were *not* satisfied above, then try 
-            // testing just the Armijo condition
-            if (!(satisfies_armijo && satisfies_curvature))
-            {
-                stepsize = 1;
-                factor = tau;
-                step = stepsize * p; 
-                x_new = x + step; 
-                f_new = func(x_new);
-                df_new = this->gradient(func, x_new, delta);  
-                satisfies_armijo = this->wolfeArmijo(p, stepsize, f, f_new, df, c1);
-                change_x = step.norm();
-                change_f = f_new - f;
-                if (verbose)
-                {
-                    std::cout << "... trying step-size = " << stepsize 
-                              << ": Armijo = " << satisfies_armijo
-                              << ", curvature condition not tested" << std::endl;
-                }
-                while ((change_x > x_tol || abs(change_f) > tol) && !satisfies_armijo)
-                {
-                    stepsize *= factor;
-                    factor /= 2;
-                    step = stepsize * p; 
-                    x_new = x + step; 
-                    f_new = func(x_new); 
-                    df_new = this->gradient(func, x_new, delta); 
-                    satisfies_armijo = this->wolfeArmijo(p, stepsize, f, f_new, df, c1);
-                    change_x = step.norm();
-                    change_f = f_new - f; 
-                    if (verbose)
-                    {
-                        std::cout << "... trying step-size = " << stepsize 
-                                  << ": Armijo = " << satisfies_armijo
-                                  << ", curvature condition not tested" << std::endl;
-                    }
-                }  
-            }
-            */
-            xl_new.head(this->D) = x_new;
-
-            // Print the new vector and value of the objective function
-            // and its gradient 
-            if (verbose)
-            {
                 std::cout << "Iteration " << iter << ": x = (";
                 for (int i = 0; i < x_new.size() - 1; ++i)
                     std::cout << x_new(i) << ", "; 
@@ -928,16 +890,15 @@ class SQPOptimizer
         Matrix<T, Dynamic, 1> run(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                                   const Ref<const Matrix<T, Dynamic, 1> >& x_init, 
                                   const Ref<const Matrix<T, Dynamic, 1> >& l_init,
-                                  const T delta, const T beta, const int max_iter,
-                                  const T tol, const T x_tol,
+                                  const T delta, const T beta, const T stepsize_multiple, 
+                                  const int max_iter, const T tol, const T x_tol,
                                   const QuasiNewtonMethod quasi_newton,
                                   const RegularizationMethod regularize,
                                   const T regularize_weight, 
-                                  const bool use_only_armijo, 
-                                  const bool use_strong_wolfe, 
                                   const int hessian_modify_max_iter,
                                   const T c1 = 1e-4, const T c2 = 0.9,
-                                  const bool verbose = false)
+                                  const bool verbose = false,
+                                  const bool zoom_verbose = false)
         {
             using std::abs;
             using boost::multiprecision::abs;
@@ -1005,9 +966,8 @@ class SQPOptimizer
             while (i < max_iter && (change_x > x_tol || change_f > tol))
             {
                 StepData<T> next_data = this->step(
-                    obj, i, quasi_newton, curr_data, delta, beta, tol, x_tol,
-                    use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
-                    c1, c2, verbose
+                    obj, i, quasi_newton, curr_data, delta, beta, stepsize_multiple,
+                    x_tol, hessian_modify_max_iter, c1, c2, verbose, zoom_verbose
                 ); 
                 change_x = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm(); 
                 change_f = abs(curr_data.f - next_data.f); 
