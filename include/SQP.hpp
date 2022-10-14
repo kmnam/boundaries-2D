@@ -734,20 +734,28 @@ class SQPOptimizer
              *      relative to stepsize0, or
              *   3) the descent direction at stepsize1 is nonnegative; *or*
              * - a value in (a subinterval of) [stepsize1, 1.0] by repeating
-             *   the above checks with stepsize1 <- stepsize1 + stepsize_multiple
-             *   and stepsize0 <- stepsize1
+             *   the above checks with stepsize1 <- (stepsize1 + 1.0) / 2
+             *   and stepsize0 <- stepsize1 *if* stepsize1 < 0.9, and 
+             *   stepsize1 <- 1.0 and stepsize0 <- stepsize1 *if* stepsize1 >= 0.9
+             *
+             * We initialize stepsize0 <- stepsize_min and stepsize1 as the 
+             * mean of stepsize_min and 1.0
              * --------------------------------------------------------------- */
             const T stepsize_max = 1;
             T stepsize0 = stepsize_min;
-            T stepsize1 = stepsize_multiple;
+            T stepsize1 = (stepsize_min + stepsize_max) / 2;
             i = 1;
-
-            // Terminate the search when the search exceeds stepsize_max
             T stepsize = stepsize_min;
             bool satisfies_armijo = false;
             bool satisfies_curvature = false;
             while (stepsize1 < stepsize_max)
             {
+                if (verbose)
+                {
+                    std::cout << "... searching for stepsize between "
+                              << stepsize0 << " and " << stepsize1 << std::endl;
+                }
+
                 // Evaluate func(x + stepsize0 * p) and func(x + stepsize1 * p)
                 T f0 = func(x + stepsize0 * p);
                 T f1 = func(x + stepsize1 * p);
@@ -824,8 +832,16 @@ class SQPOptimizer
                 }
 
                 // Update stepsize0, stepsize1, and i
-                stepsize0 = stepsize1; 
-                stepsize1 += stepsize_multiple;
+                if (stepsize1 >= 0.9 * stepsize_max)
+                {
+                    stepsize0 = stepsize1; 
+                    stepsize1 = stepsize_max;  
+                }
+                else
+                {
+                    stepsize0 = stepsize1; 
+                    stepsize1 = (stepsize1 + stepsize_max) / 2;
+                }
                 i++;
             }
             if (stepsize > stepsize_max) 
