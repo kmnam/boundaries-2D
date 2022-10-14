@@ -301,8 +301,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
     else
         stepsize1 = min(max_stepsize, abs(1.01 * 2 * (f_curr - f_prev) / dphi0));
 
-    int i = 1;
-    while (stepsize1 <= max_stepsize && i - 1 < max_iter)
+    for (int i = 1; i <= max_iter; ++i)
     {
         if (verbose)
         {
@@ -352,6 +351,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             satisfies_curvature = std::get<2>(result);  
             break;
         }
+        
         // Otherwise, does stepsize1 satisfy the strong curvature condition?
         Matrix<T, Dynamic, 1> grad_new = gradient(x_curr + stepsize1 * dir);
         if (wolfeStrongCurvature<T>(dir, grad_curr, grad_new, c2))
@@ -385,18 +385,12 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             break;
         }
 
-        // Update stepsize0, stepsize1, and i
-        if (stepsize1 >= 0.9 * max_stepsize)
-        {
-            stepsize0 = stepsize1; 
-            stepsize1 = max_stepsize;
-        }
-        else
-        {
-            stepsize0 = stepsize1; 
-            stepsize1 = (stepsize1 + max_stepsize) / 2;
-        }
-        i++;
+        // Update stepsize0 and stepsize1 in the same manner as in
+        // scipy.optimize.line_search() (or, more specifically, see 
+        // scipy.optimize._linesearch.scalar_search_wolfe2())
+        T stepsize2 = min(2 * stepsize1, max_stepsize);
+        stepsize0 = stepsize1; 
+        stepsize1 = stepsize2; 
     }
 
     return std::make_tuple(stepsize, satisfies_armijo, satisfies_curvature);
