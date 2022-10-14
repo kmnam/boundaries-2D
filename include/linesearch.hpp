@@ -34,20 +34,6 @@ using namespace Eigen;
 using boost::multiprecision::mpq_rational;
 
 /**
- * Return the sign of `x`.
- *
- * @param x Input value.
- * @returns 1 if `x > 0`, 0 if `x == 0`, -1 if `x < 0`.
- */
-template <typename T>
-T sign(const T x)
-{
-    if (x > 0)      return 1; 
-    else if (x < 0) return -1;
-    else            return 0;
-}
-
-/**
  * Test whether the Armijo condition (Nocedal and Wright, Eq. 3.6a) is 
  * satisfied by the given pair of old (pre-step) and new (post-step) solutions.
  *
