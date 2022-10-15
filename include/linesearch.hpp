@@ -493,6 +493,10 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
     std::cout << "dir = " << dir.transpose() << std::endl; 
     std::cout << "grad_curr = " << grad_curr.transpose() << std::endl;
     std::cout << "dphi0 = " << dphi0 << std::endl;
+    std::cout << "min_stepsize = " << min_stepsize << std::endl; 
+    std::cout << "max_stepsize = " << max_stepsize << std::endl;
+    std::cout << "f_curr = " << f_curr << std::endl; 
+    std::cout << "f_prev = " << f_prev << std::endl;
 
     // Initialize the bracketing stepsizes 
     T stepsize0 = 0;
