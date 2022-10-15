@@ -92,20 +92,109 @@ bool wolfeStrongCurvature(const Ref<const Matrix<T, Dynamic, 1> >& dir,
 }
 
 /**
+ * Find the minimum for an interpolating quadratic polynomial that goes through
+ * `(a, f_a)` and `(b, f_b)` with derivative at `a` of `df_a`.
+ *
+ * @param a    First x-value.
+ * @param f_a  Value of interpolated function at `a`.
+ * @param df_a Derivative of interpolated function at `a`.
+ * @param b    Second x-value.
+ * @param f_b  Value of interpolated function at `b`.
+ * @returns Input value at which the quadratic interpolant is minimized.
+ * @throws std::runtime_error If `a == b` or `f_b - f_a == df_a * (b - a)`. 
+ */
+template <typename T>
+T minQuadraticInterpolant(T a, T f_a, T df_a, T b, T f_b)
+{
+    T D = f_a;
+    T C = df_a;
+    T delta = b - a;
+    if (delta == 0)
+    {
+        throw std::runtime_error(
+            "Quadratic interpolation failed: points have the same x-value"
+        );
+    }
+    T B = (f_b - D - C * delta) / (delta * delta);
+    if (B == 0)
+    {
+        throw std::runtime_error(
+            "Quadratic interpolation failed: f_b - f_a - df_a * (b - a) == 0"
+        );
+    }
+    return a - C / (2 * B);
+}
+
+/**
+ * Find the minimum for an interpolating cubic polynomial that goes through
+ * `(a, f_a)`, `(b, f_b)`, and `(c, f_c)` with derivative at `a` of `df_a`.
+ *
+ * @param a    First x-value.
+ * @param f_a  Value of interpolated function at `a`.
+ * @param df_a Derivative of interpolated function at `a`.
+ * @param b    Second x-value.
+ * @param f_b  Value of interpolated function at `b`.
+ * @param c    Second x-value.
+ * @param f_c  Value of interpolated function at `c`.
+ * @returns Input value at which the quadratic interpolant is minimized.
+ * @throws std::runtime_error If `a == b` or `b == c` or `a == c` or a more
+ *                            complicated internal divide-by-zero is encountered
+ *                            (see below).
+ */
+template <typename T>
+T minCubicInterpolant(T a, T f_a, T df_a, T b, T f_b, T c, T f_c)
+{
+    using std::sqrt;
+    using boost::multiprecision::sqrt;
+
+    T C = df_a; 
+    T delta1 = b - a;
+    T delta2 = c - a;
+    T delta1_squared = delta1 * delta1;
+    T delta2_squared = delta2 * delta2;
+    T denom = (delta1_squared * delta2_squared) * (delta1 - delta2);
+    if (denom == 0)
+    {
+        throw std::runtime_error(
+            "Cubic interpolation failed: at least two points have the same x-value"
+        );
+    }
+
+    Matrix<T, 2, 2> M;
+    M << delta2_squared, -delta1_squared, -delta2_squared * delta2, delta1_squared * delta1;
+    Matrix<T, 2, 1> v;
+    v << f_b - f_a - C * delta1, f_c - f_a - C * delta2; 
+    Matrix<T, 2, 1> prod = (M * v) / denom;
+    T A = prod(0);  
+    T B = prod(1); 
+    T radical = B * B - 3 * A * C;
+    if (A == 0)
+    {
+        throw std::runtime_error("Cubic interpolation failed due to divide-by-zero");
+    }
+
+    return a + (-B + sqrt(radical)) / (3 * A);
+}
+
+/**
  * An implementation of the zoom function (Algorithm 3.6 in Nocedal and Wright),
  * which chooses a stepsize that satisfies the strong Wolfe conditions.
  *
- * @param func        Objective function.
- * @param gradient    Function that evaluates the gradient of the objective.
- * @param x_curr      Input vector.
- * @param f_curr      Pre-computed value of objective at `x_curr`.
- * @param grad_curr   Pre-computed value of gradient at `x_curr`.
- * @param dir         Step vector.
- * @param stepsize_lo Min/max allowed stepsize, together with `stepsize_hi`.
- * @param stepsize_hi Min/max allowed stepsize, together with `stepsize_lo`.
- * @param c1          Constant multiplier in Armijo condition.
- * @param c2          Constant multiplier in strong curvature condition.
- * @param verbose     If true, output intermittent messages to `stdout`.
+ * @param func         Objective function.
+ * @param gradient     Function that evaluates the gradient of the objective.
+ * @param x_curr       Input vector.
+ * @param f_curr       Pre-computed value of objective at `x_curr`.
+ * @param grad_curr    Pre-computed value of gradient at `x_curr`.
+ * @param dir          Step vector.
+ * @param stepsize_lo  Min/max allowed stepsize, together with `stepsize_hi`.
+ * @param stepsize_hi  Min/max allowed stepsize, together with `stepsize_lo`.
+ * @param stepsize_tol Tolerance between `stepsize_hi` and `stepsize_lo` (as
+ *                     they are iteratively updated) for terminating stepsize
+ *                     search. 
+ * @param c1           Constant multiplier in Armijo condition.
+ * @param c2           Constant multiplier in strong curvature condition.
+ * @param max_iter     Maximum number of stepsize search iterations.
+ * @param verbose      If true, output intermittent messages to `stdout`.
  * @returns New stepsize, together with indicators as to whether the 
  *          stepsize satisfies the Armijo and strong curvature conditions.
  */
@@ -116,23 +205,130 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
                                const Ref<const Matrix<T, Dynamic, 1> >& grad_curr,
                                const Ref<const Matrix<T, Dynamic, 1> >& dir,
                                T stepsize_lo, T stepsize_hi, const T stepsize_tol, 
-                               const T c1, const T c2, const bool verbose)
+                               const T c1, const T c2, const int max_iter,
+                               const bool verbose)
 {
     bool satisfies_armijo = false; 
     bool satisfies_curvature = false;
-    while (abs(stepsize_lo - stepsize_hi) > stepsize_tol)
+    T delta = stepsize_hi - stepsize_lo;
+    T abs_delta = abs(delta);
+    const T cubic_interpolate_tol_factor = 0.2; 
+    const T quadratic_interpolate_tol_factor = 0.1;
+    T stepsize_prev = 0; 
+    
+    int i = 0;
+    while (abs_delta > stepsize_tol && i < max_iter)
     {
-        T f_lo = func(x_curr + stepsize_lo * dir);
         if (verbose)
         {
             std::cout << "... zooming into stepsize interval between "
                       << stepsize_lo << " and " << stepsize_hi << std::endl;
         }
 
-        // Determine new stepsize as the average of the two limiting stepsizes 
-        T new_stepsize = (stepsize_lo + stepsize_hi) / 2;
-        T f_new = func(x_curr + new_stepsize * dir);
-        T phi_deriv_zero = dir.dot(grad_curr);
+        // Determine new stepsize as some interpolant of the two bracketing
+        // stepsizes
+        //
+        // We do this by interpolating \phi(\alpha) = func(x + \alpha * dir),
+        // where \alpha is the stepsize, between the bracketing stepsizes
+        //
+        // If at least one iteration has been performed (i > 0), then first 
+        // try cubic interpolation of \phi(\alpha) and check that the result
+        // is not too close to either stepsize_lo or stepsize_hi
+        //
+        // If on the first iteration *or* the cubic interpolation above results
+        // in a stepsize too close to either stepsize_lo or stepsize_hi, then 
+        // try quadratic interpolation of \phi(\alpha) and check that that
+        // result is not too close to either stepsize_lo or stepsize_hi
+        //
+        // If the quadratic interpolation above (also) results in a stepsize 
+        // too close to either stepsize_lo or stepsize_hi, then simply take the 
+        // average of stepsize_lo and stepsize_hi (bisection)
+        T new_stepsize, bracket_tol;
+        T phi_lo = func(x_curr + stepsize_lo * dir); 
+        T phi_hi = func(x_curr + stepsize_hi * dir);
+        T phi_prev = (i == 0 ? f_curr : func(x_curr + stepsize_prev * dir));
+        T dphi_lo = dir.dot(gradient(x_curr + stepsize_lo * dir));
+        if (i == 0)
+        {
+            try
+            {
+                new_stepsize = minQuadraticInterpolant(
+                    stepsize_lo, phi_lo, dphi_lo, stepsize_hi, phi_hi
+                );
+                bracket_tol = quadratic_interpolate_tol_factor * abs_delta;
+                if (abs(new_stepsize - stepsize_lo) < bracket_tol ||
+                    abs(new_stepsize - stepsize_hi) < bracket_tol)
+                {
+                    new_stepsize = (stepsize_hi + stepsize_lo) / 2;
+                }
+            }
+            catch (const std::runtime_error& e)
+            {
+                new_stepsize = (stepsize_hi + stepsize_lo) / 2;
+            }
+        }
+        else
+        {
+            int interpolation_mode;   // 0 for bisection, 1 for quadratic, 2 for cubic
+            try
+            { 
+                new_stepsize = minCubicInterpolant(
+                    stepsize_lo, phi_lo, dphi_lo, stepsize_hi, phi_hi,
+                    stepsize_prev, phi_prev
+                );
+                interpolation_mode = 2;
+            }
+            catch (const std::runtime_error& e)
+            {
+                try
+                {
+                    new_stepsize = minQuadraticInterpolant(
+                        stepsize_lo, phi_lo, dphi_lo, stepsize_hi, phi_hi
+                    );
+                    interpolation_mode = 1;
+                }
+                catch (const std::runtime_error& e)
+                {
+                    new_stepsize = (stepsize_lo + stepsize_hi) / 2;
+                    interpolation_mode = 0;
+                }
+            }
+            if (interpolation_mode == 2)
+            {
+                bracket_tol = cubic_interpolate_tol_factor * abs_delta;
+                if (abs(new_stepsize - stepsize_lo) < bracket_tol ||
+                    abs(new_stepsize - stepsize_hi) < bracket_tol)
+                {
+                    try
+                    {
+                        new_stepsize = minQuadraticInterpolant(
+                            stepsize_lo, phi_lo, dphi_lo, stepsize_hi, phi_hi
+                        );
+                        bracket_tol = quadratic_interpolate_tol_factor * abs_delta;
+                        if (abs(new_stepsize - stepsize_lo) < bracket_tol ||
+                            abs(new_stepsize - stepsize_hi) < bracket_tol)
+                        {
+                            new_stepsize = (stepsize_hi + stepsize_lo) / 2;
+                        }
+                    }
+                    catch (const std::runtime_error& e)
+                    {
+                        new_stepsize = (stepsize_lo + stepsize_hi) / 2;
+                    }
+                }
+            }
+            else if (interpolation_mode == 1)
+            {
+                bracket_tol = quadratic_interpolate_tol_factor * abs_delta;
+                if (abs(new_stepsize - stepsize_lo) < bracket_tol ||
+                    abs(new_stepsize - stepsize_hi) < bracket_tol)
+                {
+                    new_stepsize = (stepsize_lo + stepsize_hi) / 2;
+                }
+            }
+        }
+        T phi_new = func(x_curr + new_stepsize * dir);
+        T dphi_zero = dir.dot(grad_curr);
         if (verbose)
         {
             std::cout << "...... candidate stepsize = " << new_stepsize << std::endl;
@@ -145,32 +341,34 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
         // \alpha_{lo} = stepsize_lo
         // \alpha_{hi} = stepsize_hi
         // \phi(0) = f_curr
-        // \phi'(0) = phi_deriv_zero = dir.dot(grad_curr)
-        // \phi(\alpha_j) = f_new
-        // \phi(\alpha_{lo}) = func(x_curr + stepsize_lo * dir) = f_lo
-        satisfies_armijo = wolfeArmijo<T>(dir, new_stepsize, f_curr, f_new, grad_curr, c1);
-        if (!satisfies_armijo)
+        // \phi'(0) = dphi_zero = dir.dot(grad_curr)
+        // \phi(\alpha_j) = phi_new
+        // \phi(\alpha_{lo}) = func(x_curr + stepsize_lo * dir) = phi_lo
+        satisfies_armijo = wolfeArmijo<T>(dir, new_stepsize, f_curr, phi_new, grad_curr, c1);
+        if (!satisfies_armijo)    // If the Armijo condition is not satisfied 
         {
             if (verbose)
             {
                 std::cout << "...... violates Armijo condition" << std::endl;
             }
+            stepsize_prev = stepsize_hi;
             stepsize_hi = new_stepsize;
         }
-        else if (f_new >= f_lo)
-        {
+        else if (phi_new >= phi_lo)   // If the step yields an increase in the
+        {                             // objective value relative to stepsize_lo
             if (verbose)
             {
                 std::cout << "...... causes increase in objective relative to "
                           << "stepsize_lo = " << stepsize_lo << std::endl;
             }
+            stepsize_prev = stepsize_hi;
             stepsize_hi = new_stepsize;
         }
         else 
         {
             Matrix<T, Dynamic, 1> grad_new = gradient(x_curr + new_stepsize * dir); 
             satisfies_curvature = wolfeStrongCurvature<T>(dir, grad_curr, grad_new, c2); 
-            if (satisfies_curvature)
+            if (satisfies_curvature)   // If the strong curvature condition is satisfied
             {
                 if (verbose)
                 {
@@ -185,12 +383,24 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
             }
             if (dir.dot(grad_new) * (stepsize_hi - stepsize_lo) >= 0)
             {
+                stepsize_prev = stepsize_hi;
                 stepsize_hi = stepsize_lo;
+            }
+            else 
+            {
+                stepsize_prev = stepsize_lo;
             }
             stepsize_lo = new_stepsize;
         }
+        delta = stepsize_hi - stepsize_lo;
+        abs_delta = abs(delta);
+        i++;
     }
-    T final_stepsize = (stepsize_lo + stepsize_hi) / 2;
+
+    // If stepsize has not yet been returned, take the average of stepsize_lo
+    // and stepsize_hi (which should be relatively close or less than stepsize_tol
+    // at this point) as the final stepsize
+    T final_stepsize = (stepsize_hi + stepsize_lo) / 2; 
     T phi_final = func(x_curr + final_stepsize * dir);
     Matrix<T, Dynamic, 1> grad_final = gradient(x_curr + final_stepsize * dir); 
     satisfies_armijo = wolfeArmijo<T>(dir, final_stepsize, f_curr, phi_final, grad_curr, c1);
@@ -245,6 +455,7 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
  * @param c1
  * @param c2
  * @param max_iter
+ * @param zoom_max_iter
  * @param verbose
  * @param zoom_verbose
  */
@@ -256,8 +467,9 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
                                      const Ref<const Matrix<T, Dynamic, 1> >& grad_curr, 
                                      const Ref<const Matrix<T, Dynamic, 1> >& dir,
                                      T min_stepsize, T max_stepsize, const T c1,
-                                     const T c2, const int max_iter, 
-                                     const bool verbose, const bool zoom_verbose)
+                                     const T c2, const int max_iter,
+                                     const int zoom_max_iter, const bool verbose,
+                                     const bool zoom_verbose)
 {
     using std::abs;
     using boost::multiprecision::abs;
@@ -310,7 +522,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             // condition (and hence can be passed first as "\alpha_lo")
             auto result = zoom(
                 func, gradient, x_curr, f_curr, grad_curr, dir, stepsize0,
-                stepsize1, min_stepsize, c1, c2, zoom_verbose
+                stepsize1, min_stepsize, c1, c2, zoom_max_iter, zoom_verbose
             );
             stepsize = std::get<0>(result);
             satisfies_armijo = std::get<1>(result); 
@@ -330,7 +542,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             // as "\alpha_lo")
             auto result = zoom(
                 func, gradient, x_curr, f_curr, grad_curr, dir, stepsize0,
-                stepsize1, min_stepsize, c1, c2, zoom_verbose
+                stepsize1, min_stepsize, c1, c2, zoom_max_iter, zoom_verbose
             );
             stepsize = std::get<0>(result);
             satisfies_armijo = std::get<1>(result); 
@@ -363,7 +575,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             // (and hence can be passed first as "\alpha_lo")
             auto result = zoom(
                 func, gradient, x_curr, f_curr, grad_curr, dir, stepsize1,
-                stepsize0, min_stepsize, c1, c2, zoom_verbose
+                stepsize0, min_stepsize, c1, c2, zoom_max_iter, zoom_verbose
             );
             stepsize = std::get<0>(result);
             satisfies_armijo = std::get<1>(result); 
