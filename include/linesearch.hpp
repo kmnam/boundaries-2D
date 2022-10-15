@@ -490,6 +490,9 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
     // - Therefore, \phi'(0) is simply the dot product of p and the gradient
     //   of f at x
     T dphi0 = dir.dot(grad_curr);
+    std::cout << "dir = " << dir.transpose() << std::endl; 
+    std::cout << "grad_curr = " << grad_curr.transpose() << std::endl;
+    std::cout << "dphi0 = " << dphi0 << std::endl;
 
     // Initialize the bracketing stepsizes 
     T stepsize0 = 0;
@@ -498,6 +501,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
         stepsize1 = max_stepsize;
     else
         stepsize1 = min(max_stepsize, abs(1.01 * 2 * (f_curr - f_prev) / dphi0));
+    std::cout << "stepsize1 = " << stepsize1 << std::endl;
 
     for (int i = 1; i <= max_iter; ++i)
     {
