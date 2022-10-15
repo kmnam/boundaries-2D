@@ -501,10 +501,16 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
     // Initialize the bracketing stepsizes 
     T stepsize0 = 0;
     T stepsize1, stepsize;
-    if (f_prev == std::numeric_limits<T>::quiet_NaN())
+    if (std::isnan(f_prev))
         stepsize1 = max_stepsize;
     else
-        stepsize1 = min(max_stepsize, abs(1.01 * 2 * (f_curr - f_prev) / dphi0));
+    {
+        T trial_stepsize = 1.01 * 2 * (f_curr - f_prev) / dphi0;
+        if (trial_stepsize > 0)
+            stepsize1 = trial_stepsize; 
+        else 
+            stepsize1 = max_stepsize;
+    }
     std::cout << "stepsize1 = " << stepsize1 << std::endl;
 
     for (int i = 1; i <= max_iter; ++i)
