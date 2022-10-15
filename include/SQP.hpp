@@ -556,9 +556,9 @@ class SQPOptimizer
             T stepsize = std::get<0>(result);
             bool satisfies_armijo = std::get<1>(result);
             bool satisfies_curvature = std::get<2>(result);
-            if (stepsize > max_stepsize) 
-                std::cout << "\n\n\nPROBLEM!! WHY???\n\n\n";
 
+            // Advance by the given stepsize in the given direction, and evaluate 
+            // the objective and its gradient at the new input vector
             Matrix<T, Dynamic, 1> step = stepsize * p;
             Matrix<T, Dynamic, 1> x_new = x_curr + step;
             T f_new = func(x_new);
@@ -593,7 +593,8 @@ class SQPOptimizer
                           << ")" << std::endl; 
             }
             
-            // Evaluate the Hessian of the Lagrangian (with respect to the input space)
+            // Evaluate the gradient and Hessian of the Lagrangian (with respect
+            // to the input space)
             Matrix<T, Dynamic, 1> grad_lagrangian_mixed = this->lagrangianGradient(
                 func, x_curr, xl_new.tail(this->N), delta
             ); 
