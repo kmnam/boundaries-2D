@@ -475,6 +475,8 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
     using boost::multiprecision::abs;
     using std::min;
     using boost::multiprecision::min;
+    using std::isnan;
+    using boost::multiprecision::isnan;
 
     bool satisfies_armijo = false;
     bool satisfies_curvature = false;
@@ -501,7 +503,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
     // Initialize the bracketing stepsizes 
     T stepsize0 = 0;
     T stepsize1, stepsize;
-    if (std::isnan(f_prev))
+    if (isnan(f_prev))
         stepsize1 = max_stepsize;
     else
     {
