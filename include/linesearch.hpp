@@ -500,6 +500,8 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             stepsize1 = max_stepsize;
     }
 
+    T phi0 = func(x_curr + stepsize0 * dir);
+    T phi1 = func(x_curr + stepsize1 * dir);
     for (int i = 1; i <= max_iter; ++i)
     {
         if (verbose)
@@ -507,10 +509,6 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             std::cout << "... searching for stepsize between "
                       << stepsize0 << " and " << stepsize1 << std::endl;
         }
-
-        // Evaluate func(x_curr + stepsize0 * dir) and func(x_curr + stepsize1 * dir)
-        T phi0 = func(x_curr + stepsize0 * dir);
-        T phi1 = func(x_curr + stepsize1 * dir);
 
         // Does stepsize1 satisfy the Armijo condition? 
         if (!wolfeArmijo<T>(dir, stepsize1, f_curr, phi1, grad_curr, c1))
@@ -589,7 +587,11 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
         // scipy.optimize._linesearch.scalar_search_wolfe2())
         T stepsize2 = min(2 * stepsize1, max_stepsize);
         stepsize0 = stepsize1; 
-        stepsize1 = stepsize2; 
+        stepsize1 = stepsize2;
+
+        // Re-evaluate func(x_curr + stepsize0 * dir) and func(x_curr + stepsize1 * dir)
+        phi0 = func(x_curr + stepsize0 * dir);
+        phi1 = func(x_curr + stepsize1 * dir);
     }
 
     // Return stepsize1 if a stepsize has not yet been returned
