@@ -422,26 +422,19 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
  *
  * This algorithm identifies a stepsize between a minimum stepsize and a
  * maximum stepsize (usually some epsilon > 0 and 1.0, respectively) that
- * satisfies the *strong* Wolfe conditions.
- *
- * by taking two candidate stepsizes, stepsize0 and stepsize1, and choosing as
- * the stepsize:
- *
- * - stepsize1 itself if stepsize1 satisfies the strong Wolfe conditions;
- * - a value in [stepsize0, stepsize1] if *any* of the three conditions are
+ * satisfies the *strong* Wolfe conditions, by taking two candidate stepsizes,
+ * `stepsize0` and `stepsize1`, and choosing as the stepsize:
+ * - `stepsize1` itself if `stepsize1` satisfies the strong Wolfe conditions;
+ * - a value in `[stepsize0, stepsize1]` if *any* of the three conditions are
  *   satisfied:
- *   1) stepsize1 violates the Armijo condition, 
- *   2) func(x_curr + stepsize1 * dir) >= func(x_curr + stepsize0 * dir),
- *      meaning that stepsize1 leads to an increased objective value relative
- *      to stepsize0, or
- *   3) the descent direction at stepsize1 is nonnegative; *or*
- * - a value in (a subinterval of) [stepsize1, 1.0] by repeating the above
- *   checks with stepsize1 <- (stepsize1 + 1.0) / 2 and stepsize0 <- stepsize1
- *   *if* stepsize1 < 0.9, and stepsize1 <- 1.0 and stepsize0 <- stepsize1
- *   *if* stepsize1 >= 0.9
- *
- * We initialize stepsize0 <- min_stepsize and stepsize1 as the mean of
- * min_stepsize and 1.0.
+ *   1) `stepsize1` violates the Armijo condition, 
+ *   2) `func(x_curr + stepsize1 * dir) >= func(x_curr + stepsize0 * dir)`,
+ *      meaning that `stepsize1` leads to an increased objective value relative
+ *      to `stepsize0`, or
+ *   3) the descent direction at `stepsize1` is nonnegative; *or*
+ * - a value in (a subinterval of) `[stepsize1, 1.0]` by repeating the above
+ *   checks with `stepsize1 <- min(2 * stepsize1, max_stepsize)` and
+ *   `stepsize0 <- stepsize1` up to the given maximum number of iterations.
  *
  * @param func
  * @param gradient
@@ -494,7 +487,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
     T dphi0 = dir.dot(grad_curr);
 
     // Initialize the bracketing stepsizes 
-    T stepsize0 = 0;
+    T stepsize0 = min_stepsize;
     T stepsize1, stepsize;
     if (isnan(f_prev))
         stepsize1 = max_stepsize;
