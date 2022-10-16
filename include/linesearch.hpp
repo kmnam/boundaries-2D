@@ -15,7 +15,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     10/14/2022
+ *     10/16/2022
  */
 
 #ifndef SQP_OPTIMIZER_LINE_SEARCH_HPP
@@ -539,7 +539,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
         }
         // Or does stepsize1 lead to an increased objective value relative
         // to stepsize0?
-        else if (phi1 >= phi0 || i > 1)
+        else if (phi1 >= phi0 && i > 1)
         {
             // If it does, then again the interval between stepsize0 and 
             // stepsize1 must contain stepsizes that satisfy both strong
