@@ -592,7 +592,12 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
         stepsize1 = stepsize2; 
     }
 
-    return std::make_tuple(stepsize, satisfies_armijo, satisfies_curvature);
+    // Return stepsize1 if a stepsize has not yet been returned
+    satisfies_armijo = wolfeArmijo<T>(dir, stepsize1, f_curr, phi1, grad_curr, c1);
+    satisfies_curvature = wolfeStrongCurvature<T>(
+        dir, grad_curr, gradient(x_curr + stepsize1 * dir), c2
+    );
+    return std::make_tuple(stepsize1, satisfies_armijo, satisfies_curvature);
 }
 
 #endif 
