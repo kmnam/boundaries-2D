@@ -134,9 +134,9 @@ T minQuadraticInterpolant(T a, T f_a, T df_a, T b, T f_b)
  * @param df_a Derivative of interpolated function at `a`.
  * @param b    Second x-value.
  * @param f_b  Value of interpolated function at `b`.
- * @param c    Second x-value.
+ * @param c    Third x-value.
  * @param f_c  Value of interpolated function at `c`.
- * @returns Input value at which the quadratic interpolant is minimized.
+ * @returns Input value at which the cubic interpolant is minimized.
  * @throws std::runtime_error If `a == b` or `b == c` or `a == c` or a more
  *                            complicated internal divide-by-zero is encountered
  *                            (see below).
