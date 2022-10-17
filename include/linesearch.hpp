@@ -526,7 +526,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             stepsize = std::get<0>(result);
             satisfies_armijo = std::get<1>(result); 
             satisfies_curvature = std::get<2>(result);  
-            break;
+            return std::make_tuple(stepsize, satisfies_armijo, satisfies_curvature);
         }
         // Or does stepsize1 lead to an increased objective value relative
         // to stepsize0?
@@ -546,7 +546,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             stepsize = std::get<0>(result);
             satisfies_armijo = std::get<1>(result); 
             satisfies_curvature = std::get<2>(result);  
-            break;
+            return std::make_tuple(stepsize, satisfies_armijo, satisfies_curvature);
         }
         
         // Otherwise, does stepsize1 satisfy the strong curvature condition?
@@ -556,10 +556,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             // If it does, then seeing as stepsize1 must also satisfy
             // the Armijo condition (see above), stepsize1 satisfies 
             // both strong Wolfe conditions 
-            stepsize = stepsize1;
-            satisfies_armijo = true;
-            satisfies_curvature = true;
-            break;
+            return std::make_tuple(stepsize1, true, true);
         }
 
         // Otherwise, is the descent direction at x_curr + stepsize1 * dir
@@ -579,7 +576,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             stepsize = std::get<0>(result);
             satisfies_armijo = std::get<1>(result); 
             satisfies_curvature = std::get<2>(result);  
-            break;
+            return std::make_tuple(stepsize, satisfies_armijo, satisfies_curvature);
         }
 
         // Update stepsize0 and stepsize1 in the same manner as in
