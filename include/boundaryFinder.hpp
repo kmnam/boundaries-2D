@@ -24,10 +24,10 @@
 #include <CGAL/Vector_2.h>
 #include <boost/random.hpp>
 #include <linearConstraints.hpp>
-#include <vertexEnum.hpp>
 #include "boundaries.hpp"
 #include "SQP.hpp"             // Includes Eigen/Dense, CGAL/QP_*, Boost.Multiprecision, boostMultiprecisionEigen.hpp, etc.
 #include <polytopes.hpp>       // Must be included after SQP.hpp
+#include <vertexEnum.hpp>      // Must be included after SQP.hpp
 
 using namespace Eigen;
 
