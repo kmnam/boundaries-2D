@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     10/15/2022
+ *     10/19/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -22,13 +22,12 @@
 #include <Eigen/Dense>
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Vector_2.h>
-#include <boost/multiprecision/gmp.hpp>
 #include <boost/random.hpp>
-#include <polytopes.hpp>
 #include <linearConstraints.hpp>
 #include <vertexEnum.hpp>
 #include "boundaries.hpp"
-#include "SQP.hpp"
+#include "SQP.hpp"             // Includes Eigen/Dense, CGAL/QP_*, Boost.Multiprecision, boostMultiprecisionEigen.hpp, etc.
+#include <polytopes.hpp>       // Must be included after SQP.hpp
 
 using namespace Eigen;
 
