@@ -34,13 +34,9 @@
 #include <sstream>
 #include <stdexcept>
 #include <cmath>
-#include <Eigen/Dense>
-#include <CGAL/QP_models.h>
-#include <CGAL/QP_functions.h>
-#include <boost/multiprecision/gmp.hpp>
 #include <linearConstraints.hpp>
 #include "quasiNewton.hpp"
-#include "linesearch.hpp"
+#include "linesearch.hpp"   // Includes Eigen/Dense, CGAL, Boost, boostMultiprecisionEigen.hpp, etc.
 #include "duals.hpp"
 
 using namespace Eigen;
