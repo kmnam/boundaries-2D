@@ -15,7 +15,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     10/16/2022
+ *     10/19/2022
  */
 
 #ifndef SQP_OPTIMIZER_LINE_SEARCH_HPP
@@ -243,7 +243,7 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
         // If the quadratic interpolation above (also) results in a stepsize 
         // too close to either stepsize_lo or stepsize_hi, then simply take the 
         // average of stepsize_lo and stepsize_hi (bisection)
-        T new_stepsize, bracket_tol;
+        T new_stepsize, bracket_tol, stepsize_min, stepsize_max;
         T phi_lo = func(x_curr + stepsize_lo * dir); 
         T phi_hi = func(x_curr + stepsize_hi * dir);
         T phi_prev = (i == 0 ? f_curr : func(x_curr + stepsize_prev * dir));
@@ -255,8 +255,19 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
                 new_stepsize = minQuadraticInterpolant(
                     stepsize_lo, phi_lo, dphi_lo, stepsize_hi, phi_hi
                 );
+                if (stepsize_lo < stepsize_hi)
+                {
+                    stepsize_min = stepsize_lo;
+                    stepsize_max = stepsize_hi;
+                }
+                else 
+                {
+                    stepsize_min = stepsize_hi;
+                    stepsize_max = stepsize_lo;
+                }
                 bracket_tol = quadratic_interpolate_tol_factor * abs_delta;
-                if (abs(new_stepsize - stepsize_lo) < bracket_tol ||
+                if (new_stepsize <= stepsize_min || new_stepsize >= stepsize_max ||
+                    abs(new_stepsize - stepsize_lo) < bracket_tol ||
                     abs(new_stepsize - stepsize_hi) < bracket_tol)
                 {
                     new_stepsize = (stepsize_hi + stepsize_lo) / 2;
@@ -295,8 +306,19 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
             }
             if (interpolation_mode == 2)
             {
-                bracket_tol = cubic_interpolate_tol_factor * abs_delta;
-                if (abs(new_stepsize - stepsize_lo) < bracket_tol ||
+                stepsize_min = stepsize_lo; 
+                if (stepsize_min > stepsize_hi)
+                    stepsize_min = stepsize_hi;
+                if (stepsize_min > stepsize_prev)
+                    stepsize_min = stepsize_prev;
+                stepsize_max = stepsize_lo;
+                if (stepsize_max < stepsize_hi)
+                    stepsize_max = stepsize_hi;
+                if (stepsize_max < stepsize_prev)
+                    stepsize_max = stepsize_prev;
+                bracket_tol = cubic_interpolate_tol_factor * (stepsize_max - stepsize_min);
+                if (new_stepsize <= stepsize_min || new_stepsize >= stepsize_max ||
+                    abs(new_stepsize - stepsize_lo) < bracket_tol ||
                     abs(new_stepsize - stepsize_hi) < bracket_tol)
                 {
                     try
@@ -304,8 +326,19 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
                         new_stepsize = minQuadraticInterpolant(
                             stepsize_lo, phi_lo, dphi_lo, stepsize_hi, phi_hi
                         );
+                        if (stepsize_lo < stepsize_hi)
+                        {
+                            stepsize_min = stepsize_lo;
+                            stepsize_max = stepsize_hi;
+                        }
+                        else 
+                        {
+                            stepsize_min = stepsize_hi;
+                            stepsize_max = stepsize_lo;
+                        }
                         bracket_tol = quadratic_interpolate_tol_factor * abs_delta;
-                        if (abs(new_stepsize - stepsize_lo) < bracket_tol ||
+                        if (new_stepsize <= stepsize_min || new_stepsize >= stepsize_max ||
+                            abs(new_stepsize - stepsize_lo) < bracket_tol ||
                             abs(new_stepsize - stepsize_hi) < bracket_tol)
                         {
                             new_stepsize = (stepsize_hi + stepsize_lo) / 2;
@@ -319,8 +352,19 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
             }
             else if (interpolation_mode == 1)
             {
+                if (stepsize_lo < stepsize_hi)
+                {
+                    stepsize_min = stepsize_lo;
+                    stepsize_max = stepsize_hi;
+                }
+                else 
+                {
+                    stepsize_min = stepsize_hi;
+                    stepsize_max = stepsize_lo;
+                }
                 bracket_tol = quadratic_interpolate_tol_factor * abs_delta;
-                if (abs(new_stepsize - stepsize_lo) < bracket_tol ||
+                if (new_stepsize <= stepsize_min || new_stepsize >= stepsize_max || 
+                    abs(new_stepsize - stepsize_lo) < bracket_tol ||
                     abs(new_stepsize - stepsize_hi) < bracket_tol)
                 {
                     new_stepsize = (stepsize_lo + stepsize_hi) / 2;
