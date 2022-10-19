@@ -36,7 +36,7 @@
 #include <cmath>
 #include <linearConstraints.hpp>
 #include "quasiNewton.hpp"
-#include "linesearch.hpp"   // Includes Eigen/Dense, CGAL, Boost, boostMultiprecisionEigen.hpp, etc.
+#include "linesearch.hpp"   // Includes Eigen/Dense, CGAL/QP_*, Boost.Multiprecision, boostMultiprecisionEigen.hpp, etc.
 #include "duals.hpp"
 
 using namespace Eigen;
