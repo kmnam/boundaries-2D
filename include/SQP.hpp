@@ -9,12 +9,12 @@
  * This means that:
  *
  * - merit functions need not be used, since any candidate solution of the 
- *   form x_k + a_k * p_k, with step-size a_k < 1 and direction p_k, satisfies
+ *   form x_k + a_k * p_k, with stepsize a_k < 1 and direction p_k, satisfies
  *   all constraints if x_k + p_k does; and 
  * - inconsistent linearizations in the style of Nocedal and Wright, Eq. 18.12
  *   are not encountered.
  *
- * Step-sizes are determined to satisfy the (strong) Wolfe conditions, given by
+ * Stepsizes are determined to satisfy the (strong) Wolfe conditions, given by
  * Eqs. 3.6 and 3.7 in Nocedal and Wright.
  *
  * L1, L2, or elastic-net regularization may be incorporated into the
@@ -24,7 +24,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     10/14/2022
+ *     10/19/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -529,6 +529,20 @@ class SQPOptimizer
             {
                 p(i) = static_cast<T>(CGAL::to_double(*it));
                 i++;
+            }
+
+            // If the vector has length > 1, then normalize by its length 
+            // 
+            // Note that if the vector has length < 1, then normalizing may
+            // cause the constraints to be violated by a step of stepsize 1,
+            // but since the constraints are linear (and thus convex), if the
+            // vector has length > 1, then the normalized vector will still 
+            // satisfy the constraints
+            T p_norm = p.norm();
+            if (p_norm > 1)
+            {
+                for (int i = 0; i < this->D; ++i)
+                    p(i) /= p_norm;
             }
 
             // Collect the values of the new Lagrange multipliers (i.e., the
@@ -1073,7 +1087,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                 for (int i = 0; i < this->D - 1; ++i)
                     std::cout << p(i) << ", ";
                 std::cout << p(this->D - 1) << ")" << std::endl
-                          << "... trying step-size = " << stepsize
+                          << "... trying stepsize = " << stepsize
                           << ": Armijo = " << satisfies_armijo;
                 if (!use_only_armijo)
                     std::cout << ", curvature = " << satisfies_curvature;
@@ -1105,7 +1119,7 @@ class ForwardAutoDiffSQPOptimizer : public SQPOptimizer<T>
                 change_f = f_new - f; 
                 if (verbose)
                 {
-                    std::cout << "... trying step-size = " << stepsize
+                    std::cout << "... trying stepsize = " << stepsize
                               << ": Armijo = " << satisfies_armijo;
                     if (!use_only_armijo)
                         std::cout << ", curvature = " << satisfies_curvature;
