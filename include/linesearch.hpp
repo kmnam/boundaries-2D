@@ -29,6 +29,8 @@
 #include <CGAL/QP_models.h>
 #include <CGAL/QP_functions.h>
 #include <boost/multiprecision/gmp.hpp>
+#include <boost/multiprecision/mpfr.hpp>
+#include "boostMultiprecisionEigen.hpp"
 
 using namespace Eigen;
 using boost::multiprecision::mpq_rational;
@@ -101,11 +103,14 @@ bool wolfeStrongCurvature(const Ref<const Matrix<T, Dynamic, 1> >& dir,
  * @param b    Second x-value.
  * @param f_b  Value of interpolated function at `b`.
  * @returns Input value at which the quadratic interpolant is minimized.
- * @throws std::runtime_error If `a == b` or `f_b - f_a == df_a * (b - a)`. 
+ * @throws std::runtime_error If `a == b` or a divide-by-zero error is encountered.
  */
 template <typename T>
 T minQuadraticInterpolant(T a, T f_a, T df_a, T b, T f_b)
 {
+    using std::isnan;
+    using boost::multiprecision::isnan;
+
     T D = f_a;
     T C = df_a;
     T delta = b - a;
@@ -116,13 +121,15 @@ T minQuadraticInterpolant(T a, T f_a, T df_a, T b, T f_b)
         );
     }
     T B = (f_b - D - C * delta) / (delta * delta);
-    if (B == 0)
+    T value = a - C / (2 * B);
+    if (isnan(value))
     {
         throw std::runtime_error(
-            "Quadratic interpolation failed: f_b - f_a - df_a * (b - a) == 0"
+            "Quadratic interpolation failed: divide-by-zero encountered"
         );
     }
-    return a - C / (2 * B);
+
+    return value;
 }
 
 /**
@@ -138,14 +145,16 @@ T minQuadraticInterpolant(T a, T f_a, T df_a, T b, T f_b)
  * @param f_c  Value of interpolated function at `c`.
  * @returns Input value at which the cubic interpolant is minimized.
  * @throws std::runtime_error If `a == b` or `b == c` or `a == c` or a more
- *                            complicated internal divide-by-zero is encountered
- *                            (see below).
+ *                            complicated internal divide-by-zero error is
+ *                            encountered (see below).
  */
 template <typename T>
 T minCubicInterpolant(T a, T f_a, T df_a, T b, T f_b, T c, T f_c)
 {
     using std::sqrt;
     using boost::multiprecision::sqrt;
+    using std::isnan;
+    using boost::multiprecision::isnan;
 
     T C = df_a; 
     T delta1 = b - a;
@@ -153,7 +162,7 @@ T minCubicInterpolant(T a, T f_a, T df_a, T b, T f_b, T c, T f_c)
     T delta1_squared = delta1 * delta1;
     T delta2_squared = delta2 * delta2;
     T denom = (delta1_squared * delta2_squared) * (delta1 - delta2);
-    if (denom == 0)
+    if (delta1 == 0 || delta2 == 0 || delta1 - delta2 == 0)
     {
         throw std::runtime_error(
             "Cubic interpolation failed: at least two points have the same x-value"
@@ -168,12 +177,15 @@ T minCubicInterpolant(T a, T f_a, T df_a, T b, T f_b, T c, T f_c)
     T A = prod(0);  
     T B = prod(1); 
     T radical = B * B - 3 * A * C;
-    if (A == 0)
+    T value = a + (-B + sqrt(radical)) / (3 * A);
+    if (isnan(value))
     {
-        throw std::runtime_error("Cubic interpolation failed due to divide-by-zero");
+        throw std::runtime_error(
+            "Cubic interpolation failed: divide-by-zero encountered"
+        );
     }
 
-    return a + (-B + sqrt(radical)) / (3 * A);
+    return value;
 }
 
 /**
