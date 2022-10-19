@@ -28,9 +28,9 @@
 #include <Eigen/Dense>
 #include <CGAL/QP_models.h>
 #include <CGAL/QP_functions.h>
+#include "boostMultiprecisionEigen.hpp"
 #include <boost/multiprecision/gmp.hpp>
 #include <boost/multiprecision/mpfr.hpp>
-#include "boostMultiprecisionEigen.hpp"
 
 using namespace Eigen;
 using boost::multiprecision::mpq_rational;
