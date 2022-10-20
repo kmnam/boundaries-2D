@@ -35,9 +35,17 @@ double F2(const Ref<const VectorXd>& x)
 }
 
 /**
- * Nocedal and Wright, problem at top of page 467. 
+ * Nocedal and Wright, Example 12.10.
  */
 double F3(const Ref<const VectorXd>& x)
+{
+    return 0.5 * (x(0) * x(0) + x(1) * x(1)); 
+}
+
+/**
+ * Nocedal and Wright, problem at top of page 467. 
+ */
+double F4(const Ref<const VectorXd>& x)
 {
     return std::pow(x(0), 2) + std::pow(x(1) + 1.0, 2);
 }
@@ -97,12 +105,13 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_F1)
     b << -2.0, -6.0, -2.0, 0.0, 0.0;
     SQPOptimizer<double>* opt = new SQPOptimizer<double>(2, 5, A, b);
 
-    // Start at (2, 0); constraints 3 and 5 are active, with Lagrange  
-    // multipliers -2 and -1
+    // Start at (2, 0); constraints 3 and 5 are active (with Lagrange  
+    // multipliers -2 and -1)
     VectorXd x(2);
     VectorXd l(5); 
     x << 2.0, 0.0; 
-    l << 0.0, 0.0, -2.0, 0.0, -1.0;
+    l << 1.0, 1.0, 0.0, 1.0, 0.0;
+    
     VectorXd solution = opt->run(
         F1, x, l, delta, beta, min_stepsize, max_iter, tol, x_tol,
         QuasiNewtonMethod::BFGS, RegularizationMethod::NOREG, 0, 
@@ -144,11 +153,12 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_F2)
     b << -1.0, -1.0, -1.0, -1.0;
     SQPOptimizer<double>* opt = new SQPOptimizer<double>(2, 4, A, b);
 
-    // Start at (0.8, 0); all constraints are active 
+    // Start at (0, 1); first & third constraints are active, second & fourth 
+    // constraints are not
     VectorXd x(2);
     VectorXd l(4);
-    x << 0.8, 0.0;
-    l << 1.0, 1.0, 1.0, 1.0;
+    x << 0.0, 1.0;
+    l << 0.0, 1.0, 0.0, 1.0;
     VectorXd solution = opt->run(
         F2, x, l, delta, beta, min_stepsize, max_iter, tol, x_tol,
         QuasiNewtonMethod::BFGS, RegularizationMethod::NOREG, 0, 
@@ -178,15 +188,54 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_F3)
     const int line_search_max_iter = 10;
     const int zoom_max_iter = 10;
 
+    // Constraint in Nocedal and Wright, Example 12.10, plus non-negativity for x(1)
+    MatrixXd A = MatrixXd::Identity(2, 2);
+    VectorXd b(2); 
+    b << 1, 0;        // x(0) >= 1, x(1) >= 0
+    SQPOptimizer<double>* opt = new SQPOptimizer<double>(2, 2, A, b);
+    VectorXd x(2);    // Start at (1, 2); first constraint is active, second is not
+    VectorXd l(2); 
+    x << 1.0, 2.0;
+    l << 0.0, 1.0; 
+    VectorXd solution = opt->run(
+        F4, x, l, delta, beta, min_stepsize, max_iter, tol, x_tol,
+        QuasiNewtonMethod::BFGS, RegularizationMethod::NOREG, 0, 
+        hessian_modify_max_iter, c1, c2, line_search_max_iter,
+        zoom_max_iter, true, true, true
+    );
+    BOOST_TEST(abs(solution(0) - 1.0) < tol);
+    BOOST_TEST(abs(solution(1) - 0.0) < tol); 
+    delete opt;
+}
+
+/**
+ * Run the default SQP optimizer on F4().
+ */
+BOOST_AUTO_TEST_CASE(TEST_SQP_F4)
+{
+    using std::abs;
+    const double delta = 1e-8; 
+    const double beta = 1e-4;
+    const double min_stepsize = 1e-8;
+    const int max_iter = 1000; 
+    const double tol = 1e-8;
+    const double x_tol = 1e-10;
+    const int hessian_modify_max_iter = 1000;
+    const double c1 = 1e-4;
+    const double c2 = 0.9;
+    const int line_search_max_iter = 10;
+    const int zoom_max_iter = 10;
+
+    // Non-negativity constraints for both variables
     MatrixXd A = MatrixXd::Identity(2, 2);
     VectorXd b = VectorXd::Zero(2);
     SQPOptimizer<double>* opt = new SQPOptimizer<double>(2, 2, A, b);
-    VectorXd x(2); 
+    VectorXd x(2);    // Start at (1, 1); all constraints are inactive 
     VectorXd l(2); 
     x << 1.0, 1.0;
-    l << 0.0, 0.0; 
+    l << 1.0, 1.0; 
     VectorXd solution = opt->run(
-        F3, x, l, delta, beta, min_stepsize, max_iter, tol, x_tol,
+        F4, x, l, delta, beta, min_stepsize, max_iter, tol, x_tol,
         QuasiNewtonMethod::BFGS, RegularizationMethod::NOREG, 0, 
         hessian_modify_max_iter, c1, c2, line_search_max_iter,
         zoom_max_iter, true, true, true
@@ -214,6 +263,7 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_ROSENBROCK2D)
     const int line_search_max_iter = 10;
     const int zoom_max_iter = 10;
 
+    // Both variables are constrained to lie in [0, 2]
     MatrixXd A(4, 2);
     A <<  1.0,  0.0,
           0.0,  1.0,
@@ -222,7 +272,7 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_ROSENBROCK2D)
     VectorXd b(4);
     b << 0.0, 0.0, -2.0, -2.0;
     SQPOptimizer<double>* opt = new SQPOptimizer<double>(2, 4, A, b);
-    VectorXd x(2); 
+    VectorXd x(2);    // Start at (0.5, 0.5); all constraints are inactive 
     VectorXd l(4);
     x << 0.5, 0.5;
     l << 1.0, 1.0, 1.0, 1.0;
@@ -255,6 +305,7 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_ROSENBROCK3D)
     const int line_search_max_iter = 10;
     const int zoom_max_iter = 10;
 
+    // All three variables are constrained to lie in [0, 2]
     MatrixXd A(6, 3);
     A <<  1.0,  0.0,  0.0,
           0.0,  1.0,  0.0,
@@ -265,7 +316,7 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_ROSENBROCK3D)
     VectorXd b(6);
     b << 0.0, 0.0, 0.0, -2.0, -2.0, -2.0;
     SQPOptimizer<double>* opt = new SQPOptimizer<double>(3, 6, A, b);
-    VectorXd x(3); 
+    VectorXd x(3);    // Start at (0.5, 0.5, 0.5); all constraints are inactive
     VectorXd l(6);
     x << 0.5, 0.5, 0.5;
     l << 1.0, 1.0, 1.0, 1.0, 1.0, 1.0;
@@ -283,7 +334,7 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_ROSENBROCK3D)
 
 /**
  * Run the default SQP optimizer on the Himmelblau function, with the input 
- * constrained to a box containing the origin in the positive quadrant.
+ * constrained to a box containing the origin in the first quadrant.
  */
 BOOST_AUTO_TEST_CASE(TEST_SQP_HIMMELBLAU_POSQUADRANT)
 {
@@ -300,18 +351,12 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_HIMMELBLAU_POSQUADRANT)
     const int line_search_max_iter = 10;
     const int zoom_max_iter = 10;
 
-    MatrixXd A(4, 2);
-    A <<  1.0,  0.0,
-          0.0,  1.0,
-         -1.0,  0.0,
-          0.0, -1.0;
-    VectorXd b(4);
-    b << 0.0, 0.0, -10.0, -10.0;
-    SQPOptimizer<double>* opt = new SQPOptimizer<double>(2, 4, A, b);
-    VectorXd x(2); 
-    VectorXd l(4);
-    x << 5.0, 5.0;
-    l << 1.0, 1.0, 1.0, 1.0;
+    // Non-negativity constraints for both variables 
+    MatrixXd A = MatrixXd::Identity(2, 2);
+    VectorXd b = VectorXd::Zero(2);
+    SQPOptimizer<double>* opt = new SQPOptimizer<double>(2, 2, A, b);
+    VectorXd x = 5 * VectorXd::Ones(2);   // Start at (5, 5); both constraints are inactive
+    VectorXd l = VectorXd::Ones(2);
     VectorXd solution = opt->run(
         Himmelblau, x, l, delta, beta, min_stepsize, max_iter, tol, x_tol,
         QuasiNewtonMethod::BFGS, RegularizationMethod::NOREG, 0,
@@ -320,5 +365,41 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_HIMMELBLAU_POSQUADRANT)
     );
     BOOST_TEST(abs(solution(0) - 3.0) < tol);
     BOOST_TEST(abs(solution(1) - 2.0) < tol);
+    delete opt;
+}
+
+/**
+ * Run the default SQP optimizer on the Himmelblau function, with the input 
+ * constrained to a box containing the origin in the third quadrant.
+ */
+BOOST_AUTO_TEST_CASE(TEST_SQP_HIMMELBLAU_NEGQUADRANT)
+{
+    using std::abs;
+    const double delta = 1e-8; 
+    const double beta = 1e-4;
+    const double min_stepsize = 1e-8;
+    const int max_iter = 1000; 
+    const double tol = 1e-8;
+    const double x_tol = 1e-10;
+    const int hessian_modify_max_iter = 1000;
+    const double c1 = 1e-4;
+    const double c2 = 0.9;
+    const int line_search_max_iter = 10;
+    const int zoom_max_iter = 10;
+
+    // Non-positivity constraints for both variables 
+    MatrixXd A = -MatrixXd::Identity(2, 2);
+    VectorXd b = VectorXd::Zero(2);
+    SQPOptimizer<double>* opt = new SQPOptimizer<double>(2, 2, A, b);
+    VectorXd x = -5 * VectorXd::Ones(2);    // Start at (-5, -5); all constraints are inactive 
+    VectorXd l = VectorXd::Ones(2);
+    VectorXd solution = opt->run(
+        Himmelblau, x, l, delta, beta, min_stepsize, max_iter, tol, x_tol,
+        QuasiNewtonMethod::BFGS, RegularizationMethod::NOREG, 0,
+        hessian_modify_max_iter, c1, c2, line_search_max_iter,
+        zoom_max_iter, true, true, true
+    );
+    BOOST_TEST(abs(solution(0) - (-3.7793102533777469)) < tol);
+    BOOST_TEST(abs(solution(1) - (-3.2831859912861694)) < tol);
     delete opt;
 }
