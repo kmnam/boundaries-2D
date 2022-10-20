@@ -51,6 +51,14 @@ double F4(const Ref<const VectorXd>& x)
 }
 
 /**
+ * Nocedal and Wright, Example 19.1.
+ */ 
+double F5(const Ref<const VectorXd>& x)
+{
+    return std::pow(x(0) + 0.5, 2) + std::pow(x(1) - 0.5, 2); 
+}
+
+/**
  * 2-D Rosenbrock function.
  */
 double Rosenbrock2D(const Ref<const VectorXd>& x)
@@ -242,6 +250,48 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_F4)
     );
     BOOST_TEST(abs(solution(0) - 0.0) < tol);
     BOOST_TEST(abs(solution(1) - 0.0) < tol); 
+    delete opt;
+}
+
+/**
+ * Run the default SQP optimizer on F5().
+ */
+BOOST_AUTO_TEST_CASE(TEST_SQP_F5)
+{
+    using std::abs;
+    const double delta = 1e-8; 
+    const double beta = 1e-4;
+    const double min_stepsize = 1e-8;
+    const int max_iter = 1000; 
+    const double tol = 1e-8;
+    const double x_tol = 1e-10;
+    const int hessian_modify_max_iter = 1000;
+    const double c1 = 1e-4;
+    const double c2 = 0.9;
+    const int line_search_max_iter = 10;
+    const int zoom_max_iter = 10;
+
+    // Both variables are constrained to lie in [0, 1]
+    MatrixXd A(4, 2);
+    VectorXd b(4);
+    A <<  1.0,  0.0,
+          0.0,  1.0,
+         -1.0,  0.0,
+          0.0, -1.0;
+    b << 0.0, 0.0, -1.0, -1.0;
+    SQPOptimizer<double>* opt = new SQPOptimizer<double>(2, 4, A, b);
+    VectorXd x(2);    // Start at (1, 1); constraints 3 and 4 are active 
+    VectorXd l(4); 
+    x << 1.0, 1.0;
+    l << 1.0, 1.0, 0.0, 0.0; 
+    VectorXd solution = opt->run(
+        F5, x, l, delta, beta, min_stepsize, max_iter, tol, x_tol,
+        QuasiNewtonMethod::BFGS, RegularizationMethod::NOREG, 0, 
+        hessian_modify_max_iter, c1, c2, line_search_max_iter,
+        zoom_max_iter, true, true, true
+    );
+    BOOST_TEST(abs(solution(0) - 0.0) < tol);
+    BOOST_TEST(abs(solution(1) - 0.5) < tol); 
     delete opt;
 }
 
