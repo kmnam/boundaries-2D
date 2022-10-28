@@ -24,7 +24,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     10/19/2022
+ *     10/28/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -729,7 +729,10 @@ class SQPOptimizer
                 for (int i = 0; i < this->D - 1; ++i)
                     std::cout << x_init(i) << ", ";
                 std::cout << x_init(this->D - 1) << "); f(x) = "
-                          << f_init << std::endl; 
+                          << f_init << "; gradient = (";
+                for (int i = 0; i < this->D - 1; ++i)
+                    std::cout << grad_init(i) << ", ";
+                std::cout << grad_init(this->D - 1) << ")" << std::endl; 
             }
             
             // Evaluate the Lagrangian and its gradient
