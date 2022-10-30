@@ -13,7 +13,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     10/19/2022
+ *     10/30/2022
  */
 using namespace Eigen;
 double pi = 3.1415926539;
@@ -59,21 +59,13 @@ double F5(const Ref<const VectorXd>& x)
 }
 
 /**
- * 2-D Rosenbrock function.
+ * N-dimensional Rosenbrock function.
  */
-double Rosenbrock2D(const Ref<const VectorXd>& x)
+double RosenbrockND(const Ref<const VectorXd>& x)
 {
-    return std::pow(1.0 - x(0), 2) + 100.0 * std::pow(x(1) - std::pow(x(0), 2), 2);
-}
-
-/**
- * 3-D Rosenbrock function. 
- */
-double Rosenbrock3D(const Ref<const VectorXd>& x)
-{
-    return std::pow(1.0 - x(0), 2) + std::pow(1.0 - x(1), 2) + 100.0 * (
-        std::pow(x(1) - std::pow(x(0), 2), 2) + std::pow(x(2) - std::pow(x(1), 2), 2)
-    ); 
+    ArrayXd arr1 = (VectorXd::Ones(x.size() - 1) - x(Eigen::seqN(0, x.size() - 1))).array().pow(2);
+    ArrayXd arr2 = (x(Eigen::seqN(1, x.size() - 1)).array() - x(Eigen::seqN(0, x.size() - 1)).array().pow(2)).pow(2);
+    return arr1.sum() + 100 * arr2.sum();
 }
 
 /**
@@ -296,9 +288,9 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_F5)
 }
 
 /**
- * Run the default SQP optimizer on the 2-D Rosenbrock function.
+ * Run the default SQP optimizer on the 2-D, ..., 10-D Rosenbrock functions.
  */
-BOOST_AUTO_TEST_CASE(TEST_SQP_ROSENBROCK2D)
+BOOST_AUTO_TEST_CASE(TEST_SQP_ROSENBROCK_MULTIDIM)
 {
     using std::abs;
     const double delta = 1e-8; 
@@ -313,73 +305,27 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_ROSENBROCK2D)
     const int line_search_max_iter = 10;
     const int zoom_max_iter = 10;
 
-    // Both variables are constrained to lie in [0, 2]
-    MatrixXd A(4, 2);
-    A <<  1.0,  0.0,
-          0.0,  1.0,
-         -1.0,  0.0,
-          0.0, -1.0;
-    VectorXd b(4);
-    b << 0.0, 0.0, -2.0, -2.0;
-    SQPOptimizer<double>* opt = new SQPOptimizer<double>(2, 4, A, b);
-    VectorXd x(2);    // Start at (0.5, 0.5); all constraints are inactive 
-    VectorXd l(4);
-    x << 0.5, 0.5;
-    l << 1.0, 1.0, 1.0, 1.0;
-    VectorXd solution = opt->run(
-        Rosenbrock2D, x, l, delta, beta, min_stepsize, max_iter, tol, x_tol,
-        QuasiNewtonMethod::BFGS, RegularizationMethod::NOREG, 0,
-        hessian_modify_max_iter, c1, c2, line_search_max_iter,
-        zoom_max_iter, true, true, true
-    );
-    BOOST_TEST(abs(solution(0) - 1.0) < tol);
-    BOOST_TEST(abs(solution(1) - 1.0) < tol); 
-    delete opt;
-}
-
-/**
- * Run the default SQP optimizer on the 3-D Rosenbrock function.
- */
-BOOST_AUTO_TEST_CASE(TEST_SQP_ROSENBROCK3D)
-{
-    using std::abs;
-    const double delta = 1e-8; 
-    const double beta = 1e-4;
-    const double min_stepsize = 1e-8;
-    const int max_iter = 1000; 
-    const double tol = 1e-8;
-    const double x_tol = 1e-10;
-    const int hessian_modify_max_iter = 1000;
-    const double c1 = 1e-4;
-    const double c2 = 0.9;
-    const int line_search_max_iter = 10;
-    const int zoom_max_iter = 10;
-
-    // All three variables are constrained to lie in [0, 2]
-    MatrixXd A(6, 3);
-    A <<  1.0,  0.0,  0.0,
-          0.0,  1.0,  0.0,
-          0.0,  0.0,  1.0,
-         -1.0,  0.0,  0.0, 
-          0.0, -1.0,  0.0,
-          0.0,  0.0, -1.0;
-    VectorXd b(6);
-    b << 0.0, 0.0, 0.0, -2.0, -2.0, -2.0;
-    SQPOptimizer<double>* opt = new SQPOptimizer<double>(3, 6, A, b);
-    VectorXd x(3);    // Start at (0.5, 0.5, 0.5); all constraints are inactive
-    VectorXd l(6);
-    x << 0.5, 0.5, 0.5;
-    l << 1.0, 1.0, 1.0, 1.0, 1.0, 1.0;
-    VectorXd solution = opt->run(
-        Rosenbrock3D, x, l, delta, beta, min_stepsize, max_iter, tol, x_tol,
-        QuasiNewtonMethod::BFGS, RegularizationMethod::NOREG, 0,
-        hessian_modify_max_iter, c1, c2, line_search_max_iter,
-        zoom_max_iter, true, true, true
-    );
-    BOOST_TEST(abs(solution(0) - 1.0) < tol);
-    BOOST_TEST(abs(solution(1) - 1.0) < tol);
-    BOOST_TEST(abs(solution(2) - 1.0) < tol);  
-    delete opt;
+    // All variables are constrained to lie in [0, 2]
+    for (int D = 2; D <= 10; ++D)
+    {
+        MatrixXd A(2 * D, D);
+        A(Eigen::seqN(0, D), Eigen::all) = MatrixXd::Identity(D, D); 
+        A(Eigen::seqN(D, D), Eigen::all) = -MatrixXd::Identity(D, D); 
+        VectorXd b = VectorXd::Zero(2 * D);
+        b(Eigen::seqN(D, D)) = -2 * VectorXd::Ones(D); 
+        SQPOptimizer<double>* opt = new SQPOptimizer<double>(D, 2 * D, A, b);
+        VectorXd x = 0.5 * VectorXd::Ones(D);    // Start at (0.5, ..., 0.5); all constraints are inactive
+        VectorXd l = VectorXd::Ones(2 * D);
+        VectorXd solution = opt->run(
+            RosenbrockND, x, l, delta, beta, min_stepsize, max_iter, tol, x_tol,
+            QuasiNewtonMethod::BFGS, RegularizationMethod::NOREG, 0,
+            hessian_modify_max_iter, c1, c2, line_search_max_iter,
+            zoom_max_iter, true, true, true
+        );
+        for (int i = 0; i < D; ++i)
+            BOOST_TEST(abs(solution(i) - 1.0) < tol);
+        delete opt;
+    }
 }
 
 /**
