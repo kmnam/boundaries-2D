@@ -24,7 +24,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     10/28/2022
+ *     10/31/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -50,13 +50,6 @@ enum QuasiNewtonMethod
     NONE,
     BFGS,
     SR1,
-};
-
-enum RegularizationMethod
-{
-    NOREG,
-    L1,
-    L2,
 };
 
 template <typename T>
@@ -146,6 +139,45 @@ class SQPOptimizer
         Polytopes::LinearConstraints<mpq_rational>* constraints;    /** Linear inequality constraints. */
         Program* program;                                           /** Internal quadratic program to be solved at each step. */
         bool deallocate_constraints;                                /** Whether to deallocate constraints upon destruction.   */ 
+
+        /**
+         * Compute the gradient of the Lagrangian of an implicitly known objective
+         * function at the given vector, with a pre-computed gradient for the 
+         * objective.
+         *
+         * Note that this method does *not* require the function itself, as the
+         * calculation only requires the gradient vector and the constraints. 
+         *
+         * This method can only be called internally. 
+         *
+         * @param x     Input vector for the implicitly known objective.
+         * @param l     Input vector for additional Lagrangian variables (one
+         *              for each constraint).
+         * @param grad  Pre-computed gradient vector of the objective at `x`.
+         * @returns     Gradient approximation.
+         */
+        Matrix<T, Dynamic, 1> lagrangianGradient(const Ref<const Matrix<T, Dynamic, 1> >& x,
+                                                 const Ref<const Matrix<T, Dynamic, 1> >& l,
+                                                 const Ref<const Matrix<T, Dynamic, 1> >& grad)
+        {
+            Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>();   // Convert from rationals to T
+            Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();         // Convert from rationals to T
+            Polytopes::InequalityType type = this->constraints->getInequalityType();
+            T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1); 
+
+            // Initialize the gradient vector
+            Matrix<T, Dynamic, 1> grad_lagrangian = Matrix<T, Dynamic, 1>::Zero(this->D + this->N);
+            grad_lagrangian.head(this->D) = grad;
+
+            // Incorporate the contributions of the *linear* constraints to 
+            // each partial derivative of the Lagrangian 
+            for (int i = 0; i < this->D; ++i)
+                grad_lagrangian(i) += sign * A.col(i).dot(l);
+            for (int i = 0; i < this->N; ++i)
+                grad_lagrangian(this->D + i) = sign * (A.row(i).dot(x) - b(i));  
+            
+            return grad_lagrangian;
+        }
 
     public:
         /**
@@ -343,6 +375,7 @@ class SQPOptimizer
             return grad_lagrangian;
         }
 
+
         /**
          * Run one step of the SQP algorithm.
          *
@@ -360,6 +393,8 @@ class SQPOptimizer
          * @param func                    Objective function.
          * @param iter                    Iteration number.
          * @param quasi_newton            Quasi-Newton method.
+         * @param regularize              Regularization method. 
+         * @param regularize_weight       Regularization weight.
          * @param prev_data               Data regarding current iterate of the
          *                                optimization.
          * @param delta                   Increment for finite difference 
@@ -385,10 +420,11 @@ class SQPOptimizer
          */
         StepData<T> step(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                          const int iter, const QuasiNewtonMethod quasi_newton,
-                         StepData<T> prev_data, const T delta, const T beta, 
-                         const T min_stepsize, const T x_tol,
-                         const int hessian_modify_max_iter, const T c1,
-                         const T c2, const int line_search_max_iter,
+                         const RegularizationMethod regularize, 
+                         const T regularize_weight, StepData<T> prev_data,
+                         const T delta, const T beta, const T min_stepsize,
+                         const T x_tol, const int hessian_modify_max_iter,
+                         const T c1, const T c2, const int line_search_max_iter,
                          const int zoom_max_iter, const bool verbose = false,
                          const bool search_verbose = false,
                          const bool zoom_verbose = false)
@@ -396,6 +432,7 @@ class SQPOptimizer
             using std::abs;
             using boost::multiprecision::abs;
 
+            // Assume that prev_data incorporates contributions from regularization
             T f_curr = prev_data.f; 
             Matrix<T, Dynamic, 1> xl_curr = prev_data.xl;
             Matrix<T, Dynamic, 1> x_curr = xl_curr.head(this->D);
@@ -552,7 +589,7 @@ class SQPOptimizer
             }
 
             // Identify a stepsize that (ideally) satisfies the strong Wolfe 
-            // conditions for this iteration 
+            // conditions for this iteration
             auto gradient = [this, &func, &delta](const Ref<const Matrix<T, Dynamic, 1> >& x) -> Matrix<T, Dynamic, 1>
             {
                 return this->gradient(func, x, delta);
@@ -561,7 +598,8 @@ class SQPOptimizer
             std::tuple<T, bool, bool> result = lineSearch<T>(
                 func, gradient, x_curr, f_curr, std::numeric_limits<T>::quiet_NaN(),
                 grad_curr, p, min_stepsize, max_stepsize, c1, c2, line_search_max_iter,
-                zoom_max_iter, search_verbose, zoom_verbose
+                zoom_max_iter, regularize, regularize_weight, search_verbose,
+                zoom_verbose
             );
             T stepsize = std::get<0>(result);
             bool satisfies_armijo = std::get<1>(result);
@@ -573,8 +611,31 @@ class SQPOptimizer
             Matrix<T, Dynamic, 1> x_new = x_curr + step;
             T f_new = func(x_new);
             Matrix<T, Dynamic, 1> grad_new = this->gradient(func, x_new, delta);
+            T f_reg = 0;
+            Matrix<T, Dynamic, 1> grad_reg = Matrix<T, Dynamic, 1>::Zero(this->D);
+            switch (regularize)
+            {
+                case NOREG:
+                    break; 
+
+                case L1:
+                    f_reg = regularize_weight * x_new.cwiseAbs().sum();
+                    for (int i = 0; i < this->D; ++i)
+                        grad_reg(i) = regularize_weight * ((x_new(i) > 0) - (x_new(i) < 0));
+                    break;
+
+                case L2:
+                    f_reg = regularize_weight * x_new.array().pow(2).sum();
+                    grad_reg = regularize_weight * 2 * x_new;
+                    break;
+
+                default:
+                    break;
+            }
+            T f_combined = f_new + f_reg;
+            Matrix<T, Dynamic, 1> grad_combined = grad_new + grad_reg;
             T change_x = step.norm(); 
-            T change_f = f_new - f_curr; 
+            T change_f = f_combined - f_curr; 
             xl_new.head(this->D) = x_new;
 
             // Print the stepping direction, stepsize, new vector, and value of
@@ -590,26 +651,26 @@ class SQPOptimizer
                           << ", strong curvature = " << satisfies_curvature
                           << std::endl; 
                 std::cout << "Iteration " << iter << ": x = (";
-                for (int i = 0; i < x_new.size() - 1; ++i)
+                for (int i = 0; i < this->D - 1; ++i)
                     std::cout << x_new(i) << ", "; 
-                std::cout << x_new(x_new.size() - 1)
-                          << "); f(x) = " << f_new 
+                std::cout << x_new(this->D - 1)
+                          << "); f(x) = " << f_combined 
                           << "; change in x = " << change_x 
                           << "; change in f = " << change_f
                           << "; gradient = (";
-                for (int i = 0; i < grad_new.size() - 1; ++i)
-                    std::cout << grad_new(i) << ", ";
-                std::cout << grad_new(grad_new.size() - 1)
+                for (int i = 0; i < this->D - 1; ++i)
+                    std::cout << grad_combined(i) << ", ";
+                std::cout << grad_combined(this->D - 1)
                           << ")" << std::endl; 
             }
             
             // Evaluate the gradient and Hessian of the Lagrangian (with respect
             // to the input space)
             Matrix<T, Dynamic, 1> grad_lagrangian_mixed = this->lagrangianGradient(
-                func, x_curr, xl_new.tail(this->N), delta
+                x_curr, xl_new.tail(this->N), grad_curr
             ); 
             Matrix<T, Dynamic, 1> grad_lagrangian_new = this->lagrangianGradient(
-                func, x_new, xl_new.tail(this->N), delta
+                x_new, xl_new.tail(this->N), grad_combined
             );
             Matrix<T, Dynamic, Dynamic> hessian_lagrangian_new;
             Matrix<T, Dynamic, 1> y = grad_lagrangian_new.head(this->D) - grad_lagrangian_mixed.head(this->D);
@@ -630,9 +691,9 @@ class SQPOptimizer
 
             // Return the new data
             StepData<T> new_data;
-            new_data.f = f_new; 
+            new_data.f = f_combined; 
             new_data.xl = xl_new;
-            new_data.grad_f = grad_new;
+            new_data.grad_f = grad_combined;
             new_data.grad_lagrangian = grad_lagrangian_new;
             new_data.hessian_lagrangian = hessian_lagrangian_new;
             return new_data;
@@ -656,8 +717,8 @@ class SQPOptimizer
          * @param x_tol                   Tolerance for change in input vector 
          *                                (L2 norm between successive iterates).
          * @param quasi_newton            Quasi-Newton method.
-         * @param regularize
-         * @param regularize_weight
+         * @param regularize              Regularization method.
+         * @param regularize_weight       Regularization weight.
          * @param hessian_modify_max_iter Maximum number of Hessian modifications.
          * @param c1                      Constant multiplier in Armijo condition.
          * @param c2                      Constant multiplier in strong curvature
@@ -691,36 +752,32 @@ class SQPOptimizer
             using std::abs;
             using boost::multiprecision::abs;
 
-            // Define an objective function to be optimized from the given
-            // function and the desired regularization method
-            std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> obj; 
+            // Evaluate the objective and its gradient
+            T f_init = func(x_init);
+            Matrix<T, Dynamic, 1> grad_init = this->gradient(func, x_init, delta);
+            T f_reg = 0; 
+            Matrix<T, Dynamic, 1> grad_reg = Matrix<T, Dynamic, 1>::Zero(this->D); 
             switch (regularize)
             {
                 case NOREG:
-                    obj = func;
                     break; 
 
                 case L1:
-                    obj = [&func, &regularize_weight](const Ref<const Matrix<T, Dynamic, 1> >& x) -> T
-                    {
-                        return func(x) + regularize_weight * x.cwiseAbs().sum(); 
-                    };
-                    break; 
+                    f_reg = regularize_weight * x_init.cwiseAbs().sum();
+                    for (int i = 0; i < this->D; ++i)
+                        grad_reg(i) = regularize_weight * ((x_init(i) > 0) - (x_init(i) < 0));
+                    break;
 
                 case L2:
-                    obj = [&func, &regularize_weight](const Ref<const Matrix<T, Dynamic, 1> >& x) -> T
-                    {
-                        return func(x) + regularize_weight * x.cwiseAbs2().sum(); 
-                    };
+                    f_reg = regularize_weight * x_init.array().pow(2).sum();
+                    grad_reg = regularize_weight * 2 * x_init;
                     break;
 
                 default:
-                    break;  
+                    break;
             }
-
-            // Evaluate the objective and its gradient
-            T f_init = obj(x_init);
-            Matrix<T, Dynamic, 1> grad_init = this->gradient(obj, x_init, delta);
+            T f_combined = f_init + f_reg;
+            Matrix<T, Dynamic, 1> grad_combined = grad_init + grad_reg;
 
             // Print the input vector and value of the objective function
             if (verbose)
@@ -729,25 +786,25 @@ class SQPOptimizer
                 for (int i = 0; i < this->D - 1; ++i)
                     std::cout << x_init(i) << ", ";
                 std::cout << x_init(this->D - 1) << "); f(x) = "
-                          << f_init << "; gradient = (";
+                          << f_combined << "; gradient = (";
                 for (int i = 0; i < this->D - 1; ++i)
-                    std::cout << grad_init(i) << ", ";
-                std::cout << grad_init(this->D - 1) << ")" << std::endl; 
+                    std::cout << grad_combined(i) << ", ";
+                std::cout << grad_combined(this->D - 1) << ")" << std::endl; 
             }
             
             // Evaluate the Lagrangian and its gradient
             StepData<T> curr_data;
-            curr_data.f = f_init; 
+            curr_data.f = f_combined;
             curr_data.xl.conservativeResize(this->D + this->N);
             curr_data.xl.head(this->D) = x_init;
             curr_data.xl.tail(this->N) = l_init; 
-            curr_data.grad_f = grad_init;
+            curr_data.grad_f = grad_combined;
             Matrix<T, Dynamic, Dynamic> A = this->constraints->getA().template cast<T>(); 
             Matrix<T, Dynamic, 1> b = this->constraints->getb().template cast<T>();
             Polytopes::InequalityType type = this->constraints->getInequalityType(); 
             T sign = (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? -1 : 1);  
-            T lagrangian = obj(x_init) + sign * l_init.dot(A * x_init - b); 
-            Matrix<T, Dynamic, 1> grad_lagrangian = this->lagrangianGradient(obj, x_init, l_init, delta); 
+            //T lagrangian = f_combined + sign * l_init.dot(A * x_init - b);    // No need to compute
+            Matrix<T, Dynamic, 1> grad_lagrangian = this->lagrangianGradient(x_init, l_init, grad_combined);
             curr_data.grad_lagrangian = grad_lagrangian;
             curr_data.hessian_lagrangian = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
 
@@ -757,9 +814,10 @@ class SQPOptimizer
             while (i < max_iter && (change_x > x_tol || change_f > tol))
             {
                 StepData<T> next_data = this->step(
-                    obj, i, quasi_newton, curr_data, delta, beta, min_stepsize,
-                    x_tol, hessian_modify_max_iter, c1, c2, line_search_max_iter,
-                    zoom_max_iter, verbose, search_verbose, zoom_verbose
+                    func, i, quasi_newton, regularize, regularize_weight, curr_data,
+                    delta, beta, min_stepsize, x_tol, hessian_modify_max_iter,
+                    c1, c2, line_search_max_iter, zoom_max_iter, verbose,
+                    search_verbose, zoom_verbose
                 ); 
                 change_x = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm(); 
                 change_f = abs(curr_data.f - next_data.f); 
