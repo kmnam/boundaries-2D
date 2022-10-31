@@ -15,7 +15,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     10/19/2022
+ *     10/31/2022
  */
 
 #ifndef SQP_OPTIMIZER_LINE_SEARCH_HPP
@@ -28,6 +28,7 @@
 #include <Eigen/Dense>
 #include <CGAL/QP_models.h>
 #include <CGAL/QP_functions.h>
+#include "regularization.hpp"
 #include "boostMultiprecisionEigen.hpp"
 #include <boost/multiprecision/gmp.hpp>
 #include <boost/multiprecision/mpfr.hpp>
@@ -192,21 +193,23 @@ T minCubicInterpolant(T a, T f_a, T df_a, T b, T f_b, T c, T f_c)
  * An implementation of the zoom function (Algorithm 3.6 in Nocedal and Wright),
  * which chooses a stepsize that satisfies the strong Wolfe conditions.
  *
- * @param func         Objective function.
- * @param gradient     Function that evaluates the gradient of the objective.
- * @param x_curr       Input vector.
- * @param f_curr       Pre-computed value of objective at `x_curr`.
- * @param grad_curr    Pre-computed value of gradient at `x_curr`.
- * @param dir          Step vector.
- * @param stepsize_lo  Min/max allowed stepsize, together with `stepsize_hi`.
- * @param stepsize_hi  Min/max allowed stepsize, together with `stepsize_lo`.
- * @param stepsize_tol Tolerance between `stepsize_hi` and `stepsize_lo` (as
- *                     they are iteratively updated) for terminating stepsize
- *                     search. 
- * @param c1           Constant multiplier in Armijo condition.
- * @param c2           Constant multiplier in strong curvature condition.
- * @param max_iter     Maximum number of stepsize search iterations.
- * @param verbose      If true, output intermittent messages to `stdout`.
+ * @param func              Objective function.
+ * @param gradient          Function that evaluates the gradient of the objective.
+ * @param x_curr            Input vector.
+ * @param f_curr            Pre-computed value of objective at `x_curr`.
+ * @param grad_curr         Pre-computed value of gradient at `x_curr`.
+ * @param dir               Step vector.
+ * @param stepsize_lo       Min/max allowed stepsize, together with `stepsize_hi`.
+ * @param stepsize_hi       Min/max allowed stepsize, together with `stepsize_lo`.
+ * @param stepsize_tol      Tolerance between `stepsize_hi` and `stepsize_lo`
+ *                          (as they are iteratively updated) for terminating
+ *                          stepsize search. 
+ * @param c1                Constant multiplier in Armijo condition.
+ * @param c2                Constant multiplier in strong curvature condition.
+ * @param max_iter          Maximum number of stepsize search iterations.
+ * @param regularize        Regularization method.
+ * @param regularize_weight Regularization weight.
+ * @param verbose           If true, output intermittent messages to `stdout`.
  * @returns New stepsize, together with indicators as to whether the 
  *          stepsize satisfies the Armijo and strong curvature conditions.
  */
@@ -218,8 +221,10 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
                                const Ref<const Matrix<T, Dynamic, 1> >& dir,
                                T stepsize_lo, T stepsize_hi, const T stepsize_tol, 
                                const T c1, const T c2, const int max_iter,
-                               const bool verbose)
+                               const RegularizationMethod regularize,
+                               const T regularize_weight, const bool verbose)
 {
+    const int dim = x_curr.size(); 
     bool satisfies_armijo = false; 
     bool satisfies_curvature = false;
     T delta = stepsize_hi - stepsize_lo;
@@ -256,10 +261,44 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
         // too close to either stepsize_lo or stepsize_hi, then simply take the 
         // average of stepsize_lo and stepsize_hi (bisection)
         T new_stepsize, bracket_tol, stepsize_min, stepsize_max;
-        T phi_lo = func(x_curr + stepsize_lo * dir); 
-        T phi_hi = func(x_curr + stepsize_hi * dir);
-        T phi_prev = (i == 0 ? f_curr : func(x_curr + stepsize_prev * dir));
-        T dphi_lo = dir.dot(gradient(x_curr + stepsize_lo * dir));
+        Matrix<T, Dynamic, 1> x_lo = x_curr + stepsize_lo * dir;
+        Matrix<T, Dynamic, 1> x_hi = x_curr + stepsize_hi * dir;
+        Matrix<T, Dynamic, 1> x_prev = x_curr + stepsize_prev * dir;
+        T f_lo = func(x_lo);
+        T f_hi = func(x_hi);
+        T f_prev = func(x_prev);
+        Matrix<T, Dynamic, 1> grad_lo = gradient(x_lo);
+        T reg_lo = 0;
+        T reg_hi = 0;
+        T reg_prev = 0;
+        Matrix<T, Dynamic, 1> grad_lo_reg = Matrix<T, Dynamic, 1>::Zero(dim);
+        switch (regularize)
+        {
+            case NOREG:
+                break;
+
+            case L1:
+                reg_lo = regularize_weight * x_lo.cwiseAbs().sum();
+                reg_hi = regularize_weight * x_hi.cwiseAbs().sum();
+                reg_prev = regularize_weight * x_prev.cwiseAbs().sum();
+                for (int i = 0; i < dim; ++i)
+                    grad_lo_reg(i) = regularize_weight * ((x_lo(i) > 0) - (x_lo(i) < 0));  
+                break;
+
+            case L2:
+                reg_lo = regularize_weight * x_lo.array().pow(2).sum();
+                reg_hi = regularize_weight * x_hi.array().pow(2).sum();
+                reg_prev = regularize_weight * x_prev.array().pow(2).sum();
+                grad_lo_reg = regularize_weight * 2 * x_lo;
+                break;
+
+            default:
+                break;
+        }
+        T phi_lo = f_lo + reg_lo;
+        T phi_hi = f_hi + reg_hi;
+        T phi_prev = f_prev + reg_prev;
+        T dphi_lo = dir.dot(grad_lo + grad_lo_reg);
         if (i == 0)
         {
             try
@@ -383,8 +422,27 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
                 }
             }
         }
-        T phi_new = func(x_curr + new_stepsize * dir);
-        T dphi_zero = dir.dot(grad_curr);
+        Matrix<T, Dynamic, 1> x_new = x_curr + new_stepsize * dir;
+        T f_new = func(x_new);
+        T reg_new = 0; 
+        switch (regularize)
+        {
+            case NOREG:
+                break;
+
+            case L1:
+                reg_new = regularize_weight * x_new.cwiseAbs().sum();
+                break;
+
+            case L2:
+                reg_new = regularize_weight * x_new.array().pow(2).sum();
+                break;
+
+            default:
+                break;
+        }
+        T phi_new = f_new + reg_new;
+        //T dphi_zero = dir.dot(grad_curr);    // No need to compute
         if (verbose)
         {
             std::cout << "...... candidate stepsize = " << new_stepsize << std::endl;
@@ -422,7 +480,26 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
         }
         else 
         {
-            Matrix<T, Dynamic, 1> grad_new = gradient(x_curr + new_stepsize * dir); 
+            Matrix<T, Dynamic, 1> grad_new = gradient(x_new);
+            Matrix<T, Dynamic, 1> grad_new_reg = Matrix<T, Dynamic, 1>::Zero(dim);
+            switch (regularize)
+            {
+                case NOREG:
+                    break;
+
+                case L1:
+                    for (int i = 0; i < dim; ++i)
+                        grad_new_reg(i) = regularize_weight * ((x_new(i) > 0) - (x_new(i) < 0));
+                    break;
+
+                case L2:
+                    grad_new_reg = regularize_weight * 2 * x_new; 
+                    break;
+
+                default:
+                    break;
+            }
+            grad_new += grad_new_reg;
             satisfies_curvature = wolfeStrongCurvature<T>(dir, grad_curr, grad_new, c2); 
             if (satisfies_curvature)   // If the strong curvature condition is satisfied
             {
@@ -456,9 +533,33 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
     // If stepsize has not yet been returned, take the average of stepsize_lo
     // and stepsize_hi (which should be relatively close or less than stepsize_tol
     // at this point) as the final stepsize
-    T final_stepsize = (stepsize_hi + stepsize_lo) / 2; 
-    T phi_final = func(x_curr + final_stepsize * dir);
-    Matrix<T, Dynamic, 1> grad_final = gradient(x_curr + final_stepsize * dir); 
+    T final_stepsize = (stepsize_hi + stepsize_lo) / 2;
+    Matrix<T, Dynamic, 1> x_final = x_curr + final_stepsize * dir;
+    T f_final = func(x_final);
+    Matrix<T, Dynamic, 1> grad_final = gradient(x_final);
+    T reg_final = 0;
+    Matrix<T, Dynamic, 1> grad_final_reg = Matrix<T, Dynamic, 1>::Zero(dim);
+    switch (regularize)
+    {
+        case NOREG:
+            break;
+
+        case L1:
+            reg_final = regularize_weight * x_final.cwiseAbs().sum();
+            for (int i = 0; i < dim; ++i)
+                grad_final_reg(i) = regularize_weight * ((x_final(i) > 0) - (x_final(i) < 0));
+            break;
+
+        case L2:
+            reg_final = regularize_weight * x_final.array().pow(2).sum();
+            grad_final_reg = regularize_weight * 2 * x_final;
+            break;
+
+        default:
+            break;
+    }
+    T phi_final = f_final + reg_final;
+    grad_final.head(dim) += grad_final_reg;
     satisfies_armijo = wolfeArmijo<T>(dir, final_stepsize, f_curr, phi_final, grad_curr, c1);
     satisfies_curvature = wolfeStrongCurvature<T>(dir, grad_curr, grad_final, c2);
     if (verbose)
@@ -505,6 +606,8 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
  * @param c2
  * @param max_iter
  * @param zoom_max_iter
+ * @param regularize
+ * @param regularize_weight
  * @param verbose
  * @param zoom_verbose
  */
@@ -515,9 +618,13 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
                                      const T f_curr, const T f_prev,
                                      const Ref<const Matrix<T, Dynamic, 1> >& grad_curr, 
                                      const Ref<const Matrix<T, Dynamic, 1> >& dir,
-                                     T min_stepsize, T max_stepsize, const T c1,
-                                     const T c2, const int max_iter,
-                                     const int zoom_max_iter, const bool verbose,
+                                     T min_stepsize, T max_stepsize,
+                                     const T c1, const T c2,
+                                     const int max_iter,
+                                     const int zoom_max_iter,
+                                     const RegularizationMethod regularize,
+                                     const T regularize_weight,
+                                     const bool verbose,
                                      const bool zoom_verbose)
 {
     using std::abs;
@@ -527,6 +634,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
     using std::isnan;
     using boost::multiprecision::isnan;
 
+    const int dim = x_curr.size(); 
     bool satisfies_armijo = false;
     bool satisfies_curvature = false;
 
@@ -540,6 +648,9 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
     //   of p and the gradient of f at x + \alpha * p
     // - Therefore, \phi'(0) is simply the dot product of p and the gradient
     //   of f at x
+    //
+    // f_curr, f_prev, and grad_curr are assumed to incorporate contributions 
+    // from regularization 
     T dphi0 = dir.dot(grad_curr);
 
     // Initialize the bracketing stepsizes 
@@ -556,8 +667,32 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             stepsize1 = max_stepsize;
     }
 
-    T phi0 = func(x_curr + stepsize0 * dir);
-    T phi1 = func(x_curr + stepsize1 * dir);
+    Matrix<T, Dynamic, 1> x0 = x_curr + stepsize0 * dir; 
+    Matrix<T, Dynamic, 1> x1 = x_curr + stepsize1 * dir;
+    T f0 = func(x0);
+    T f1 = func(x1);
+    T reg0 = 0;
+    T reg1 = 0;
+    switch (regularize)
+    {
+        case NOREG:
+            break;
+
+        case L1:
+            reg0 = regularize_weight * x0.cwiseAbs().sum();
+            reg1 = regularize_weight * x1.cwiseAbs().sum(); 
+            break;
+        
+        case L2:
+            reg0 = regularize_weight * x0.array().pow(2).sum();
+            reg1 = regularize_weight * x1.array().pow(2).sum(); 
+            break;
+
+        default:
+            break;
+    }
+    T phi0 = f0 + reg0;
+    T phi1 = f1 + reg1;
     for (int i = 1; i <= max_iter; ++i)
     {
         if (verbose)
@@ -577,7 +712,8 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             // condition (and hence can be passed first as "\alpha_lo")
             auto result = zoom(
                 func, gradient, x_curr, f_curr, grad_curr, dir, stepsize0,
-                stepsize1, min_stepsize, c1, c2, zoom_max_iter, zoom_verbose
+                stepsize1, min_stepsize, c1, c2, zoom_max_iter, regularize,
+                regularize_weight, zoom_verbose
             );
             stepsize = std::get<0>(result);
             satisfies_armijo = std::get<1>(result); 
@@ -597,7 +733,8 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             // as "\alpha_lo")
             auto result = zoom(
                 func, gradient, x_curr, f_curr, grad_curr, dir, stepsize0,
-                stepsize1, min_stepsize, c1, c2, zoom_max_iter, zoom_verbose
+                stepsize1, min_stepsize, c1, c2, zoom_max_iter, regularize,
+                regularize_weight, zoom_verbose
             );
             stepsize = std::get<0>(result);
             satisfies_armijo = std::get<1>(result); 
@@ -606,7 +743,30 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
         }
         
         // Otherwise, does stepsize1 satisfy the strong curvature condition?
-        Matrix<T, Dynamic, 1> grad_new = gradient(x_curr + stepsize1 * dir);
+        //
+        // To assess this, compute the gradient of the objective at x1
+        Matrix<T, Dynamic, 1> grad_new = gradient(x1);
+        Matrix<T, Dynamic, 1> grad_reg = Matrix<T, Dynamic, 1>::Zero(dim);
+        switch (regularize)
+        {
+            case NOREG:
+                break;
+
+            case L1:
+                for (int i = 0; i < dim; ++i)
+                    grad_reg(i) = regularize_weight * ((x1(i) > 0) - (x1(i) < 0));
+                break;
+
+            case L2:
+                grad_reg = regularize_weight * 2 * x1;
+                break;
+
+            default:
+                break;
+        } 
+        grad_new += grad_reg;
+
+        // Test whether stepsize1 satisfies the strong curvature condition
         if (wolfeStrongCurvature<T>(dir, grad_curr, grad_new, c2))
         {
             // If it does, then seeing as stepsize1 must also satisfy
@@ -615,8 +775,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             return std::make_tuple(stepsize1, true, true);
         }
 
-        // Otherwise, is the descent direction at x_curr + stepsize1 * dir
-        // nonnegative?
+        // Otherwise, is the descent direction at x1 nonnegative?
         if (dir.dot(grad_new) >= 0)
         {
             // If it is, then the interval between stepsize0 and stepsize1
@@ -627,7 +786,8 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             // (and hence can be passed first as "\alpha_lo")
             auto result = zoom(
                 func, gradient, x_curr, f_curr, grad_curr, dir, stepsize1,
-                stepsize0, min_stepsize, c1, c2, zoom_max_iter, zoom_verbose
+                stepsize0, min_stepsize, c1, c2, zoom_max_iter, regularize,
+                regularize_weight, zoom_verbose
             );
             stepsize = std::get<0>(result);
             satisfies_armijo = std::get<1>(result); 
@@ -642,16 +802,59 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
         stepsize0 = stepsize1; 
         stepsize1 = stepsize2;
 
-        // Re-evaluate func(x_curr + stepsize0 * dir) and func(x_curr + stepsize1 * dir)
-        phi0 = func(x_curr + stepsize0 * dir);
-        phi1 = func(x_curr + stepsize1 * dir);
+        // Update x0 = x_curr + stepsize0 * dir, x1 = x_curr + stepsize1 * dir,
+        // and correspondingly update f0, f1, phi0, and phi1
+        x0 = x_curr + stepsize0 * dir; 
+        x1 = x_curr + stepsize1 * dir;
+        f0 = func(x0);
+        f1 = func(x1);
+        reg0 = 0;
+        reg1 = 0;
+        switch (regularize)
+        {
+            case NOREG:
+                break;
+
+            case L1:
+                reg0 = regularize_weight * x0.cwiseAbs().sum();
+                reg1 = regularize_weight * x1.cwiseAbs().sum(); 
+                break;
+            
+            case L2:
+                reg0 = regularize_weight * x0.array().pow(2).sum();
+                reg1 = regularize_weight * x1.array().pow(2).sum(); 
+                break;
+
+            default:
+                break;
+        }
+        phi0 = f0 + reg0;
+        phi1 = f1 + reg1;
     }
 
     // Return stepsize1 if a stepsize has not yet been returned
     satisfies_armijo = wolfeArmijo<T>(dir, stepsize1, f_curr, phi1, grad_curr, c1);
-    satisfies_curvature = wolfeStrongCurvature<T>(
-        dir, grad_curr, gradient(x_curr + stepsize1 * dir), c2
-    );
+    Matrix<T, Dynamic, 1> grad_final = gradient(x1);
+    Matrix<T, Dynamic, 1> grad_final_reg = Matrix<T, Dynamic, 1>::Zero(dim);
+    switch (regularize)
+    {
+        case NOREG:
+            break;
+
+        case L1:
+            for (int i = 0; i < dim; ++i)
+                grad_final_reg(i) = regularize_weight * ((x1(i) > 0) - (x1(i) < 0));
+            break;
+
+        case L2:
+            grad_final_reg = regularize_weight * 2 * x1;
+            break;
+
+        default:
+            break;
+    } 
+    grad_final += grad_final_reg;
+    satisfies_curvature = wolfeStrongCurvature<T>(dir, grad_curr, grad_final, c2);
     return std::make_tuple(stepsize1, satisfies_armijo, satisfies_curvature);
 }
 
