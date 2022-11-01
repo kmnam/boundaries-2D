@@ -15,7 +15,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     10/31/2022
+ *     11/1/2022
  */
 
 #ifndef SQP_OPTIMIZER_LINE_SEARCH_HPP
@@ -193,23 +193,23 @@ T minCubicInterpolant(T a, T f_a, T df_a, T b, T f_b, T c, T f_c)
  * An implementation of the zoom function (Algorithm 3.6 in Nocedal and Wright),
  * which chooses a stepsize that satisfies the strong Wolfe conditions.
  *
- * @param func              Objective function.
- * @param gradient          Function that evaluates the gradient of the objective.
- * @param x_curr            Input vector.
- * @param f_curr            Pre-computed value of objective at `x_curr`.
- * @param grad_curr         Pre-computed value of gradient at `x_curr`.
- * @param dir               Step vector.
- * @param stepsize_lo       Min/max allowed stepsize, together with `stepsize_hi`.
- * @param stepsize_hi       Min/max allowed stepsize, together with `stepsize_lo`.
- * @param stepsize_tol      Tolerance between `stepsize_hi` and `stepsize_lo`
- *                          (as they are iteratively updated) for terminating
- *                          stepsize search. 
- * @param c1                Constant multiplier in Armijo condition.
- * @param c2                Constant multiplier in strong curvature condition.
- * @param max_iter          Maximum number of stepsize search iterations.
- * @param regularize        Regularization method.
- * @param regularize_weight Regularization weight.
- * @param verbose           If true, output intermittent messages to `stdout`.
+ * @param func               Objective function.
+ * @param gradient           Function that evaluates the gradient of the objective.
+ * @param x_curr             Input vector.
+ * @param f_curr             Pre-computed value of objective at `x_curr`.
+ * @param grad_curr          Pre-computed value of gradient at `x_curr`.
+ * @param dir                Step vector.
+ * @param stepsize_lo        Min/max allowed stepsize, together with `stepsize_hi`.
+ * @param stepsize_hi        Min/max allowed stepsize, together with `stepsize_lo`.
+ * @param stepsize_tol       Tolerance between `stepsize_hi` and `stepsize_lo`
+ *                           (as they are iteratively updated) for terminating
+ *                           stepsize search. 
+ * @param c1                 Constant multiplier in Armijo condition.
+ * @param c2                 Constant multiplier in strong curvature condition.
+ * @param max_iter           Maximum number of stepsize search iterations.
+ * @param regularize         Regularization method.
+ * @param regularize_weights Vector of regularization weights.
+ * @param verbose            If true, output intermittent messages to `stdout`.
  * @returns New stepsize, together with indicators as to whether the 
  *          stepsize satisfies the Armijo and strong curvature conditions.
  */
@@ -222,7 +222,8 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
                                T stepsize_lo, T stepsize_hi, const T stepsize_tol, 
                                const T c1, const T c2, const int max_iter,
                                const RegularizationMethod regularize,
-                               const T regularize_weight, const bool verbose)
+                               const Ref<const Matrix<T, Dynamic, 1> >& regularize_weights,
+                               const bool verbose)
 {
     const int dim = x_curr.size(); 
     bool satisfies_armijo = false; 
@@ -278,18 +279,18 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
                 break;
 
             case L1:
-                reg_lo = regularize_weight * x_lo.cwiseAbs().sum();
-                reg_hi = regularize_weight * x_hi.cwiseAbs().sum();
-                reg_prev = regularize_weight * x_prev.cwiseAbs().sum();
+                reg_lo = regularize_weights.dot(x_lo.cwiseAbs());
+                reg_hi = regularize_weights.dot(x_hi.cwiseAbs());
+                reg_prev = regularize_weights.dot(x_prev.cwiseAbs());
                 for (int i = 0; i < dim; ++i)
-                    grad_lo_reg(i) = regularize_weight * ((x_lo(i) > 0) - (x_lo(i) < 0));  
+                    grad_lo_reg(i) = regularize_weights(i) * ((x_lo(i) > 0) - (x_lo(i) < 0));  
                 break;
 
             case L2:
-                reg_lo = regularize_weight * x_lo.array().pow(2).sum();
-                reg_hi = regularize_weight * x_hi.array().pow(2).sum();
-                reg_prev = regularize_weight * x_prev.array().pow(2).sum();
-                grad_lo_reg = regularize_weight * 2 * x_lo;
+                reg_lo = (regularize_weights.array() * x_lo.array().pow(2)).sum();
+                reg_hi = (regularize_weights.array() * x_hi.array().pow(2)).sum();
+                reg_prev = (regularize_weights.array() * x_prev.array().pow(2)).sum();
+                grad_lo_reg = regularize_weights.array() * 2 * x_lo.array();
                 break;
 
             default:
@@ -431,11 +432,11 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
                 break;
 
             case L1:
-                reg_new = regularize_weight * x_new.cwiseAbs().sum();
+                reg_new = regularize_weights.dot(x_new.cwiseAbs());
                 break;
 
             case L2:
-                reg_new = regularize_weight * x_new.array().pow(2).sum();
+                reg_new = (regularize_weights.array() * x_new.array().pow(2)).sum();
                 break;
 
             default:
@@ -489,11 +490,11 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
 
                 case L1:
                     for (int i = 0; i < dim; ++i)
-                        grad_new_reg(i) = regularize_weight * ((x_new(i) > 0) - (x_new(i) < 0));
+                        grad_new_reg(i) = regularize_weights(i) * ((x_new(i) > 0) - (x_new(i) < 0));
                     break;
 
                 case L2:
-                    grad_new_reg = regularize_weight * 2 * x_new; 
+                    grad_new_reg = regularize_weights.array() * 2 * x_new.array(); 
                     break;
 
                 default:
@@ -545,14 +546,14 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
             break;
 
         case L1:
-            reg_final = regularize_weight * x_final.cwiseAbs().sum();
+            reg_final = regularize_weights.dot(x_final.cwiseAbs());
             for (int i = 0; i < dim; ++i)
-                grad_final_reg(i) = regularize_weight * ((x_final(i) > 0) - (x_final(i) < 0));
+                grad_final_reg(i) = regularize_weights(i) * ((x_final(i) > 0) - (x_final(i) < 0));
             break;
 
         case L2:
-            reg_final = regularize_weight * x_final.array().pow(2).sum();
-            grad_final_reg = regularize_weight * 2 * x_final;
+            reg_final = (regularize_weights.array() * x_final.array().pow(2)).sum();
+            grad_final_reg = regularize_weights.array() * 2 * x_final.array();
             break;
 
         default:
@@ -607,7 +608,7 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
  * @param max_iter
  * @param zoom_max_iter
  * @param regularize
- * @param regularize_weight
+ * @param regularize_weights
  * @param verbose
  * @param zoom_verbose
  */
@@ -623,7 +624,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
                                      const int max_iter,
                                      const int zoom_max_iter,
                                      const RegularizationMethod regularize,
-                                     const T regularize_weight,
+                                     const Ref<const Matrix<T, Dynamic, 1> >& regularize_weights,
                                      const bool verbose,
                                      const bool zoom_verbose)
 {
@@ -679,13 +680,13 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             break;
 
         case L1:
-            reg0 = regularize_weight * x0.cwiseAbs().sum();
-            reg1 = regularize_weight * x1.cwiseAbs().sum(); 
+            reg0 = regularize_weights.dot(x0.cwiseAbs());
+            reg1 = regularize_weights.dot(x1.cwiseAbs());
             break;
         
         case L2:
-            reg0 = regularize_weight * x0.array().pow(2).sum();
-            reg1 = regularize_weight * x1.array().pow(2).sum(); 
+            reg0 = (regularize_weights.array() * x0.array().pow(2)).sum();
+            reg1 = (regularize_weights.array() * x1.array().pow(2)).sum(); 
             break;
 
         default:
@@ -713,7 +714,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             auto result = zoom(
                 func, gradient, x_curr, f_curr, grad_curr, dir, stepsize0,
                 stepsize1, min_stepsize, c1, c2, zoom_max_iter, regularize,
-                regularize_weight, zoom_verbose
+                regularize_weights, zoom_verbose
             );
             stepsize = std::get<0>(result);
             satisfies_armijo = std::get<1>(result); 
@@ -734,7 +735,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             auto result = zoom(
                 func, gradient, x_curr, f_curr, grad_curr, dir, stepsize0,
                 stepsize1, min_stepsize, c1, c2, zoom_max_iter, regularize,
-                regularize_weight, zoom_verbose
+                regularize_weights, zoom_verbose
             );
             stepsize = std::get<0>(result);
             satisfies_armijo = std::get<1>(result); 
@@ -754,11 +755,11 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
 
             case L1:
                 for (int i = 0; i < dim; ++i)
-                    grad_reg(i) = regularize_weight * ((x1(i) > 0) - (x1(i) < 0));
+                    grad_reg(i) = regularize_weights(i) * ((x1(i) > 0) - (x1(i) < 0));
                 break;
 
             case L2:
-                grad_reg = regularize_weight * 2 * x1;
+                grad_reg = regularize_weights.array() * 2 * x1.array();
                 break;
 
             default:
@@ -787,7 +788,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             auto result = zoom(
                 func, gradient, x_curr, f_curr, grad_curr, dir, stepsize1,
                 stepsize0, min_stepsize, c1, c2, zoom_max_iter, regularize,
-                regularize_weight, zoom_verbose
+                regularize_weights, zoom_verbose
             );
             stepsize = std::get<0>(result);
             satisfies_armijo = std::get<1>(result); 
@@ -816,13 +817,13 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
                 break;
 
             case L1:
-                reg0 = regularize_weight * x0.cwiseAbs().sum();
-                reg1 = regularize_weight * x1.cwiseAbs().sum(); 
+                reg0 = regularize_weights.dot(x0.cwiseAbs());
+                reg1 = regularize_weights.dot(x1.cwiseAbs());
                 break;
             
             case L2:
-                reg0 = regularize_weight * x0.array().pow(2).sum();
-                reg1 = regularize_weight * x1.array().pow(2).sum(); 
+                reg0 = (regularize_weights.array() * x0.array().pow(2)).sum();
+                reg1 = (regularize_weights.array() * x1.array().pow(2)).sum(); 
                 break;
 
             default:
@@ -843,11 +844,11 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
 
         case L1:
             for (int i = 0; i < dim; ++i)
-                grad_final_reg(i) = regularize_weight * ((x1(i) > 0) - (x1(i) < 0));
+                grad_final_reg(i) = regularize_weights(i) * ((x1(i) > 0) - (x1(i) < 0));
             break;
 
         case L2:
-            grad_final_reg = regularize_weight * 2 * x1;
+            grad_final_reg = regularize_weights.array() * 2 * x1.array();
             break;
 
         default:
