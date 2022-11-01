@@ -624,8 +624,8 @@ class SQPOptimizer
                     break;
 
                 case L2:
-                    f_reg = (regularize_weights.array() * x_new.array().pow(2)).sum();
-                    grad_reg = regularize_weights.array() * 2 * x_new.array();
+                    f_reg = regularize_weights.dot(x_new.array().pow(2).matrix());
+                    grad_reg = (regularize_weights.array() * 2 * x_new.array()).matrix();
                     break;
 
                 default:
@@ -703,9 +703,9 @@ class SQPOptimizer
          * vector for the objective function, initial vector of Lagrange 
          * multipliers, and additional settings.
          *
-         * @param func
-         * @param x_init
-         * @param l_init
+         * @param func                    Objective function.
+         * @param x_init                  Initial iterate. 
+         * @param l_init                  Initial vector of Lagrange multipliers.
          * @param delta                   Increment for finite difference 
          *                                approximation.
          * @param beta                    Increment for Hessian matrix modification
@@ -768,8 +768,8 @@ class SQPOptimizer
                     break;
 
                 case L2:
-                    f_reg = (regularize_weights.array() * x_init.array().pow(2)).sum();
-                    grad_reg = regularize_weights.array() * 2 * x_init.array();
+                    f_reg = regularize_weights.dot(x_init.array().pow(2));
+                    grad_reg = (regularize_weights.array() * 2 * x_init.array()).matrix();
                     break;
 
                 default:
