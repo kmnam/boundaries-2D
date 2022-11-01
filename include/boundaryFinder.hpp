@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     10/19/2022
+ *     11/1/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -1374,8 +1374,9 @@ class BoundaryFinder
          *                                iteration.
          * @param regularize              Regularization method: `NOREG`, `L1`,
          *                                or `L2`. Set to `NOREG` by default.  
-         * @param regularize_weight       Regularization weight. If `regularize`
-         *                                is `NOREG`, then this value is ignored. 
+         * @param regularize_weights      Vector of regularization weights.
+         *                                If `regularize` is `NOREG`, then this
+         *                                value is ignored. 
          * @param c1                      Pre-factor for testing Armijo's 
          *                                condition during each SQP iteration.
          * @param c2                      Pre-factor for testing the curvature 
@@ -1410,11 +1411,11 @@ class BoundaryFinder
                   int n_keep_origbound, int n_pull_origbound, const double delta,
                   const double beta, const double min_stepsize,
                   const int hessian_modify_max_iter, const std::string write_prefix,
-                  const RegularizationMethod regularize = NOREG,
-                  const double regularize_weight = 0, const double c1 = 1e-4,
-                  const double c2 = 0.9, const int line_search_max_iter = 10,
-                  const int zoom_max_iter = 10, const bool verbose = true,
-                  const bool sqp_verbose = false,
+                  const RegularizationMethod regularize,
+                  const Ref<const VectorXd>& regularize_weights,
+                  const double c1 = 1e-4, const double c2 = 0.9,
+                  const int line_search_max_iter = 10, const int zoom_max_iter = 10,
+                  const bool verbose = true, const bool sqp_verbose = false,
                   const bool sqp_line_search_verbose = false,
                   const bool sqp_zoom_verbose = false,
                   const bool traversal_verbose = false,
@@ -1651,7 +1652,7 @@ class BoundaryFinder
                 VectorXd q = optimizer->run(
                     obj, x_init, l_init, delta, beta, min_stepsize, max_iter,
                     sqp_tol, sqp_tol, QuasiNewtonMethod::BFGS, regularize,
-                    regularize_weight, hessian_modify_max_iter, c1, c2,
+                    regularize_weights, hessian_modify_max_iter, c1, c2,
                     line_search_max_iter, zoom_max_iter, sqp_verbose,
                     sqp_line_search_verbose, sqp_zoom_verbose
                 );
@@ -1935,8 +1936,9 @@ class BoundaryFinder
          *                                iteration.
          * @param regularize              Regularization method: `NOREG`, `L1`,
          *                                or `L2`. Set to `NOREG` by default.  
-         * @param regularize_weight       Regularization weight. If `regularize`
-         *                                is `NOREG`, then this value is ignored. 
+         * @param regularize_weights      Vector of regularization weights.
+         *                                If `regularize` is `NOREG`, then this
+         *                                value is ignored. 
          * @param c1                      Pre-factor for testing Armijo's 
          *                                condition during each SQP iteration.
          * @param c2                      Pre-factor for testing the curvature 
@@ -1970,11 +1972,11 @@ class BoundaryFinder
                  int n_keep_origbound, int n_mutate_origbound, int n_pull_origbound,
                  const double delta, const double beta, const double min_stepsize,
                  const int hessian_modify_max_iter, const std::string write_prefix,
-                 const RegularizationMethod regularize = NOREG, 
-                 const double regularize_weight = 0, const double c1 = 1e-4,
-                 const double c2 = 0.9, const int line_search_max_iter = 10,
-                 const int zoom_max_iter = 10, const bool verbose = true,
-                 const bool sqp_verbose = false,
+                 const RegularizationMethod regularize, 
+                 const Ref<const VectorXd>& regularize_weights,
+                 const double c1 = 1e-4, const double c2 = 0.9,
+                 const int line_search_max_iter = 10, const int zoom_max_iter = 10,
+                 const bool verbose = true, const bool sqp_verbose = false,
                  const bool sqp_line_search_verbose = false,
                  const bool sqp_zoom_verbose = false,
                  const bool traversal_verbose = false, 
@@ -2020,7 +2022,7 @@ class BoundaryFinder
                     optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
                     max_edges, n_keep_interior, n_keep_origbound, n_pull_origbound,
                     delta, beta, min_stepsize, hessian_modify_max_iter,
-                    write_prefix, regularize, regularize_weight, c1, c2,
+                    write_prefix, regularize, regularize_weights, c1, c2,
                     line_search_max_iter, zoom_max_iter, verbose, sqp_verbose,
                     sqp_line_search_verbose, sqp_zoom_verbose, traversal_verbose,
                     write_pulled_points
@@ -2158,8 +2160,9 @@ class BoundaryFinder
          *                                iteration.
          * @param regularize              Regularization method: `NOREG`, `L1`,
          *                                or `L2`. Set to `NOREG` by default.  
-         * @param regularize_weight       Regularization weight. If `regularize`
-         *                                is `NOREG`, then this value is ignored. 
+         * @param regularize_weights      Vector of regularization weights.
+         *                                If `regularize` is `NOREG`, then this
+         *                                value is ignored. 
          * @param c1                      Pre-factor for testing Armijo's 
          *                                condition during each SQP iteration.
          * @param c2                      Pre-factor for testing the curvature 
@@ -2193,11 +2196,11 @@ class BoundaryFinder
                  int n_keep_origbound, int n_mutate_origbound, int n_pull_origbound,
                  const double delta, const double beta, const double min_stepsize,
                  const int hessian_modify_max_iter, const std::string write_prefix,
-                 const RegularizationMethod regularize = NOREG, 
-                 const double regularize_weight = 0, const double c1 = 1e-4,
-                 const double c2 = 0.9, const int line_search_max_iter = 10,
-                 const int zoom_max_iter = 10, const bool verbose = true,
-                 const bool sqp_verbose = false,
+                 const RegularizationMethod regularize, 
+                 const Ref<const VectorXd>& regularize_weights,
+                 const double c1 = 1e-4, const double c2 = 0.9,
+                 const int line_search_max_iter = 10, const int zoom_max_iter = 10,
+                 const bool verbose = true, const bool sqp_verbose = false,
                  const bool sqp_line_search_verbose = false,
                  const bool sqp_zoom_verbose = false,
                  const bool traversal_verbose = false, 
@@ -2243,7 +2246,7 @@ class BoundaryFinder
                     optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
                     max_edges, n_keep_interior, n_keep_origbound, n_pull_origbound,
                     delta, beta, min_stepsize, hessian_modify_max_iter,
-                    write_prefix, regularize, regularize_weight, c1, c2,
+                    write_prefix, regularize, regularize_weights, c1, c2,
                     line_search_max_iter, zoom_max_iter, verbose, sqp_verbose,
                     sqp_line_search_verbose, sqp_zoom_verbose, traversal_verbose,
                     write_pulled_points
