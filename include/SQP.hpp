@@ -768,7 +768,7 @@ class SQPOptimizer
                     break;
 
                 case L2:
-                    f_reg = regularize_weights.dot(x_init.array().pow(2));
+                    f_reg = regularize_weights.dot(x_init.array().pow(2).matrix());
                     grad_reg = (regularize_weights.array() * 2 * x_init.array()).matrix();
                     break;
 
