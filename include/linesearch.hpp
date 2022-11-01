@@ -287,10 +287,10 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
                 break;
 
             case L2:
-                reg_lo = (regularize_weights.array() * x_lo.array().pow(2)).sum();
-                reg_hi = (regularize_weights.array() * x_hi.array().pow(2)).sum();
-                reg_prev = (regularize_weights.array() * x_prev.array().pow(2)).sum();
-                grad_lo_reg = regularize_weights.array() * 2 * x_lo.array();
+                reg_lo = regularize_weights.dot(x_lo.array().pow(2).matrix());
+                reg_hi = regularize_weights.dot(x_hi.array().pow(2).matrix());
+                reg_prev = regularize_weights.dot(x_prev.array().pow(2).matrix());
+                grad_lo_reg = (regularize_weights.array() * 2 * x_lo.array()).matrix();
                 break;
 
             default:
@@ -436,7 +436,7 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
                 break;
 
             case L2:
-                reg_new = (regularize_weights.array() * x_new.array().pow(2)).sum();
+                reg_new = regularize_weights.dot(x_new.array().pow(2).matrix());
                 break;
 
             default:
@@ -494,7 +494,7 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
                     break;
 
                 case L2:
-                    grad_new_reg = regularize_weights.array() * 2 * x_new.array(); 
+                    grad_new_reg = (regularize_weights.array() * 2 * x_new.array()).matrix(); 
                     break;
 
                 default:
@@ -552,8 +552,8 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
             break;
 
         case L2:
-            reg_final = (regularize_weights.array() * x_final.array().pow(2)).sum();
-            grad_final_reg = regularize_weights.array() * 2 * x_final.array();
+            reg_final = regularize_weights.dot(x_final.array().pow(2).matrix());
+            grad_final_reg = (regularize_weights.array() * 2 * x_final.array()).matrix();
             break;
 
         default:
@@ -619,10 +619,8 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
                                      const T f_curr, const T f_prev,
                                      const Ref<const Matrix<T, Dynamic, 1> >& grad_curr, 
                                      const Ref<const Matrix<T, Dynamic, 1> >& dir,
-                                     T min_stepsize, T max_stepsize,
-                                     const T c1, const T c2,
-                                     const int max_iter,
-                                     const int zoom_max_iter,
+                                     T min_stepsize, T max_stepsize, const T c1,
+                                     const T c2, const int max_iter, const int zoom_max_iter,
                                      const RegularizationMethod regularize,
                                      const Ref<const Matrix<T, Dynamic, 1> >& regularize_weights,
                                      const bool verbose,
@@ -685,8 +683,8 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             break;
         
         case L2:
-            reg0 = (regularize_weights.array() * x0.array().pow(2)).sum();
-            reg1 = (regularize_weights.array() * x1.array().pow(2)).sum(); 
+            reg0 = regularize_weights.dot(x0.array().pow(2).matrix());
+            reg1 = regularize_weights.dot(x1.array().pow(2).matrix());
             break;
 
         default:
@@ -759,7 +757,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
                 break;
 
             case L2:
-                grad_reg = regularize_weights.array() * 2 * x1.array();
+                grad_reg = (regularize_weights.array() * 2 * x1.array()).matrix();
                 break;
 
             default:
@@ -822,8 +820,8 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
                 break;
             
             case L2:
-                reg0 = (regularize_weights.array() * x0.array().pow(2)).sum();
-                reg1 = (regularize_weights.array() * x1.array().pow(2)).sum(); 
+                reg0 = regularize_weights.dot(x0.array().pow(2).matrix());
+                reg1 = regularize_weights.dot(x1.array().pow(2).matrix());
                 break;
 
             default:
@@ -848,7 +846,7 @@ std::tuple<T, bool, bool> lineSearch(std::function<T(const Ref<const Matrix<T, D
             break;
 
         case L2:
-            grad_final_reg = regularize_weights.array() * 2 * x1.array();
+            grad_final_reg = (regularize_weights.array() * 2 * x1.array()).matrix();
             break;
 
         default:
