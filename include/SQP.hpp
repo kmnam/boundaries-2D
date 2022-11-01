@@ -24,7 +24,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     10/31/2022
+ *     11/1/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -375,7 +375,6 @@ class SQPOptimizer
             return grad_lagrangian;
         }
 
-
         /**
          * Run one step of the SQP algorithm.
          *
@@ -394,7 +393,7 @@ class SQPOptimizer
          * @param iter                    Iteration number.
          * @param quasi_newton            Quasi-Newton method.
          * @param regularize              Regularization method. 
-         * @param regularize_weight       Regularization weight.
+         * @param regularize_weights      Vector of regularization weights.
          * @param prev_data               Data regarding current iterate of the
          *                                optimization.
          * @param delta                   Increment for finite difference 
@@ -421,12 +420,12 @@ class SQPOptimizer
         StepData<T> step(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                          const int iter, const QuasiNewtonMethod quasi_newton,
                          const RegularizationMethod regularize, 
-                         const T regularize_weight, StepData<T> prev_data,
-                         const T delta, const T beta, const T min_stepsize,
-                         const T x_tol, const int hessian_modify_max_iter,
-                         const T c1, const T c2, const int line_search_max_iter,
-                         const int zoom_max_iter, const bool verbose = false,
-                         const bool search_verbose = false,
+                         const Ref<const Matrix<T, Dynamic, 1> >& regularize_weights,
+                         StepData<T> prev_data, const T delta, const T beta,
+                         const T min_stepsize, const T x_tol,
+                         const int hessian_modify_max_iter, const T c1, const T c2,
+                         const int line_search_max_iter, const int zoom_max_iter,
+                         const bool verbose = false, const bool search_verbose = false,
                          const bool zoom_verbose = false)
         {
             using std::abs;
@@ -598,7 +597,7 @@ class SQPOptimizer
             std::tuple<T, bool, bool> result = lineSearch<T>(
                 func, gradient, x_curr, f_curr, std::numeric_limits<T>::quiet_NaN(),
                 grad_curr, p, min_stepsize, max_stepsize, c1, c2, line_search_max_iter,
-                zoom_max_iter, regularize, regularize_weight, search_verbose,
+                zoom_max_iter, regularize, regularize_weights, search_verbose,
                 zoom_verbose
             );
             T stepsize = std::get<0>(result);
@@ -619,14 +618,14 @@ class SQPOptimizer
                     break; 
 
                 case L1:
-                    f_reg = regularize_weight * x_new.cwiseAbs().sum();
+                    f_reg = regularize_weights.dot(x_new.cwiseAbs());
                     for (int i = 0; i < this->D; ++i)
-                        grad_reg(i) = regularize_weight * ((x_new(i) > 0) - (x_new(i) < 0));
+                        grad_reg(i) = regularize_weights(i) * ((x_new(i) > 0) - (x_new(i) < 0));
                     break;
 
                 case L2:
-                    f_reg = regularize_weight * x_new.array().pow(2).sum();
-                    grad_reg = regularize_weight * 2 * x_new;
+                    f_reg = (regularize_weights.array() * x_new.array().pow(2)).sum();
+                    grad_reg = regularize_weights.array() * 2 * x_new.array();
                     break;
 
                 default:
@@ -718,7 +717,7 @@ class SQPOptimizer
          *                                (L2 norm between successive iterates).
          * @param quasi_newton            Quasi-Newton method.
          * @param regularize              Regularization method.
-         * @param regularize_weight       Regularization weight.
+         * @param regularize_weights      Vector of regularization weights.
          * @param hessian_modify_max_iter Maximum number of Hessian modifications.
          * @param c1                      Constant multiplier in Armijo condition.
          * @param c2                      Constant multiplier in strong curvature
@@ -741,7 +740,7 @@ class SQPOptimizer
                                   const int max_iter, const T tol, const T x_tol,
                                   const QuasiNewtonMethod quasi_newton,
                                   const RegularizationMethod regularize,
-                                  const T regularize_weight, 
+                                  const Ref<const Matrix<T, Dynamic, 1> >& regularize_weights, 
                                   const int hessian_modify_max_iter, const T c1,
                                   const T c2, const int line_search_max_iter,
                                   const int zoom_max_iter,
@@ -763,14 +762,14 @@ class SQPOptimizer
                     break; 
 
                 case L1:
-                    f_reg = regularize_weight * x_init.cwiseAbs().sum();
+                    f_reg = regularize_weights.dot(x_init.cwiseAbs());
                     for (int i = 0; i < this->D; ++i)
-                        grad_reg(i) = regularize_weight * ((x_init(i) > 0) - (x_init(i) < 0));
+                        grad_reg(i) = regularize_weights(i) * ((x_init(i) > 0) - (x_init(i) < 0));
                     break;
 
                 case L2:
-                    f_reg = regularize_weight * x_init.array().pow(2).sum();
-                    grad_reg = regularize_weight * 2 * x_init;
+                    f_reg = (regularize_weights.array() * x_init.array().pow(2)).sum();
+                    grad_reg = regularize_weights.array() * 2 * x_init.array();
                     break;
 
                 default:
@@ -814,10 +813,10 @@ class SQPOptimizer
             while (i < max_iter && (change_x > x_tol || change_f > tol))
             {
                 StepData<T> next_data = this->step(
-                    func, i, quasi_newton, regularize, regularize_weight, curr_data,
-                    delta, beta, min_stepsize, x_tol, hessian_modify_max_iter,
-                    c1, c2, line_search_max_iter, zoom_max_iter, verbose,
-                    search_verbose, zoom_verbose
+                    func, i, quasi_newton, regularize, regularize_weights,
+                    curr_data, delta, beta, min_stepsize, x_tol,
+                    hessian_modify_max_iter, c1, c2, line_search_max_iter,
+                    zoom_max_iter, verbose, search_verbose, zoom_verbose
                 ); 
                 change_x = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm(); 
                 change_f = abs(curr_data.f - next_data.f); 
