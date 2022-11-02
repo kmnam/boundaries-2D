@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     11/1/2022
+ *     11/2/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -1136,7 +1136,7 @@ class BoundaryFinder
                     VectorXd m(p);
                     for (int k = 0; k < D; ++k)
                         m(k) += dist(this->rng); 
-                    q = this->constraints->template nearestL2<double>(m).template cast<double>();
+                    q = this->constraints->template approxNearestL2<double>(m).template cast<double>();
                     z = this->func(q);
 
                     // Check that the mutation does not give rise to a point
