@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     11/2/2022
+ *     11/4/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -23,11 +23,11 @@
 #include <CGAL/Exact_predicates_inexact_constructions_kernel.h>
 #include <CGAL/Vector_2.h>
 #include <boost/random.hpp>
-#include <linearConstraints.hpp>
+#include <linearConstraints.hpp>  // Includes quadraticProgram.hpp from convex-polytopes
 #include "boundaries.hpp"
-#include "SQP.hpp"             // Includes Eigen/Dense, CGAL/QP_*, Boost.Multiprecision, boostMultiprecisionEigen.hpp, etc.
-#include <polytopes.hpp>       // Must be included after SQP.hpp
-#include <vertexEnum.hpp>      // Must be included after SQP.hpp
+#include "SQP.hpp"                // Includes Eigen/Dense, CGAL/QP_*, Boost.Multiprecision, boostMultiprecisionEigen.hpp, etc.
+#include <polytopes.hpp>          // Must be included after SQP.hpp
+#include <vertexEnum.hpp>         // Must be included after SQP.hpp
 
 using namespace Eigen;
 
@@ -1341,6 +1341,9 @@ class BoundaryFinder
          * @param max_iter                Maximum number of iterations for SQP. 
          * @param sqp_tol                 Tolerance for assessing convergence
          *                                in SQP.
+         * @param qp_stepsize_tol         Tolerance for assessing whether a 
+         *                                stepsize during each QP is zero
+         *                                (during each SQP iteration).
          * @param iter                    Iteration number.  
          * @param max_edges               Maximum number of edges to be contained
          *                                in the boundary. If zero, the boundary
@@ -1364,7 +1367,7 @@ class BoundaryFinder
          *                                approximation during each SQP iteration.
          * @param beta                    Increment for Hessian matrix modification
          *                                (for ensuring positive semi-definiteness).
-         * @param min_stepsize            Minimum allowed stepsize during each
+         * @param sqp_min_stepsize        Minimum allowed stepsize during each
          *                                SQP iteration. 
          * @param hessian_modify_max_iter Maximum number of Hessian matrix
          *                                modification iterations (for ensuring
@@ -1384,7 +1387,9 @@ class BoundaryFinder
          * @param line_search_max_iter    Maximum number of line search iterations
          *                                during each SQP iteration.
          * @param zoom_max_iter           Maximum number of zoom iterations
-         *                                during each SQP iteration. 
+         *                                during each SQP iteration.
+         * @param qp_max_iter             Maximum number of iterations during 
+         *                                each QP (during each SQP iteration). 
          * @param verbose                 If true, output intermittent messages
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
@@ -1407,15 +1412,16 @@ class BoundaryFinder
         bool pull(SQPOptimizer<double>* optimizer, 
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const double epsilon, const int max_iter, const double sqp_tol,
-                  const int iter, const int max_edges, int n_keep_interior,
-                  int n_keep_origbound, int n_pull_origbound, const double delta,
-                  const double beta, const double min_stepsize,
+                  const double qp_stepsize_tol, const int iter, const int max_edges,
+                  int n_keep_interior, int n_keep_origbound, int n_pull_origbound,
+                  const double delta, const double beta, const double sqp_min_stepsize,
                   const int hessian_modify_max_iter, const std::string write_prefix,
                   const RegularizationMethod regularize,
                   const Ref<const VectorXd>& regularize_weights,
                   const double c1 = 1e-4, const double c2 = 0.9,
                   const int line_search_max_iter = 10, const int zoom_max_iter = 10,
-                  const bool verbose = true, const bool sqp_verbose = false,
+                  const int qp_max_iter = 10000, const bool verbose = true,
+                  const bool sqp_verbose = false,
                   const bool sqp_line_search_verbose = false,
                   const bool sqp_zoom_verbose = false,
                   const bool traversal_verbose = false,
@@ -1650,11 +1656,11 @@ class BoundaryFinder
                 VectorXd l_init = VectorXd::Ones(this->constraints->getN())
                     - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
                 VectorXd q = optimizer->run(
-                    obj, x_init, l_init, delta, beta, min_stepsize, max_iter,
-                    sqp_tol, sqp_tol, QuasiNewtonMethod::BFGS, regularize,
-                    regularize_weights, hessian_modify_max_iter, c1, c2,
-                    line_search_max_iter, zoom_max_iter, sqp_verbose,
-                    sqp_line_search_verbose, sqp_zoom_verbose
+                    obj, x_init, l_init, delta, beta, sqp_min_stepsize, max_iter,
+                    sqp_tol, sqp_tol, qp_stepsize_tol, QuasiNewtonMethod::BFGS,
+                    regularize, regularize_weights, hessian_modify_max_iter, c1,
+                    c2, line_search_max_iter, zoom_max_iter, qp_max_iter,
+                    sqp_verbose, sqp_line_search_verbose, sqp_zoom_verbose
                 );
                 pull_results_in.row(i) = q;
                 pull_results_out.row(i) = this->func(q);
@@ -1899,6 +1905,9 @@ class BoundaryFinder
          *                                pull iteration.
          * @param sqp_tol                 Tolerance for assessing convergence
          *                                in SQP.
+         * @param qp_stepsize_tol         Tolerance for assessing whether a 
+         *                                stepsize during each QP is zero
+         *                                (during each SQP iteration).
          * @param max_edges               Maximum number of edges to be contained
          *                                in the boundary. If zero, the boundary
          *                                is kept unsimplified.
@@ -1926,7 +1935,7 @@ class BoundaryFinder
          *                                approximation during each SQP iteration.
          * @param beta                    Increment for Hessian matrix modification
          *                                (for ensuring positive semi-definiteness).
-         * @param min_stepsize            Minimum allowed stepsize during each
+         * @param sqp_min_stepsize        Minimum allowed stepsize during each
          *                                SQP iteration. 
          * @param hessian_modify_max_iter Maximum number of Hessian matrix
          *                                modification iterations (for ensuring
@@ -1946,7 +1955,9 @@ class BoundaryFinder
          * @param line_search_max_iter    Maximum number of line search iterations
          *                                during each SQP iteration.
          * @param zoom_max_iter           Maximum number of zoom iterations
-         *                                during each SQP iteration. 
+         *                                during each SQP iteration.
+         * @param qp_max_iter             Maximum number of iterations during 
+         *                                each QP (during each SQP iteration). 
          * @param verbose                 If true, output intermittent messages
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
@@ -1968,15 +1979,17 @@ class BoundaryFinder
                  const int ninit, const int max_nsample, const int min_step_iter,
                  const int max_step_iter, const int min_pull_iter,
                  const int max_pull_iter, const int sqp_max_iter,
-                 const double sqp_tol, const int max_edges, int n_keep_interior,
-                 int n_keep_origbound, int n_mutate_origbound, int n_pull_origbound,
-                 const double delta, const double beta, const double min_stepsize,
+                 const double sqp_tol, const double qp_stepsize_tol,
+                 const int max_edges, int n_keep_interior, int n_keep_origbound,
+                 int n_mutate_origbound, int n_pull_origbound, const double delta,
+                 const double beta, const double sqp_min_stepsize,
                  const int hessian_modify_max_iter, const std::string write_prefix,
                  const RegularizationMethod regularize, 
                  const Ref<const VectorXd>& regularize_weights,
                  const double c1 = 1e-4, const double c2 = 0.9,
                  const int line_search_max_iter = 10, const int zoom_max_iter = 10,
-                 const bool verbose = true, const bool sqp_verbose = false,
+                 const int qp_max_iter = 10000, const bool verbose = true,
+                 const bool sqp_verbose = false,
                  const bool sqp_line_search_verbose = false,
                  const bool sqp_zoom_verbose = false,
                  const bool traversal_verbose = false, 
@@ -2019,11 +2032,12 @@ class BoundaryFinder
                 if (verbose)
                     std::cout << "- Pulling by epsilon = " << epsilon << std::endl;  
                 bool result = this->pull(
-                    optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
-                    max_edges, n_keep_interior, n_keep_origbound, n_pull_origbound,
-                    delta, beta, min_stepsize, hessian_modify_max_iter,
-                    write_prefix, regularize, regularize_weights, c1, c2,
-                    line_search_max_iter, zoom_max_iter, verbose, sqp_verbose,
+                    optimizer, filter, epsilon, sqp_max_iter, sqp_tol,
+                    qp_stepsize_tol, i + j, max_edges, n_keep_interior,
+                    n_keep_origbound, n_pull_origbound, delta, beta,
+                    sqp_min_stepsize, hessian_modify_max_iter, write_prefix,
+                    regularize, regularize_weights, c1, c2, line_search_max_iter,
+                    zoom_max_iter, qp_max_iter, verbose, sqp_verbose,
                     sqp_line_search_verbose, sqp_zoom_verbose, traversal_verbose,
                     write_pulled_points
                 );
@@ -2123,6 +2137,9 @@ class BoundaryFinder
          *                                pull iteration.
          * @param sqp_tol                 Tolerance for assessing convergence
          *                                in SQP.
+         * @param qp_stepsize_tol         Tolerance for assessing whether a 
+         *                                stepsize during each QP is zero
+         *                                (during each SQP iteration).
          * @param max_edges               Maximum number of edges to be contained
          *                                in the boundary. If zero, the boundary
          *                                is kept unsimplified.
@@ -2150,7 +2167,7 @@ class BoundaryFinder
          *                                approximation during each SQP iteration.
          * @param beta                    Increment for Hessian matrix modification
          *                                (for ensuring positive semi-definiteness).
-         * @param min_stepsize            Minimum allowed stepsize during each
+         * @param sqp_min_stepsize        Minimum allowed stepsize during each
          *                                SQP iteration. 
          * @param hessian_modify_max_iter Maximum number of Hessian matrix
          *                                modification iterations (for ensuring
@@ -2171,6 +2188,8 @@ class BoundaryFinder
          *                                during each SQP iteration.
          * @param zoom_max_iter           Maximum number of zoom iterations
          *                                during each SQP iteration. 
+         * @param qp_max_iter             Maximum number of iterations during 
+         *                                each QP (during each SQP iteration). 
          * @param verbose                 If true, output intermittent messages
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
@@ -2192,15 +2211,17 @@ class BoundaryFinder
                  const Ref<const MatrixXd>& init_input, const int min_step_iter,
                  const int max_step_iter, const int min_pull_iter,
                  const int max_pull_iter, const int sqp_max_iter,
-                 const double sqp_tol, const int max_edges, int n_keep_interior,
-                 int n_keep_origbound, int n_mutate_origbound, int n_pull_origbound,
-                 const double delta, const double beta, const double min_stepsize,
+                 const double sqp_tol, const double qp_stepsize_tol, 
+                 const int max_edges, int n_keep_interior, int n_keep_origbound,
+                 int n_mutate_origbound, int n_pull_origbound, const double delta,
+                 const double beta, const double sqp_min_stepsize,
                  const int hessian_modify_max_iter, const std::string write_prefix,
                  const RegularizationMethod regularize, 
                  const Ref<const VectorXd>& regularize_weights,
                  const double c1 = 1e-4, const double c2 = 0.9,
                  const int line_search_max_iter = 10, const int zoom_max_iter = 10,
-                 const bool verbose = true, const bool sqp_verbose = false,
+                 const int qp_max_iter = 10000, const bool verbose = true,
+                 const bool sqp_verbose = false,
                  const bool sqp_line_search_verbose = false,
                  const bool sqp_zoom_verbose = false,
                  const bool traversal_verbose = false, 
@@ -2243,11 +2264,12 @@ class BoundaryFinder
                 if (verbose)
                     std::cout << "- Pulling by epsilon = " << epsilon << std::endl;  
                 bool result = this->pull(
-                    optimizer, filter, epsilon, sqp_max_iter, sqp_tol, i + j,
-                    max_edges, n_keep_interior, n_keep_origbound, n_pull_origbound,
-                    delta, beta, min_stepsize, hessian_modify_max_iter,
-                    write_prefix, regularize, regularize_weights, c1, c2,
-                    line_search_max_iter, zoom_max_iter, verbose, sqp_verbose,
+                    optimizer, filter, epsilon, sqp_max_iter, sqp_tol,
+                    qp_stepsize_tol, i + j, max_edges, n_keep_interior,
+                    n_keep_origbound, n_pull_origbound, delta, beta,
+                    sqp_min_stepsize, hessian_modify_max_iter, write_prefix,
+                    regularize, regularize_weights, c1, c2, line_search_max_iter,
+                    zoom_max_iter, qp_max_iter, verbose, sqp_verbose,
                     sqp_line_search_verbose, sqp_zoom_verbose, traversal_verbose,
                     write_pulled_points
                 );
