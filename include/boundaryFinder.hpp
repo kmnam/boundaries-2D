@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     11/4/2022
+ *     11/6/2022
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -1376,10 +1376,12 @@ class BoundaryFinder
          *                                write the boundary obtained in this
          *                                iteration.
          * @param regularize              Regularization method: `NOREG`, `L1`,
-         *                                or `L2`. Set to `NOREG` by default.  
+         *                                or `L2`.
          * @param regularize_weights      Vector of regularization weights.
          *                                If `regularize` is `NOREG`, then this
-         *                                value is ignored. 
+         *                                value is ignored.
+         * @param qp_solve_method         Quadratic program solution method:
+         *                                `USE_CGAL_SOLVER` or `USE_CUSTOM_SOLVER`.
          * @param c1                      Pre-factor for testing Armijo's 
          *                                condition during each SQP iteration.
          * @param c2                      Pre-factor for testing the curvature 
@@ -1418,6 +1420,7 @@ class BoundaryFinder
                   const int hessian_modify_max_iter, const std::string write_prefix,
                   const RegularizationMethod regularize,
                   const Ref<const VectorXd>& regularize_weights,
+                  const QuadraticProgramSolveMethod qp_solve_method,
                   const double c1 = 1e-4, const double c2 = 0.9,
                   const int line_search_max_iter = 10, const int zoom_max_iter = 10,
                   const int qp_max_iter = 10000, const bool verbose = true,
@@ -1656,10 +1659,10 @@ class BoundaryFinder
                 VectorXd l_init = VectorXd::Ones(this->constraints->getN())
                     - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
                 VectorXd q = optimizer->run(
-                    obj, x_init, l_init, delta, beta, sqp_min_stepsize, max_iter,
-                    sqp_tol, sqp_tol, qp_stepsize_tol, QuasiNewtonMethod::BFGS,
-                    regularize, regularize_weights, hessian_modify_max_iter, c1,
-                    c2, line_search_max_iter, zoom_max_iter, qp_max_iter,
+                    obj, QuasiNewtonMethod::BFGS, regularize, regularize_weights,
+                    qp_solve_method, x_init, l_init, delta, beta, sqp_min_stepsize,
+                    max_iter, sqp_tol, sqp_tol, qp_stepsize_tol, hessian_modify_max_iter,
+                    c1, c2, line_search_max_iter, zoom_max_iter, qp_max_iter,
                     sqp_verbose, sqp_line_search_verbose, sqp_zoom_verbose
                 );
                 pull_results_in.row(i) = q;
@@ -1944,10 +1947,12 @@ class BoundaryFinder
          *                                write the boundary obtained in each
          *                                iteration.
          * @param regularize              Regularization method: `NOREG`, `L1`,
-         *                                or `L2`. Set to `NOREG` by default.  
+         *                                or `L2`.  
          * @param regularize_weights      Vector of regularization weights.
          *                                If `regularize` is `NOREG`, then this
-         *                                value is ignored. 
+         *                                value is ignored.
+         * @param qp_solve_method         Quadratic program solution method:
+         *                                `USE_CGAL_SOLVER` or `USE_CUSTOM_SOLVER`.
          * @param c1                      Pre-factor for testing Armijo's 
          *                                condition during each SQP iteration.
          * @param c2                      Pre-factor for testing the curvature 
@@ -1986,6 +1991,7 @@ class BoundaryFinder
                  const int hessian_modify_max_iter, const std::string write_prefix,
                  const RegularizationMethod regularize, 
                  const Ref<const VectorXd>& regularize_weights,
+                 const QuadraticProgramSolveMethod qp_solve_method,
                  const double c1 = 1e-4, const double c2 = 0.9,
                  const int line_search_max_iter = 10, const int zoom_max_iter = 10,
                  const int qp_max_iter = 10000, const bool verbose = true,
@@ -2036,10 +2042,10 @@ class BoundaryFinder
                     qp_stepsize_tol, i + j, max_edges, n_keep_interior,
                     n_keep_origbound, n_pull_origbound, delta, beta,
                     sqp_min_stepsize, hessian_modify_max_iter, write_prefix,
-                    regularize, regularize_weights, c1, c2, line_search_max_iter,
-                    zoom_max_iter, qp_max_iter, verbose, sqp_verbose,
-                    sqp_line_search_verbose, sqp_zoom_verbose, traversal_verbose,
-                    write_pulled_points
+                    regularize, regularize_weights, qp_solve_method, c1, c2,
+                    line_search_max_iter, zoom_max_iter, qp_max_iter, verbose,
+                    sqp_verbose, sqp_line_search_verbose, sqp_zoom_verbose,
+                    traversal_verbose, write_pulled_points
                 );
                 if (!result)
                     n_converged = 0;
@@ -2176,10 +2182,12 @@ class BoundaryFinder
          *                                write the boundary obtained in each
          *                                iteration.
          * @param regularize              Regularization method: `NOREG`, `L1`,
-         *                                or `L2`. Set to `NOREG` by default.  
+         *                                or `L2`.
          * @param regularize_weights      Vector of regularization weights.
          *                                If `regularize` is `NOREG`, then this
-         *                                value is ignored. 
+         *                                value is ignored.
+         * @param qp_solve_method         Quadratic program solution method:
+         *                                `USE_CGAL_SOLVER` or `USE_CUSTOM_SOLVER`.
          * @param c1                      Pre-factor for testing Armijo's 
          *                                condition during each SQP iteration.
          * @param c2                      Pre-factor for testing the curvature 
@@ -2218,6 +2226,7 @@ class BoundaryFinder
                  const int hessian_modify_max_iter, const std::string write_prefix,
                  const RegularizationMethod regularize, 
                  const Ref<const VectorXd>& regularize_weights,
+                 const QuadraticProgramSolveMethod qp_solve_method,
                  const double c1 = 1e-4, const double c2 = 0.9,
                  const int line_search_max_iter = 10, const int zoom_max_iter = 10,
                  const int qp_max_iter = 10000, const bool verbose = true,
@@ -2268,10 +2277,10 @@ class BoundaryFinder
                     qp_stepsize_tol, i + j, max_edges, n_keep_interior,
                     n_keep_origbound, n_pull_origbound, delta, beta,
                     sqp_min_stepsize, hessian_modify_max_iter, write_prefix,
-                    regularize, regularize_weights, c1, c2, line_search_max_iter,
-                    zoom_max_iter, qp_max_iter, verbose, sqp_verbose,
-                    sqp_line_search_verbose, sqp_zoom_verbose, traversal_verbose,
-                    write_pulled_points
+                    regularize, regularize_weights, qp_solve_method, c1, c2,
+                    line_search_max_iter, zoom_max_iter, qp_max_iter, verbose,
+                    sqp_verbose, sqp_line_search_verbose, sqp_zoom_verbose,
+                    traversal_verbose, write_pulled_points
                 );
                 if (!result)
                     n_converged = 0;
