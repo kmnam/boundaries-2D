@@ -24,7 +24,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     11/4/2022
+ *     11/6/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -44,6 +44,12 @@ using boost::multiprecision::mpq_rational;
 typedef CGAL::Gmpzf ET;
 typedef CGAL::Quadratic_program<double> Program;
 typedef CGAL::Quadratic_program_solution<ET> Solution;
+
+enum QuadraticProgramSolveMethod
+{
+    USE_CGAL_SOLVER,
+    USE_CUSTOM_SOLVER
+};
 
 enum QuasiNewtonMethod
 {
@@ -401,8 +407,9 @@ class SQPOptimizer
          * @param func                    Objective function.
          * @param iter                    Iteration number.
          * @param quasi_newton            Quasi-Newton method.
-         * @param regularize              Regularization method. 
+         * @param regularize              Regularization method.
          * @param regularize_weights      Vector of regularization weights.
+         * @param qp_solve_method         Quadratic program solution method.
          * @param prev_data               Data regarding current iterate of the
          *                                optimization.
          * @param delta                   Increment for finite difference 
@@ -432,8 +439,9 @@ class SQPOptimizer
          */
         StepData<T> step(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                          const int iter, const QuasiNewtonMethod quasi_newton,
-                         const RegularizationMethod regularize, 
+                         const RegularizationMethod regularize,
                          const Ref<const Matrix<T, Dynamic, 1> >& regularize_weights,
+                         const QuadraticProgramSolveMethod qp_solve_method, 
                          StepData<T> prev_data, const T delta, const T beta,
                          const T min_stepsize, const T x_tol, const T qp_stepsize_tol, 
                          const int hessian_modify_max_iter, const T c1, const T c2,
@@ -491,126 +499,133 @@ class SQPOptimizer
              * xk   = current iterate 
              * fk   = f(xk)
              * Dfk  = gradient of f at xk
-             * D2Lk = (approximation of) Hessian of Lagrangian at xk 
+             * D2Lk = (approximation of) Hessian of Lagrangian at xk
+             *
+             * Note that, with the damped BFGS update, the Hessian matrix
+             * approximation should be positive definite
              * --------------------------------------------------------------- */
-            // Note that, with the damped BFGS update, the Hessian matrix approximation
-            // should be positive definite
-            /*
-            for (int i = 0; i < this->D; ++i)
+            Matrix<T, Dynamic, 1> p(this->D);
+            Matrix<T, Dynamic, 1> xl_new(this->D + this->N);
+            if (qp_solve_method == USE_CGAL_SOLVER)
             {
-                for (int j = 0; j <= i; ++j)
-                {
-                    // Sets 2D_ij and 2D_ji (the quadratic part of objective)
-                    this->program->set_d(i, j, static_cast<double>(hessian_lagrangian(i, j)));
-                }
-                // Sets c_i (the linear part of objective)
-                this->program->set_c(i, static_cast<double>(grad_curr(i)));
-            }
-            for (int i = 0; i < this->N; ++i)
-            {
-                for (int j = 0; j < this->D; ++j)
-                {
-                    // Sets A_ij (j-th coefficient of i-th constraint)
-                    if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
-                        this->program->set_a(j, i, static_cast<double>(A(i, j)));
-                    else 
-                        this->program->set_a(j, i, -static_cast<double>(A(i, j))); 
-                }
-                // Sets b_i (i-th coordinate of -(A * xk - b) if inequality type is >=,
-                // i-th coordinate of (A * xk - b) if inequality type is <=)
-                this->program->set_b(i, static_cast<double>(c(i)));
-            }
-            */
-            // Note that the constant part of the objective (fk) is unnecessary
-
-            // Solve the quadratic program ...
-            /*
-            Solution solution; 
-            try
-            {
-                solution = CGAL::solve_quadratic_program(*this->program, ET());
-            }
-            catch (CGAL::Assertion_exception& e) 
-            {
-                // ... if the program cannot be solved because the D matrix is not 
-                // positive semidefinite (this should never be the case), then replace
-                // D with the identity matrix
                 for (int i = 0; i < this->D; ++i)
                 {
                     for (int j = 0; j <= i; ++j)
                     {
-                        this->program->set_d(i, j, 2.0);    // Sets 2D_ij and 2D_ji
+                        // Sets 2D_ij and 2D_ji (the quadratic part of objective)
+                        this->program->set_d(i, j, static_cast<double>(hessian_lagrangian(i, j)));
                     }
+                    // Sets c_i (the linear part of objective)
+                    this->program->set_c(i, static_cast<double>(grad_curr(i)));
                 }
+                for (int i = 0; i < this->N; ++i)
+                {
+                    for (int j = 0; j < this->D; ++j)
+                    {
+                        // Sets A_ij (j-th coefficient of i-th constraint)
+                        if (type == Polytopes::InequalityType::GreaterThanOrEqualTo)
+                            this->program->set_a(j, i, static_cast<double>(A(i, j)));
+                        else 
+                            this->program->set_a(j, i, -static_cast<double>(A(i, j))); 
+                    }
+                    // Sets b_i (i-th coordinate of -(A * xk - b) if inequality type is >=,
+                    // i-th coordinate of (A * xk - b) if inequality type is <=)
+                    this->program->set_b(i, static_cast<double>(c(i)));
+                }
+                // Note that the constant part of the objective (fk) is unnecessary
+
+                // Solve the quadratic program ...
+                Solution solution; 
                 try
                 {
                     solution = CGAL::solve_quadratic_program(*this->program, ET());
                 }
-                catch (CGAL::Assertion_exception& e)
+                catch (CGAL::Assertion_exception& e) 
                 {
-                    throw; 
+                    // ... if the program cannot be solved because the D matrix is not 
+                    // positive semidefinite (this should never be the case), then replace
+                    // D with the identity matrix
+                    for (int i = 0; i < this->D; ++i)
+                    {
+                        for (int j = 0; j <= i; ++j)
+                        {
+                            this->program->set_d(i, j, 2.0);    // Sets 2D_ij and 2D_ji
+                        }
+                    }
+                    try
+                    {
+                        solution = CGAL::solve_quadratic_program(*this->program, ET());
+                    }
+                    catch (CGAL::Assertion_exception& e)
+                    {
+                        throw; 
+                    }
+                }
+
+                // The program should never be infeasible, since we assume that 
+                // the constraint matrix has full rank
+                std::stringstream ss; 
+                if (solution.is_infeasible())
+                {
+                    ss << "Quadratic program is infeasible; check constraint matrix:\n" << A;
+                    throw std::runtime_error(ss.str());
+                }
+                // The program should also never yield an unbounded solution, 
+                // since we assume that the constraint matrix specifies a 
+                // bounded polytope 
+                else if (solution.is_unbounded())
+                {
+                    ss << "Quadratic program yielded unbounded solution; check constraint matrix:\n" << A;
+                    throw std::runtime_error(ss.str());
+                }
+
+                // Collect the values of the solution into a vector
+                int i = 0;
+                for (auto it = solution.variable_values_begin(); it != solution.variable_values_end(); ++it)
+                {
+                    p(i) = static_cast<T>(CGAL::to_double(*it));
+                    i++;
+                }
+
+                // Collect the values of the new Lagrange multipliers (i.e., the
+                // "optimality certificate")
+                i = 0;
+                for (auto it = solution.optimality_certificate_begin(); it != solution.optimality_certificate_end(); ++it)
+                {
+                    xl_new(this->D + i) = static_cast<T>(CGAL::to_double(*it));
+                    i++;
                 }
             }
-            */
-            std::pair<Matrix<T, Dynamic, 1>, bool> result; 
-            try
+            else 
             {
-                result = solveConvexQuadraticProgram<T>(
-                    hessian_lagrangian, c, this->A, this->b, x_curr, qp_stepsize_tol,
-                    qp_max_iter
-                );
-            }
-            catch (std::runtime_error& e)
-            {
-                // ... if the program cannot be solved because the Hessian
-                // approximation is not positive semidefinite, then replace 
-                // it with the identity matrix
-                Matrix<T, Dynamic, Dynamic> G = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);  
-                result = solveConvexQuadraticProgram<T>(
-                    G, c, this->A, this->b, x_curr, qp_stepsize_tol, qp_max_iter
-                ); 
-            }
+                std::pair<Matrix<T, Dynamic, 1>, bool> result; 
+                try
+                {
+                    result = solveConvexQuadraticProgram<T>(
+                        hessian_lagrangian, grad_curr,
+                        (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? 1 : -1) * this->A,
+                        c, Matrix<T, Dynamic, 1>::Zero(this->D), qp_stepsize_tol,
+                        qp_max_iter, verbose
+                    );
+                }
+                catch (std::runtime_error& e)
+                {
+                    // ... if the program cannot be solved because the Hessian
+                    // approximation is not positive semidefinite, then replace 
+                    // it with the identity matrix
+                    Matrix<T, Dynamic, Dynamic> G = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);  
+                    result = solveConvexQuadraticProgram<T>(
+                        G, grad_curr,
+                        (type == Polytopes::InequalityType::GreaterThanOrEqualTo ? 1 : -1) * this->A,
+                        c, Matrix<T, Dynamic, 1>::Zero(this->D), qp_stepsize_tol,
+                        qp_max_iter, verbose
+                    ); 
+                }
+                p = result.first.head(this->D);
 
-            /*
-            // The program should never be infeasible, since we assume that 
-            // the constraint matrix has full rank
-            std::stringstream ss; 
-            if (solution.is_infeasible())
-            {
-                ss << "Quadratic program is infeasible; check constraint matrix:\n" << A;
-                throw std::runtime_error(ss.str());
+                // Collect the values of the new Lagrange multipliers
+                xl_new.tail(this->N) = result.first.tail(this->N);
             }
-            // The program should also never yield an unbounded solution, 
-            // since we assume that the constraint matrix specifies a 
-            // bounded polytope 
-            else if (solution.is_unbounded())
-            {
-                ss << "Quadratic program yielded unbounded solution; check constraint matrix:\n" << A;
-                throw std::runtime_error(ss.str());
-            }
-            */
-            // If the program solution procedure has not converged, then 
-            // throw an exception
-            if (!result.second)
-            {
-                std::stringstream ss;
-                ss << "Quadratic program did not converge within given maximum"
-                      "number of iterations (" << qp_max_iter <<
-                      "); iteration number = " << iter << std::endl;
-                throw std::runtime_error(ss.str()); 
-            }
-
-            // Collect the values of the solution into a vector
-            /* 
-            Matrix<T, Dynamic, 1> p(this->D);
-            int i = 0;
-            for (auto it = solution.variable_values_begin(); it != solution.variable_values_end(); ++it)
-            {
-                p(i) = static_cast<T>(CGAL::to_double(*it));
-                i++;
-            }
-            */
-            Matrix<T, Dynamic, 1> p = result.first.head(this->D);
 
             // If the vector has length > 1, then normalize by its length 
             // 
@@ -626,19 +641,14 @@ class SQPOptimizer
                     p(i) /= p_norm;
             }
 
-            // Collect the values of the new Lagrange multipliers (i.e., the
-            // "optimality certificate")
-            /*
-            Matrix<T, Dynamic, 1> xl_new(this->D + this->N);
-            i = 0;
-            for (auto it = solution.optimality_certificate_begin(); it != solution.optimality_certificate_end(); ++it)
+            // Print the stepping direction if desired
+            if (verbose)
             {
-                xl_new(this->D + i) = static_cast<T>(CGAL::to_double(*it));
-                i++;
+                std::cout << "... stepping direction = (";
+                for (int i = 0; i < this->D - 1; ++i)
+                    std::cout << p(i) << ", ";
+                std::cout << p(this->D - 1) << ")" << std::endl;
             }
-            */
-            Matrix<T, Dynamic, 1> xl_new(this->D + this->N); 
-            xl_new.tail(this->N) = result.first.tail(this->N);
 
             // Identify a stepsize that (ideally) satisfies the strong Wolfe 
             // conditions for this iteration
@@ -656,6 +666,13 @@ class SQPOptimizer
             T stepsize = std::get<0>(search_result);
             bool satisfies_armijo = std::get<1>(search_result);
             bool satisfies_curvature = std::get<2>(search_result);
+            if (verbose)
+            {
+                std::cout << "... stepsize = " << stepsize
+                          << ": Armijo = " << satisfies_armijo
+                          << ", strong curvature = " << satisfies_curvature
+                          << std::endl; 
+            }
 
             // Advance by the given stepsize in the given direction, and evaluate 
             // the objective and its gradient at the new input vector
@@ -690,18 +707,10 @@ class SQPOptimizer
             T change_f = f_combined - f_curr; 
             xl_new.head(this->D) = x_new;
 
-            // Print the stepping direction, stepsize, new vector, and value of
-            // the objective function and its gradient 
+            // Print the new vector and corresponding values of the objective
+            // function and its gradient
             if (verbose)
-            {
-                std::cout << "... stepping direction = (";
-                for (int i = 0; i < this->D - 1; ++i)
-                    std::cout << p(i) << ", ";
-                std::cout << p(this->D - 1) << ")" << std::endl;
-                std::cout << "... stepsize = " << stepsize
-                          << ": Armijo = " << satisfies_armijo
-                          << ", strong curvature = " << satisfies_curvature
-                          << std::endl; 
+            { 
                 std::cout << "Iteration " << iter << ": x = (";
                 for (int i = 0; i < this->D - 1; ++i)
                     std::cout << x_new(i) << ", "; 
@@ -757,6 +766,10 @@ class SQPOptimizer
          * multipliers, and additional settings.
          *
          * @param func                    Objective function.
+         * @param quasi_newton            Quasi-Newton method.
+         * @param regularize              Regularization method.
+         * @param regularize_weights      Vector of regularization weights.
+         * @param qp_solve_method         Quadratic program solution method.
          * @param x_init                  Initial iterate. 
          * @param l_init                  Initial vector of Lagrange multipliers.
          * @param delta                   Increment for finite difference 
@@ -770,9 +783,6 @@ class SQPOptimizer
          *                                (L2 norm between successive iterates).
          * @param qp_stepsize_tol         Tolerance for assessing whether a 
          *                                stepsize during each QP is zero. 
-         * @param quasi_newton            Quasi-Newton method.
-         * @param regularize              Regularization method.
-         * @param regularize_weights      Vector of regularization weights.
          * @param hessian_modify_max_iter Maximum number of Hessian modifications.
          * @param c1                      Constant multiplier in Armijo condition.
          * @param c2                      Constant multiplier in strong curvature
@@ -791,14 +801,15 @@ class SQPOptimizer
          * @returns Minimizing input vector.
          */
         Matrix<T, Dynamic, 1> run(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
+                                  const QuasiNewtonMethod quasi_newton,
+                                  const RegularizationMethod regularize,
+                                  const Ref<const Matrix<T, Dynamic, 1> >& regularize_weights, 
+                                  const QuadraticProgramSolveMethod qp_solve_method,
                                   const Ref<const Matrix<T, Dynamic, 1> >& x_init, 
                                   const Ref<const Matrix<T, Dynamic, 1> >& l_init,
                                   const T delta, const T beta, const T min_stepsize,
                                   const int max_iter, const T tol,
                                   const T x_tol, const T qp_stepsize_tol, 
-                                  const QuasiNewtonMethod quasi_newton,
-                                  const RegularizationMethod regularize,
-                                  const Ref<const Matrix<T, Dynamic, 1> >& regularize_weights, 
                                   const int hessian_modify_max_iter, const T c1,
                                   const T c2, const int line_search_max_iter,
                                   const int zoom_max_iter, const int qp_max_iter,
@@ -870,10 +881,10 @@ class SQPOptimizer
             {
                 StepData<T> next_data = this->step(
                     func, i, quasi_newton, regularize, regularize_weights,
-                    curr_data, delta, beta, min_stepsize, x_tol, qp_stepsize_tol,
-                    hessian_modify_max_iter, c1, c2, line_search_max_iter,
-                    zoom_max_iter, qp_max_iter, verbose, search_verbose,
-                    zoom_verbose
+                    qp_solve_method, curr_data, delta, beta, min_stepsize,
+                    x_tol, qp_stepsize_tol, hessian_modify_max_iter, c1, c2,
+                    line_search_max_iter, zoom_max_iter, qp_max_iter, verbose,
+                    search_verbose, zoom_verbose
                 ); 
                 change_x = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm(); 
                 change_f = abs(curr_data.f - next_data.f); 
