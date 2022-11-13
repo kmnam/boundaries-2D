@@ -123,7 +123,7 @@ class BoundaryFinder
 
         // Linear inequalities that encode the convex polytopic domain
         // with rational coordinates  
-        Polytopes::LinearConstraints<mpq_rational>* constraints;
+        Polytopes::LinearConstraints* constraints;
 
         // Delaunay triangulation of the convex polytopic domain
         //
@@ -168,7 +168,7 @@ class BoundaryFinder
             this->curr_area = 0; 
             this->curr_sym_diff_area = std::numeric_limits<double>::infinity();
             this->rng = rng;
-            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type, A, b);
+            this->constraints = new Polytopes::LinearConstraints(type, A, b);
             this->tri = new Delaunay_triangulation(A.cols()); 
             this->func = [](const Ref<const VectorXd>& x) -> VectorXd { return VectorXd::Zero(2); };
             this->simplified = false; 
@@ -205,7 +205,7 @@ class BoundaryFinder
             this->curr_area = 0; 
             this->curr_sym_diff_area = std::numeric_limits<double>::infinity();
             this->rng = rng;
-            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type, A, b);
+            this->constraints = new Polytopes::LinearConstraints(type, A, b);
             this->tri = new Delaunay_triangulation(A.cols()); 
             this->func = func;
             this->simplified = false; 
@@ -239,7 +239,7 @@ class BoundaryFinder
             this->curr_area = 0;
             this->curr_sym_diff_area = std::numeric_limits<double>::infinity();
             this->rng = rng;
-            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type);
+            this->constraints = new Polytopes::LinearConstraints(type);
             this->constraints->parse(constraints_filename);
             this->tri = new Delaunay_triangulation(this->constraints->getD());  
             this->func = [](const Ref<const VectorXd>& x) -> VectorXd { return VectorXd::Zero(2); }; 
@@ -277,7 +277,7 @@ class BoundaryFinder
             this->curr_area = 0;
             this->curr_sym_diff_area = std::numeric_limits<double>::infinity();
             this->rng = rng;
-            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type);
+            this->constraints = new Polytopes::LinearConstraints(type);
             this->constraints->parse(constraints_filename);
             this->tri = new Delaunay_triangulation(this->constraints->getD());  
             this->func = func;
@@ -319,7 +319,7 @@ class BoundaryFinder
             this->curr_area = 0;
             this->curr_sym_diff_area = std::numeric_limits<double>::infinity(); 
             this->rng = rng;
-            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type); 
+            this->constraints = new Polytopes::LinearConstraints(type); 
             this->constraints->parse(constraints_filename);
             this->tri = new Delaunay_triangulation(this->constraints->getD());  
             this->func = [](const Ref<const VectorXd>& x) -> VectorXd { return VectorXd::Zero(2); };
@@ -356,7 +356,7 @@ class BoundaryFinder
             this->curr_area = 0;
             this->curr_sym_diff_area = std::numeric_limits<double>::infinity(); 
             this->rng = rng;
-            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(type); 
+            this->constraints = new Polytopes::LinearConstraints(type); 
             this->constraints->parse(constraints_filename);
             this->tri = new Delaunay_triangulation(this->constraints->getD());  
             this->func = func;
