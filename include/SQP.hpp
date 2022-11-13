@@ -24,7 +24,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     11/6/2022
+ *     11/13/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -141,13 +141,13 @@ template <typename T>
 class SQPOptimizer
 {
     protected:
-        int D;                                                      /** Dimension of input space.      */
-        int N;                                                      /** Number of constraints.         */
-        Polytopes::LinearConstraints<mpq_rational>* constraints;    /** Linear inequality constraints. */
-        Matrix<T, Dynamic, Dynamic> A;                              /** Left-hand constraint matrix with scalar type T.  */
-        Matrix<T, Dynamic, 1> b;                                    /** Right-hand constraint vector with scalar type T. */
-        Program* program;                                           /** Internal quadratic program to be solved at each step. */
-        bool deallocate_constraints;                                /** Whether to deallocate constraints upon destruction.   */ 
+        int D;                                        /** Dimension of input space.      */
+        int N;                                        /** Number of constraints.         */
+        Polytopes::LinearConstraints* constraints;    /** Linear inequality constraints. */
+        Matrix<T, Dynamic, Dynamic> A;                /** Left-hand constraint matrix with scalar type T.  */
+        Matrix<T, Dynamic, 1> b;                      /** Right-hand constraint vector with scalar type T. */
+        Program* program;                             /** Internal quadratic program to be solved at each step. */
+        bool deallocate_constraints;                  /** Whether to deallocate constraints upon destruction.   */ 
 
         /**
          * Compute the gradient of the Lagrangian of an implicitly known objective
@@ -202,7 +202,7 @@ class SQPOptimizer
             this->b = Matrix<T, Dynamic, 1>::Zero(D);
             Matrix<mpq_rational, Dynamic, Dynamic> A = Matrix<mpq_rational, Dynamic, Dynamic>::Identity(D, D); 
             Matrix<mpq_rational, Dynamic, 1> b = Matrix<mpq_rational, Dynamic, 1>::Zero(D); 
-            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(
+            this->constraints = new Polytopes::LinearConstraints(
                 Polytopes::InequalityType::GreaterThanOrEqualTo, A, b
             ); 
             this->program = new Program(CGAL::LARGER, false, 0.0, false, 0.0);
@@ -230,7 +230,7 @@ class SQPOptimizer
             this->b = b;
             if (A.rows() != this->N || A.cols() != this->D || b.size() != this->N)
                 throw std::invalid_argument("Invalid input matrix dimensions");
-            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(
+            this->constraints = new Polytopes::LinearConstraints(
                 Polytopes::InequalityType::GreaterThanOrEqualTo,
                 A.template cast<mpq_rational>(),
                 b.template cast<mpq_rational>()
@@ -261,7 +261,7 @@ class SQPOptimizer
             this->b = b;
             if (A.rows() != this->N || A.cols() != this->D || b.size() != this->N)
                 throw std::invalid_argument("Invalid input matrix dimensions");
-            this->constraints = new Polytopes::LinearConstraints<mpq_rational>(
+            this->constraints = new Polytopes::LinearConstraints(
                 type, A.template cast<mpq_rational>(), b.template cast<mpq_rational>()
             ); 
 
@@ -278,7 +278,7 @@ class SQPOptimizer
          * @param constraints Pointer to `LinearConstraints` instance containing
          *                    the constraint matrix and vector.
          */
-        SQPOptimizer(Polytopes::LinearConstraints<mpq_rational>* constraints)
+        SQPOptimizer(Polytopes::LinearConstraints* constraints)
         {
             this->constraints = constraints;
             this->D = this->constraints->getD(); 
