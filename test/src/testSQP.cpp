@@ -3,7 +3,7 @@
 #include <cmath>
 #include <Eigen/Dense>
 #include <boost/multiprecision/mpfr.hpp>
-#include <boost/test/included/unit_test.hpp>
+#include <catch2/catch_test_macros.hpp>
 #include "../../include/SQP.hpp"
 
 /**
@@ -13,7 +13,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     11/6/2022
+ *     11/13/2022
  */
 using namespace Eigen;
 using std::pow; 
@@ -91,7 +91,7 @@ T Himmelblau(const Ref<const Matrix<T, Dynamic, 1> >& x)
 /**
  * Run the default SQP optimizer on F1() with double scalars.
  */
-BOOST_AUTO_TEST_CASE(TEST_SQP_F1_DOUBLE)
+TEST_CASE("optimize F1() with doubles")
 {
     const double delta = 1e-8; 
     const double beta = 1e-4;
@@ -132,15 +132,15 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_F1_DOUBLE)
         hessian_modify_max_iter, c1, c2, line_search_max_iter, zoom_max_iter,
         qp_max_iter, true, true, true
     );
-    BOOST_TEST(abs(solution(0) - 1.4) < tol);
-    BOOST_TEST(abs(solution(1) - 1.7) < tol); 
+    REQUIRE(abs(solution(0) - 1.4) < tol);
+    REQUIRE(abs(solution(1) - 1.7) < tol); 
     delete opt;
 }
 
 /**
  * Run the default SQP optimizer on F2().
  */
-BOOST_AUTO_TEST_CASE(TEST_SQP_F2_DOUBLE)
+TEST_CASE("optimize F2() with doubles")
 {
     using std::abs;
     const double delta = 1e-8; 
@@ -180,15 +180,15 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_F2_DOUBLE)
         hessian_modify_max_iter, c1, c2, line_search_max_iter, zoom_max_iter,
         qp_max_iter, true, true, true
     );
-    BOOST_TEST(abs(solution(0) - 1.0) < tol);
-    BOOST_TEST(abs(solution(1) - 0.0) < tol); 
+    REQUIRE(abs(solution(0) - 1.0) < tol);
+    REQUIRE(abs(solution(1) - 0.0) < tol); 
     delete opt;
 }
 
 /**
  * Run the default SQP optimizer on F3().
  */
-BOOST_AUTO_TEST_CASE(TEST_SQP_F3_DOUBLE)
+TEST_CASE("optimize F3() with doubles")
 {
     using std::abs;
     const double delta = 1e-8; 
@@ -221,15 +221,15 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_F3_DOUBLE)
         hessian_modify_max_iter, c1, c2, line_search_max_iter, zoom_max_iter,
         qp_max_iter, true, true, true
     );
-    BOOST_TEST(abs(solution(0) - 1.0) < tol);
-    BOOST_TEST(abs(solution(1) - 0.0) < tol); 
+    REQUIRE(abs(solution(0) - 1.0) < tol);
+    REQUIRE(abs(solution(1) - 0.0) < tol); 
     delete opt;
 }
 
 /**
  * Run the default SQP optimizer on F4().
  */
-BOOST_AUTO_TEST_CASE(TEST_SQP_F4_DOUBLE)
+TEST_CASE("optimize F4() with doubles")
 {
     using std::abs;
     const double delta = 1e-8; 
@@ -261,15 +261,15 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_F4_DOUBLE)
         hessian_modify_max_iter, c1, c2, line_search_max_iter, zoom_max_iter,
         qp_max_iter, true, true, true
     );
-    BOOST_TEST(abs(solution(0) - 0.0) < tol);
-    BOOST_TEST(abs(solution(1) - 0.0) < tol); 
+    REQUIRE(abs(solution(0) - 0.0) < tol);
+    REQUIRE(abs(solution(1) - 0.0) < tol); 
     delete opt;
 }
 
 /**
  * Run the default SQP optimizer on F5().
  */
-BOOST_AUTO_TEST_CASE(TEST_SQP_F5_DOUBLE)
+TEST_CASE("optimize F5() with doubles")
 {
     using std::abs;
     const double delta = 1e-8; 
@@ -306,15 +306,15 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_F5_DOUBLE)
         hessian_modify_max_iter, c1, c2, line_search_max_iter, zoom_max_iter,
         qp_max_iter, true, true, true
     );
-    BOOST_TEST(abs(solution(0) - 0.0) < tol);
-    BOOST_TEST(abs(solution(1) - 0.5) < tol); 
+    REQUIRE(abs(solution(0) - 0.0) < tol);
+    REQUIRE(abs(solution(1) - 0.5) < tol); 
     delete opt;
 }
 
 /**
  * Run the default SQP optimizer on the 2-D, ..., 10-D Rosenbrock functions.
  */
-BOOST_AUTO_TEST_CASE(TEST_SQP_ROSENBROCK_MULTIDIM)
+TEST_CASE("optimize multi-dimensional Rosenbrock function with doubles")
 {
     using std::abs;
     const double delta = 1e-8; 
@@ -350,7 +350,7 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_ROSENBROCK_MULTIDIM)
             qp_max_iter, true, true, true
         );
         for (int i = 0; i < D; ++i)
-            BOOST_TEST(abs(solution(i) - 1.0) < tol);
+            REQUIRE(abs(solution(i) - 1.0) < tol);
         delete opt;
     }
 }
@@ -359,7 +359,7 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_ROSENBROCK_MULTIDIM)
  * Run the default SQP optimizer on the Himmelblau function, with the input 
  * constrained to a box containing the origin in the first quadrant.
  */
-BOOST_AUTO_TEST_CASE(TEST_SQP_HIMMELBLAU_POSQUADRANT)
+TEST_CASE("optimize Himmelblau function within box in first quadrant")
 {
     using std::abs;
     const double delta = 1e-8; 
@@ -389,8 +389,8 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_HIMMELBLAU_POSQUADRANT)
         hessian_modify_max_iter, c1, c2, line_search_max_iter, zoom_max_iter,
         qp_max_iter, true, true, true
     );
-    BOOST_TEST(abs(solution(0) - 3.0) < tol);
-    BOOST_TEST(abs(solution(1) - 2.0) < tol);
+    REQUIRE(abs(solution(0) - 3.0) < tol);
+    REQUIRE(abs(solution(1) - 2.0) < tol);
     delete opt;
 }
 
@@ -398,7 +398,7 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_HIMMELBLAU_POSQUADRANT)
  * Run the default SQP optimizer on the Himmelblau function, with the input 
  * constrained to a box containing the origin in the third quadrant.
  */
-BOOST_AUTO_TEST_CASE(TEST_SQP_HIMMELBLAU_NEGQUADRANT)
+TEST_CASE("optimize Himmelblau function within box in third quadrant")
 {
     using std::abs;
     const double delta = 1e-8; 
@@ -428,7 +428,7 @@ BOOST_AUTO_TEST_CASE(TEST_SQP_HIMMELBLAU_NEGQUADRANT)
         hessian_modify_max_iter, c1, c2, line_search_max_iter, zoom_max_iter,
         qp_max_iter, true, true, true
     );
-    BOOST_TEST(abs(solution(0) - (-3.7793102533777469)) < tol);
-    BOOST_TEST(abs(solution(1) - (-3.2831859912861694)) < tol);
+    REQUIRE(abs(solution(0) - (-3.7793102533777469)) < tol);
+    REQUIRE(abs(solution(1) - (-3.2831859912861694)) < tol);
     delete opt;
 }
