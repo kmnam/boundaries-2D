@@ -24,7 +24,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     11/13/2022
+ *     12/31/2022
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -34,9 +34,11 @@
 #include <sstream>
 #include <stdexcept>
 #include <cmath>
-#include <linearConstraints.hpp>  // Includes quadraticProgram.hpp from convex-polytopes
 #include "quasiNewton.hpp"
-#include "linesearch.hpp"         // Includes Eigen/Dense, CGAL/QP_*, Boost.Multiprecision, boostMultiprecisionEigen.hpp, etc.
+#include "linesearch.hpp"         // Includes linearConstraints.hpp from convex-polytopes, which 
+                                  // includes Eigen/Dense, quadraticProgram.hpp, CGAL/QP_*,
+                                  // boost/multiprecision/gmp.hpp, boostMultiprecisionEigen.hpp; 
+                                  // additionally includes boost/multiprecision/mpfr.hpp
 #include "duals.hpp"
 
 using namespace Eigen;
