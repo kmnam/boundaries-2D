@@ -24,7 +24,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     12/31/2022
+ *     1/2/2023
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -410,6 +410,7 @@ class SQPOptimizer
          * @param iter                    Iteration number.
          * @param quasi_newton            Quasi-Newton method.
          * @param regularize              Regularization method.
+         * @param regularize_bases        Vector of regularization base values.
          * @param regularize_weights      Vector of regularization weights.
          * @param qp_solve_method         Quadratic program solution method.
          * @param prev_data               Data regarding current iterate of the
@@ -442,6 +443,7 @@ class SQPOptimizer
         StepData<T> step(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                          const int iter, const QuasiNewtonMethod quasi_newton,
                          const RegularizationMethod regularize,
+                         const Ref<const Matrix<T, Dynamic, 1> >& regularize_bases,
                          const Ref<const Matrix<T, Dynamic, 1> >& regularize_weights,
                          const QuadraticProgramSolveMethod qp_solve_method, 
                          StepData<T> prev_data, const T delta, const T beta,
@@ -662,8 +664,8 @@ class SQPOptimizer
             std::tuple<T, bool, bool> search_result = lineSearch<T>(
                 func, gradient, x_curr, f_curr, std::numeric_limits<T>::quiet_NaN(),
                 grad_curr, p, min_stepsize, max_stepsize, c1, c2, line_search_max_iter,
-                zoom_max_iter, regularize, regularize_weights, search_verbose,
-                zoom_verbose
+                zoom_max_iter, regularize, regularize_bases, regularize_weights,
+                search_verbose, zoom_verbose
             );
             T stepsize = std::get<0>(search_result);
             bool satisfies_armijo = std::get<1>(search_result);
@@ -690,14 +692,14 @@ class SQPOptimizer
                     break; 
 
                 case L1:
-                    f_reg = regularize_weights.dot(x_new.cwiseAbs());
+                    f_reg = regularize_weights.dot((x_new - regularize_bases).cwiseAbs());
                     for (int i = 0; i < this->D; ++i)
-                        grad_reg(i) = regularize_weights(i) * ((x_new(i) > 0) - (x_new(i) < 0));
+                        grad_reg(i) = regularize_weights(i) * ((x_new(i) > regularize_bases(i)) - (x_new(i) < regularize_bases(i)));
                     break;
 
                 case L2:
-                    f_reg = regularize_weights.dot(x_new.array().pow(2).matrix());
-                    grad_reg = (regularize_weights.array() * 2 * x_new.array()).matrix();
+                    f_reg = regularize_weights.dot((x_new - regularize_bases).array().pow(2).matrix());
+                    grad_reg = (regularize_weights.array() * 2 * (x_new - regularize_bases).array()).matrix();
                     break;
 
                 default:
@@ -770,6 +772,7 @@ class SQPOptimizer
          * @param func                    Objective function.
          * @param quasi_newton            Quasi-Newton method.
          * @param regularize              Regularization method.
+         * @param regularize_bases        Vector of regularization base values.
          * @param regularize_weights      Vector of regularization weights.
          * @param qp_solve_method         Quadratic program solution method.
          * @param x_init                  Initial iterate. 
@@ -805,6 +808,7 @@ class SQPOptimizer
         Matrix<T, Dynamic, 1> run(std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func,
                                   const QuasiNewtonMethod quasi_newton,
                                   const RegularizationMethod regularize,
+                                  const Ref<const Matrix<T, Dynamic, 1> >& regularize_bases,
                                   const Ref<const Matrix<T, Dynamic, 1> >& regularize_weights, 
                                   const QuadraticProgramSolveMethod qp_solve_method,
                                   const Ref<const Matrix<T, Dynamic, 1> >& x_init, 
@@ -833,14 +837,14 @@ class SQPOptimizer
                     break; 
 
                 case L1:
-                    f_reg = regularize_weights.dot(x_init.cwiseAbs());
+                    f_reg = regularize_weights.dot((x_init - regularize_bases).cwiseAbs());
                     for (int i = 0; i < this->D; ++i)
-                        grad_reg(i) = regularize_weights(i) * ((x_init(i) > 0) - (x_init(i) < 0));
+                        grad_reg(i) = regularize_weights(i) * ((x_init(i) > regularize_bases(i)) - (x_init(i) < regularize_bases(i)));
                     break;
 
                 case L2:
-                    f_reg = regularize_weights.dot(x_init.array().pow(2).matrix());
-                    grad_reg = (regularize_weights.array() * 2 * x_init.array()).matrix();
+                    f_reg = regularize_weights.dot((x_init - regularize_bases).array().pow(2).matrix());
+                    grad_reg = (regularize_weights.array() * 2 * (x_init - regularize_bases).array()).matrix();
                     break;
 
                 default:
@@ -882,11 +886,11 @@ class SQPOptimizer
             while (i < max_iter && (change_x > x_tol || change_f > tol))
             {
                 StepData<T> next_data = this->step(
-                    func, i, quasi_newton, regularize, regularize_weights,
-                    qp_solve_method, curr_data, delta, beta, min_stepsize,
-                    x_tol, qp_stepsize_tol, hessian_modify_max_iter, c1, c2,
-                    line_search_max_iter, zoom_max_iter, qp_max_iter, verbose,
-                    search_verbose, zoom_verbose
+                    func, i, quasi_newton, regularize, regularize_bases, 
+                    regularize_weights, qp_solve_method, curr_data, delta, beta,
+                    min_stepsize, x_tol, qp_stepsize_tol, hessian_modify_max_iter,
+                    c1, c2, line_search_max_iter, zoom_max_iter, qp_max_iter,
+                    verbose, search_verbose, zoom_verbose
                 ); 
                 change_x = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm(); 
                 change_f = abs(curr_data.f - next_data.f); 
