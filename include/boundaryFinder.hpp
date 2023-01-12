@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     11/6/2022
+ *     1/12/2023
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -1377,6 +1377,9 @@ class BoundaryFinder
          *                                iteration.
          * @param regularize              Regularization method: `NOREG`, `L1`,
          *                                or `L2`.
+         * @param regularize_bases        Vector of regularization base values.
+         *                                If `regularize` is `NOREG`, then this 
+         *                                value is ignored.
          * @param regularize_weights      Vector of regularization weights.
          *                                If `regularize` is `NOREG`, then this
          *                                value is ignored.
@@ -1419,6 +1422,7 @@ class BoundaryFinder
                   const double delta, const double beta, const double sqp_min_stepsize,
                   const int hessian_modify_max_iter, const std::string write_prefix,
                   const RegularizationMethod regularize,
+                  const Ref<const VectorXd>& regularize_bases,
                   const Ref<const VectorXd>& regularize_weights,
                   const QuadraticProgramSolveMethod qp_solve_method,
                   const double c1 = 1e-4, const double c2 = 0.9,
@@ -1659,10 +1663,11 @@ class BoundaryFinder
                 VectorXd l_init = VectorXd::Ones(this->constraints->getN())
                     - this->constraints->active(x_init.cast<mpq_rational>()).template cast<double>();
                 VectorXd q = optimizer->run(
-                    obj, QuasiNewtonMethod::BFGS, regularize, regularize_weights,
-                    qp_solve_method, x_init, l_init, delta, beta, sqp_min_stepsize,
-                    max_iter, sqp_tol, sqp_tol, qp_stepsize_tol, hessian_modify_max_iter,
-                    c1, c2, line_search_max_iter, zoom_max_iter, qp_max_iter,
+                    obj, QuasiNewtonMethod::BFGS, regularize, regularize_bases,
+                    regularize_weights, qp_solve_method, x_init, l_init, delta,
+                    beta, sqp_min_stepsize, max_iter, sqp_tol, sqp_tol,
+                    qp_stepsize_tol, hessian_modify_max_iter, c1, c2,
+                    line_search_max_iter, zoom_max_iter, qp_max_iter,
                     sqp_verbose, sqp_line_search_verbose, sqp_zoom_verbose
                 );
                 pull_results_in.row(i) = q;
@@ -1947,7 +1952,10 @@ class BoundaryFinder
          *                                write the boundary obtained in each
          *                                iteration.
          * @param regularize              Regularization method: `NOREG`, `L1`,
-         *                                or `L2`.  
+         *                                or `L2`.
+         * @param regularize_bases        Vector of regularization base values.
+         *                                If `regularize` is `NOREG`, then this 
+         *                                value is ignored.
          * @param regularize_weights      Vector of regularization weights.
          *                                If `regularize` is `NOREG`, then this
          *                                value is ignored.
@@ -1989,7 +1997,8 @@ class BoundaryFinder
                  int n_mutate_origbound, int n_pull_origbound, const double delta,
                  const double beta, const double sqp_min_stepsize,
                  const int hessian_modify_max_iter, const std::string write_prefix,
-                 const RegularizationMethod regularize, 
+                 const RegularizationMethod regularize,
+                 const Ref<const VectorXd>& regularize_bases,
                  const Ref<const VectorXd>& regularize_weights,
                  const QuadraticProgramSolveMethod qp_solve_method,
                  const double c1 = 1e-4, const double c2 = 0.9,
@@ -2042,10 +2051,10 @@ class BoundaryFinder
                     qp_stepsize_tol, i + j, max_edges, n_keep_interior,
                     n_keep_origbound, n_pull_origbound, delta, beta,
                     sqp_min_stepsize, hessian_modify_max_iter, write_prefix,
-                    regularize, regularize_weights, qp_solve_method, c1, c2,
-                    line_search_max_iter, zoom_max_iter, qp_max_iter, verbose,
-                    sqp_verbose, sqp_line_search_verbose, sqp_zoom_verbose,
-                    traversal_verbose, write_pulled_points
+                    regularize, regularize_bases, regularize_weights,
+                    qp_solve_method, c1, c2, line_search_max_iter, zoom_max_iter,
+                    qp_max_iter, verbose, sqp_verbose, sqp_line_search_verbose,
+                    sqp_zoom_verbose, traversal_verbose, write_pulled_points
                 );
                 if (!result)
                     n_converged = 0;
@@ -2183,6 +2192,9 @@ class BoundaryFinder
          *                                iteration.
          * @param regularize              Regularization method: `NOREG`, `L1`,
          *                                or `L2`.
+         * @param regularize_bases        Vector of regularization base values.
+         *                                If `regularize` is `NOREG`, then this 
+         *                                value is ignored.
          * @param regularize_weights      Vector of regularization weights.
          *                                If `regularize` is `NOREG`, then this
          *                                value is ignored.
@@ -2224,7 +2236,8 @@ class BoundaryFinder
                  int n_mutate_origbound, int n_pull_origbound, const double delta,
                  const double beta, const double sqp_min_stepsize,
                  const int hessian_modify_max_iter, const std::string write_prefix,
-                 const RegularizationMethod regularize, 
+                 const RegularizationMethod regularize,
+                 const Ref<const VectorXd>& regularize_bases,
                  const Ref<const VectorXd>& regularize_weights,
                  const QuadraticProgramSolveMethod qp_solve_method,
                  const double c1 = 1e-4, const double c2 = 0.9,
@@ -2277,10 +2290,10 @@ class BoundaryFinder
                     qp_stepsize_tol, i + j, max_edges, n_keep_interior,
                     n_keep_origbound, n_pull_origbound, delta, beta,
                     sqp_min_stepsize, hessian_modify_max_iter, write_prefix,
-                    regularize, regularize_weights, qp_solve_method, c1, c2,
-                    line_search_max_iter, zoom_max_iter, qp_max_iter, verbose,
-                    sqp_verbose, sqp_line_search_verbose, sqp_zoom_verbose,
-                    traversal_verbose, write_pulled_points
+                    regularize, regularize_bases, regularize_weights,
+                    qp_solve_method, c1, c2, line_search_max_iter, zoom_max_iter,
+                    qp_max_iter, verbose, sqp_verbose, sqp_line_search_verbose,
+                    sqp_zoom_verbose, traversal_verbose, write_pulled_points
                 );
                 if (!result)
                     n_converged = 0;
