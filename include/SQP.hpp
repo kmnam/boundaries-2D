@@ -881,9 +881,11 @@ class SQPOptimizer
             curr_data.hessian_lagrangian = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
 
             int i = 0;
-            T change_x = 2 * x_tol * curr_data.xl.norm();
-            T change_f = 2 * tol * abs(curr_data.f);
-            while (i < max_iter && (change_x > x_tol * curr_data.xl.norm() || change_f > tol * abs(curr_data.f)))
+            T curr_x_tol = x_tol * curr_data.xl.head(this->D).norm();
+            T curr_f_tol = tol * abs(curr_data.f);
+            T change_x = 2 * curr_x_tol;
+            T change_f = 2 * curr_f_tol;
+            while (i < max_iter && change_x > curr_x_tol && change_f > curr_f_tol)
             {
                 StepData<T> next_data = this->step(
                     func, i, quasi_newton, regularize, regularize_bases, 
@@ -895,6 +897,8 @@ class SQPOptimizer
                 change_x = (curr_data.xl.head(this->D) - next_data.xl.head(this->D)).norm(); 
                 change_f = abs(curr_data.f - next_data.f); 
                 i++;
+                curr_x_tol = x_tol * curr_data.xl.head(this->D).norm();
+                curr_f_tol = tol * abs(curr_data.f);
                 curr_data.f = next_data.f; 
                 curr_data.xl = next_data.xl;
                 curr_data.grad_f = next_data.grad_f;
