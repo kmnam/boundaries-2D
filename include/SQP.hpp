@@ -24,7 +24,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     1/2/2023
+ *     1/18/2023
  */
 
 #ifndef SQP_OPTIMIZER_HPP
@@ -882,8 +882,9 @@ class SQPOptimizer
 
             int i = 0;
             T change_x = 2 * x_tol;
-            T change_f = 2 * tol; 
-            while (i < max_iter && (change_x > x_tol || change_f > tol))
+            T change_f = 2 * tol;
+            T curr_x_norm = curr_data.xl.norm(); 
+            while (i < max_iter && (change_x > x_tol * curr_data.xl.norm() || change_f > tol * abs(curr_data.f)))
             {
                 StepData<T> next_data = this->step(
                     func, i, quasi_newton, regularize, regularize_bases, 
