@@ -15,7 +15,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     1/2/2023
+ *     1/18/2023
  */
 
 #ifndef SQP_OPTIMIZER_LINE_SEARCH_HPP
@@ -234,7 +234,7 @@ std::tuple<T, bool, bool> zoom(std::function<T(const Ref<const Matrix<T, Dynamic
     T stepsize_prev = 0; 
     
     int i = 0;
-    while (abs_delta > stepsize_tol && i < max_iter)
+    while (abs_delta > stepsize_tol * stepsize_prev && i < max_iter)
     {
         if (verbose)
         {
