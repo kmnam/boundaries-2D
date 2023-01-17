@@ -881,9 +881,8 @@ class SQPOptimizer
             curr_data.hessian_lagrangian = Matrix<T, Dynamic, Dynamic>::Identity(this->D, this->D);
 
             int i = 0;
-            T change_x = 2 * x_tol;
-            T change_f = 2 * tol;
-            T curr_x_norm = curr_data.xl.norm(); 
+            T change_x = 2 * x_tol * curr_data.xl.norm();
+            T change_f = 2 * tol * abs(curr_data.f);
             while (i < max_iter && (change_x > x_tol * curr_data.xl.norm() || change_f > tol * abs(curr_data.f)))
             {
                 StepData<T> next_data = this->step(
