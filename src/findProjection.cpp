@@ -16,9 +16,8 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     8/25/2022
+ *     1/22/2023
  */
-using boost::multiprecision::mpq_rational;
 
 /**
  * Get the maximum distance between any pair of vertices in the given matrix.
@@ -58,7 +57,7 @@ int main(int argc, char** argv)
     int max_pull_iter = 10;
 
     // Check and parse input arguments
-    std::string infilename, outprefix;
+    std::string infilename, write_prefix;
     if (argc == 2)             // Only acceptable call here is "./findProjection --help"
     {
         std::string option(argv[1]);
@@ -100,7 +99,7 @@ int main(int argc, char** argv)
     else if (argc == 3)    // Only acceptable call here is "./findProjection INPUT OUTPUT"
     {
         infilename = argv[1];
-        outprefix = argv[2];
+        write_prefix = argv[2];
     }
     else if (argc >= 5 && argc <= 17 && argc % 2 == 1)    // Optional arguments specified
     {
@@ -244,7 +243,7 @@ int main(int argc, char** argv)
             }
         }
         infilename = argv[argc - 2];
-        outprefix = argv[argc - 1]; 
+        write_prefix = argv[argc - 1]; 
     }
     else
     {
@@ -257,7 +256,7 @@ int main(int argc, char** argv)
     
     // Parse the input polytope and instantiate a BoundaryFinder object
     const double area_tol = 1e-6;
-    Polytopes::LinearConstraints<mpq_rational>* constraints = new Polytopes::LinearConstraints<mpq_rational>(
+    Polytopes::LinearConstraints* constraints = new Polytopes::LinearConstraints(
         Polytopes::InequalityType::LessThanOrEqualTo
     );
     constraints->parse(infilename);
@@ -280,26 +279,34 @@ int main(int argc, char** argv)
     const int min_step_iter = 1;
     const int min_pull_iter = 1;
     const int sqp_max_iter = 100;
-    const double sqp_tol = 1e-6;
-    const double tau = 0.5; 
+    const double sqp_tol = 1e-7;
+    const double qp_stepsize_tol = 1e-8;
     const double delta = 1e-8; 
     const double beta = 1e-4;
-    const bool use_only_armijo = false;  
-    const bool use_strong_wolfe = false;
+    const double sqp_min_stepsize = 1e-8;
     const bool hessian_modify_max_iter = 1000;
+    VectorXd regularize_bases = VectorXd::Zero(finder->getD()); 
+    VectorXd regularize_weights = VectorXd::Zero(finder->getD());
     const double c1 = 1e-4; 
     const double c2 = 0.9; 
+    const int line_search_max_iter = 5;
+    const int zoom_max_iter = 5;
+    const int qp_max_iter = 100;
     const bool verbose = true;
     const bool sqp_verbose = false;
+    const bool sqp_line_search_verbose = false;
+    const bool sqp_zoom_verbose = false;
     const bool traversal_verbose = false;
     const bool write_pulled_points = true; 
     finder->run(
         mutate_delta, filter, init_input, min_step_iter, max_step_iter, min_pull_iter,
-        max_pull_iter, sqp_max_iter, sqp_tol, max_edges, n_keep_interior,
-        n_keep_origbound, n_mutate_origbound, n_pull_origbound, tau, delta,
-        beta, use_only_armijo, use_strong_wolfe, hessian_modify_max_iter,
-        outprefix, RegularizationMethod::NOREG, 0, c1, c2, verbose, sqp_verbose,
-        traversal_verbose, write_pulled_points
+        max_pull_iter, sqp_max_iter, sqp_tol, qp_stepsize_tol, max_edges,
+        n_keep_interior, n_keep_origbound, n_mutate_origbound, n_pull_origbound,
+        delta, beta, sqp_min_stepsize, hessian_modify_max_iter, write_prefix, 
+        RegularizationMethod::NOREG, regularize_bases, regularize_weights,
+        QuadraticProgramSolveMethod::USE_CUSTOM_SOLVER, c1, c2, line_search_max_iter,
+        zoom_max_iter, qp_max_iter, verbose, sqp_verbose, sqp_line_search_verbose, 
+        sqp_zoom_verbose, traversal_verbose, write_pulled_points
     );
     
     return 0;
