@@ -378,9 +378,9 @@ class Boundary2D(object):
             polygon = patches.Polygon(
                 self.points[self.vertices, :], closed=True,
                 facecolor='none' if interior_color is None else interior_color,
-                edgecolor=(*color, linealpha), alpha=shade_alpha,
-                linewidth=linewidth, linestyle=linestyle, zorder=0,
-                **boundary_kws
+                edgecolor=color if linealpha == 1.0 else (*color, linealpha),
+                alpha=shade_alpha, linewidth=linewidth, linestyle=linestyle,
+                zorder=0, **boundary_kws
             )
             ax.add_patch(polygon)
         else:
