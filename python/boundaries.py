@@ -18,13 +18,15 @@ Authors:
     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
 
 Last updated:
-    4/9/2022
+    1/24/2023
 """
 import sys
 import numpy as np
+from scipy.sparse import lil_matrix
 import matplotlib.pyplot as plt
 from matplotlib.colors import to_rgba
 import matplotlib.patches as patches
+import matplotlib as mpl
 import seaborn as sns
 
 ######################################################################
@@ -204,6 +206,10 @@ class Boundary2D(object):
             Least x-coordinate, least y-coordinate, greatest x-coordinate, 
             and greatest y-coordinate among the boundary vertices. 
         """
+        # Return [None, None, None, None] if there are no vertices
+        if len(self.vertices) == 0:
+            return [None, None, None, None]
+
         vertices = self.points[self.vertices, :]
         return [
             vertices[:, 0].min(), vertices[:, 1].min(),
@@ -233,6 +239,10 @@ class Boundary2D(object):
         """
         if rng is None:
             rng = np.random.default_rng(1234567890)
+
+        # If there are fewer than three vertices, return False
+        if len(self.vertices) < 3:
+            return False
 
         # Find a point outside the boundary by perturbing a corner of the 
         # bounding box by random increments 
@@ -308,9 +318,11 @@ class Boundary2D(object):
         return self._contains_ray_casting(x, y) 
 
     ##################################################################
-    def plot(self, ax, color=None, linewidth=None, scatter=False,
-             scatter_color=None, pointsize=None, shade_interior=False,
-             interior_color=None, scatter_alpha=None, shade_alpha=None,
+    def plot(self, ax, closed=True, color='black', linewidth=1.0, linestyle='-',
+             linealpha=1.0, scatter=False, scatter_color='black',
+             pointsize=(mpl.rcParams['lines.markersize'] ** 2),
+             interior_color=sns.color_palette()[0], scatter_interior=False,
+             scatter_interior_color='black', scatter_alpha=1.0, shade_alpha=1.0,
              autoscale=True, boundary_kws={}, scatter_kws={}):
         """
         Plot the stored points, with the boundary points emphasized and 
@@ -320,10 +332,16 @@ class Boundary2D(object):
         ----------
         ax : matplotlib.pyplot.Axes
             Axes onto which the points are to be plotted.
+        closed : bool
+            If True, plot the boundary as a closed polygon from its vertices.
         color : RGB tuple or string
             Color of the polygonal edges along the boundary.
         linewidth : float
-            Width of the polygonal edges along the boundary. 
+            Width of the polygonal edges along the boundary.
+        linestyle : str
+            Style of the polygonal edges along the boundary.
+        linealpha : float
+            Alpha transparency value for the polygonal edges along the boundary.
         scatter : bool
             Whether to plot the polygonal vertices along the boundary.
         scatter_color : RGB tuple or string
@@ -332,11 +350,12 @@ class Boundary2D(object):
         pointsize : float
             Size of the polygonal vertices along the boundary, if the 
             vertices are to be plotted. 
-        shade_interior : bool
-            Whether to shade in the interior.
         interior_color : RGB tuple or string
-            Color for the interior shading, if the interior is to be 
-            shaded. 
+            If `closed` is `True`, color for the interior shading.
+        scatter_interior : bool
+            Whether to plot the interior points.
+        scatter_interior_color : RGB tuple or string
+            Color of the interior points, if they are to be plotted.
         scatter_alpha : float
             Alpha transparency value for boundary scatter-plotted points.
         shade_alpha : float
@@ -354,21 +373,35 @@ class Boundary2D(object):
         -------
         None
         """
-        # Instantiate the Polygon object to be plotted 
-        polygon = patches.Polygon(
-            self.points[self.vertices, :], closed=True,
-            facecolor=('none' if not shade_interior else interior_color),
-            edgecolor=color, alpha=(None if not shade_interior else shade_alpha),
-            linewidth=linewidth, **boundary_kws
-        )
-        ax.add_patch(polygon)
+        # Instantiate the Polygon object to be plotted
+        if closed:
+            polygon = patches.Polygon(
+                self.points[self.vertices, :], closed=True,
+                facecolor='none' if interior_color is None else interior_color,
+                edgecolor=(*color, linealpha), alpha=shade_alpha,
+                linewidth=linewidth, linestyle=linestyle, zorder=0,
+                **boundary_kws
+            )
+            ax.add_patch(polygon)
+        else:
+            for edge in self.edges:
+                v, w = edge
+                ax.plot(
+                    self.points[[v, w], 0], self.points[[v, w], 1],
+                    color=color, markersize=0, linewidth=linewidth,
+                    zorder=0
+                )
 
-        # Plot the individual vertices along the boundary if desired 
+        # Plot the individual vertices along the boundary if desired
+        if scatter_interior:
+            ax.scatter(
+                self.points[:, 0], self.points[:, 1], color=scatter_interior_color,
+                s=pointsize, alpha=scatter_alpha, zorder=1, **scatter_kws
+            )
         if scatter:
             ax.scatter(
-                self.points[self.vertices, 0],
-                self.points[self.vertices, 1],
-                c=scatter_color, s=pointsize, alpha=scatter_alpha,
+                self.points[self.vertices, 0], self.points[self.vertices, 1],
+                color=scatter_color, s=pointsize, alpha=scatter_alpha, zorder=2,
                 **scatter_kws
             )
 
