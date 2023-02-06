@@ -1444,7 +1444,7 @@ class BoundaryFinder
             // Check that the number of points to be deleted is not negative 
             int n_to_delete = this->curr_bound.np - this->curr_bound.nv - n_keep_interior;
             if (n_to_delete < 0)
-                n_to_delete = 0; 
+                n_to_delete = 0;
 
             std::unordered_set<int> boundary_indices;    // Set of all point indices from unsimplified boundary
             std::vector<int> interior_indices;           // Vector of all point indices from interior
@@ -1472,7 +1472,7 @@ class BoundaryFinder
             {
                 int origbound_nv = this->curr_bound.nv - this->curr_simplified.nv;
                 if (n_keep_origbound > origbound_nv)
-                    n_keep_origbound = origbound_nv; 
+                    n_keep_origbound = origbound_nv;
                 simplified_indices.insert(
                     this->curr_simplified.vertices.begin(),
                     this->curr_simplified.vertices.end()
@@ -1509,8 +1509,7 @@ class BoundaryFinder
             if (this->simplified)
             {
                 int origbound_nv = this->curr_bound.nv - this->curr_simplified.nv;
-                if (n_keep_origbound > origbound_nv)
-                    n_keep_origbound = origbound_nv; 
+                // Note that n_keep_origbound has been checked above to be <= origbound_nv
                 idx = sampleWithoutReplacement(origbound_nv, n_keep_origbound, this->rng); 
                 for (const int i : idx)
                     origbound_indices_to_keep.push_back(origbound_indices[i]); 
@@ -1579,6 +1578,8 @@ class BoundaryFinder
             // plus the desired number of points in the unsimplified boundary 
             else
             {
+                if (n_pull_origbound > n_keep_origbound)
+                    n_pull_origbound = n_keep_origbound; 
                 const int n_pull = this->curr_simplified.nv + n_pull_origbound;
                 to_pull.resize(n_pull);
                 prev.resize(n_pull); 
