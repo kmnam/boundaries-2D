@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     1/12/2023
+ *     2/6/2023
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -1036,6 +1036,8 @@ class BoundaryFinder
             if (this->simplified)
             {
                 int origbound_nv = this->curr_bound.nv - this->curr_simplified.nv;
+                if (n_keep_origbound > origbound_nv)
+                    n_keep_origbound = origbound_nv; 
                 idx = sampleWithoutReplacement(origbound_nv, n_keep_origbound, this->rng); 
                 for (const int i : idx)
                     origbound_indices_to_keep.push_back(origbound_indices[i]); 
@@ -1507,6 +1509,8 @@ class BoundaryFinder
             if (this->simplified)
             {
                 int origbound_nv = this->curr_bound.nv - this->curr_simplified.nv;
+                if (n_keep_origbound > origbound_nv)
+                    n_keep_origbound = origbound_nv; 
                 idx = sampleWithoutReplacement(origbound_nv, n_keep_origbound, this->rng); 
                 for (const int i : idx)
                     origbound_indices_to_keep.push_back(origbound_indices[i]); 
