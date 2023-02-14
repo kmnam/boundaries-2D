@@ -6,7 +6,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     8/19/2022
+ *     2/15/2023
  */
 
 #ifndef BOUNDARIES_HPP
@@ -1604,9 +1604,12 @@ class Boundary2D
          *
          * This method returns an `AlphaShape2DProperties` object containing
          * the indices of the points lying along the identified boundary
-         * with the *smallest* value of alpha such that the boundary forms 
-         * a simple cycle (i.e., the enclosed region is simply connected).
+         * with the given percentile value of alpha chosen among the values 
+         * for which the boundary forms a simple cycle (i.e., the enclosed
+         * region is simply connected).
          *
+         * @param alpha_percentile  Percentile for value of alpha chosen to 
+         *                          define the boundary. 
          * @param verbose           If true, output intermittent messages to
          *                          `stdout`.
          * @param traversal_verbose If true, output intermittent messages to
@@ -1615,7 +1618,8 @@ class Boundary2D
          *          representing the boundary of the point-set.  
          */
         template <bool tag = true>
-        AlphaShape2DProperties getSimplyConnectedBoundary(const bool verbose = false,
+        AlphaShape2DProperties getSimplyConnectedBoundary(const double alpha_percenetile = 1.0,
+                                                          const bool verbose = false,
                                                           const bool traversal_verbose = false)
         {
             typedef CGAL::Alpha_shape_vertex_base_2<K, CGAL::Default, CGAL::Boolean_tag<tag> > Vb;
@@ -1736,7 +1740,7 @@ class Boundary2D
             found_simple_cycle_alpha = (last_valid != INVALID_ALPHA_INDEX);
 
             // If so, then set the optimal value of alpha to slightly higher 
-            // than this smallest value (the first percentile of the distribution
+            // than this smallest value (the given percentile of the distribution
             // of alphas between this smallest value and the largest possible value)
             if (!found_simple_cycle_alpha)
                 throw std::runtime_error("Could not find any simple-cycle boundary"); 
@@ -1749,7 +1753,7 @@ class Boundary2D
                 std::cout << "- Number of valid values for alpha = "
                           << shape.number_of_alphas() - last_valid << std::endl; 
             }
-            int padding = static_cast<int>(std::floor(0.01 * (shape.number_of_alphas() - last_valid)));
+            int padding = static_cast<int>(std::floor((alpha_percentile / 100) * (shape.number_of_alphas() - last_valid)));
             opt_alpha_index = last_valid + padding;
             opt_alpha = CGAL::to_double(shape.get_nth_alpha(opt_alpha_index));
             is_simple_cycle = this->traverseSimpleCycle(
