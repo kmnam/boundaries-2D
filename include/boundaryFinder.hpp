@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  *
  * **Last updated:**
- *     2/6/2023
+ *     2/15/2023
  */
 
 #ifndef BOUNDARY_FINDER_HPP
@@ -500,6 +500,8 @@ class BoundaryFinder
          *                          interior points are kept.
          * @param write_prefix      Prefix of output file name to which to write 
          *                          the boundary obtained in this iteration.
+         * @param alpha_percentile  Percentile for value of alpha chosen to 
+         *                          define the boundary. 
          * @param verbose           If true, output intermittent messages to `stdout`.
          * @param traversal_verbose If true, output intermittent messages to
          *                          `stdout` from `Boundary2D::traverseSimpleCycle()`. 
@@ -509,7 +511,8 @@ class BoundaryFinder
         void initialize(std::function<bool(const Ref<const VectorXd>&)> filter, 
                         const Ref<const MatrixXd>& input, const int max_edges, 
                         const int n_keep_interior, const std::string write_prefix,
-                        const bool verbose = true, const bool traversal_verbose = false)
+                        const double alpha_percentile = 1.0, const bool verbose = true,
+                        const bool traversal_verbose = false)
         {
             // Check that the input points have the correct dimensionality
             const int D = this->constraints->getD();  
@@ -552,7 +555,7 @@ class BoundaryFinder
                 // - CGAL::Assertion_exception (while instantiating the alpha shape) 
                 // - std::runtime_error (if polygon is not simple)
                 this->curr_bound = boundary.getSimplyConnectedBoundary<true>(
-                    verbose, traversal_verbose
+                    alpha_percentile, verbose, traversal_verbose
                 ); 
             }
             catch (CGAL::Assertion_exception& e) 
@@ -564,7 +567,7 @@ class BoundaryFinder
                 try 
                 {
                     this->curr_bound = boundary.getSimplyConnectedBoundary<false>(
-                        verbose, traversal_verbose
+                        alpha_percentile, verbose, traversal_verbose
                     ); 
                 }
                 catch (CGAL::Assertion_exception& e)
@@ -581,7 +584,7 @@ class BoundaryFinder
                 try 
                 {
                     this->curr_bound = boundary.getSimplyConnectedBoundary<false>(
-                        verbose, traversal_verbose
+                        alpha_percentile, verbose, traversal_verbose
                     );
                 }
                 catch (CGAL::Assertion_exception& e)
@@ -713,6 +716,8 @@ class BoundaryFinder
          *                          interior points are kept.
          * @param write_prefix      Prefix of output file name to which to write 
          *                          the boundary obtained in this iteration.
+         * @param alpha_percentile  Percentile for value of alpha chosen to 
+         *                          define the boundary. 
          * @param verbose           If true, output intermittent messages to `stdout`.
          * @param traversal_verbose If true, output intermittent messages to
          *                          `stdout` from `Boundary2D::traverseSimpleCycle()`. 
@@ -722,7 +727,8 @@ class BoundaryFinder
         void initialize(std::function<bool(const Ref<const VectorXd>&)> filter, 
                         const int npoints, const int max_nsample, const int max_edges, 
                         const int n_keep_interior, const std::string write_prefix,
-                        const bool verbose = true, const bool traversal_verbose = false)
+                        const double alpha_percentile = 1.0, const bool verbose = true,
+                        const bool traversal_verbose = false)
         {
             // Keep track of the total number of points sampled 
             const int D = this->constraints->getD();  
@@ -772,7 +778,7 @@ class BoundaryFinder
                 // - CGAL::Assertion_exception (while instantiating the alpha shape) 
                 // - std::runtime_error (if polygon is not simple)
                 this->curr_bound = boundary.getSimplyConnectedBoundary<true>(
-                    verbose, traversal_verbose
+                    alpha_percentile, verbose, traversal_verbose
                 ); 
             }
             catch (CGAL::Assertion_exception& e) 
@@ -784,7 +790,7 @@ class BoundaryFinder
                 try 
                 {
                     this->curr_bound = boundary.getSimplyConnectedBoundary<false>(
-                        verbose, traversal_verbose
+                        alpha_percentile, verbose, traversal_verbose
                     ); 
                 }
                 catch (CGAL::Assertion_exception& e)
@@ -801,7 +807,7 @@ class BoundaryFinder
                 try 
                 {
                     this->curr_bound = boundary.getSimplyConnectedBoundary<false>(
-                        verbose, traversal_verbose
+                        alpha_percentile, verbose, traversal_verbose
                     );
                 }
                 catch (CGAL::Assertion_exception& e)
@@ -948,6 +954,8 @@ class BoundaryFinder
          *                           (without replacement) to be mutated. 
          * @param write_prefix       Prefix of output file name to which to write 
          *                           the boundary obtained in this iteration.
+         * @param alpha_percentile   Percentile for value of alpha chosen to 
+         *                           define the boundary. 
          * @param verbose            If true, output intermittent messages to
          *                           `stdout`.
          * @param traversal_verbose  If true, output intermittent messages to
@@ -960,8 +968,8 @@ class BoundaryFinder
                   std::function<bool(const Ref<const VectorXd>&)> filter, 
                   const int iter, const int max_edges, int n_keep_interior,
                   int n_keep_origbound, int n_mutate_origbound, 
-                  const std::string write_prefix, const bool verbose = true,
-                  const bool traversal_verbose = false)
+                  const std::string write_prefix, const double alpha_percentile = 1.0,
+                  const bool verbose = true, const bool traversal_verbose = false)
         {
             // Check that n_keep_interior is valid 
             int n_interior = this->curr_bound.np - this->curr_bound.nv; 
@@ -1179,7 +1187,7 @@ class BoundaryFinder
                 // - CGAL::Assertion_exception (while instantiating the alpha shape) 
                 // - std::runtime_error (if polygon is not simple)
                 new_bound = boundary.getSimplyConnectedBoundary<true>(
-                    verbose, traversal_verbose
+                    alpha_percentile, verbose, traversal_verbose
                 );
             }
             catch (CGAL::Assertion_exception& e) 
@@ -1191,7 +1199,7 @@ class BoundaryFinder
                 try 
                 {
                     new_bound = boundary.getSimplyConnectedBoundary<false>(
-                        verbose, traversal_verbose
+                        alpha_percentile, verbose, traversal_verbose
                     );
                 }
                 catch (CGAL::Assertion_exception& e)
@@ -1208,7 +1216,7 @@ class BoundaryFinder
                 try 
                 {
                     new_bound = boundary.getSimplyConnectedBoundary<false>(
-                        verbose, traversal_verbose
+                        alpha_percentile, verbose, traversal_verbose
                     );
                 }
                 catch (CGAL::Assertion_exception& e)
@@ -1396,7 +1404,9 @@ class BoundaryFinder
          * @param zoom_max_iter           Maximum number of zoom iterations
          *                                during each SQP iteration.
          * @param qp_max_iter             Maximum number of iterations during 
-         *                                each QP (during each SQP iteration). 
+         *                                each QP (during each SQP iteration).
+         * @param alpha_percentile        Percentile for value of alpha chosen to 
+         *                                define the boundary. 
          * @param verbose                 If true, output intermittent messages
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
@@ -1429,8 +1439,8 @@ class BoundaryFinder
                   const QuadraticProgramSolveMethod qp_solve_method,
                   const double c1 = 1e-4, const double c2 = 0.9,
                   const int line_search_max_iter = 10, const int zoom_max_iter = 10,
-                  const int qp_max_iter = 10000, const bool verbose = true,
-                  const bool sqp_verbose = false,
+                  const int qp_max_iter = 10000, const double alpha_percentile = 1.0, 
+                  const bool verbose = true, const bool sqp_verbose = false,
                   const bool sqp_line_search_verbose = false,
                   const bool sqp_zoom_verbose = false,
                   const bool traversal_verbose = false,
@@ -1752,7 +1762,7 @@ class BoundaryFinder
                 // - CGAL::Assertion_exception (while instantiating the alpha shape) 
                 // - std::runtime_error (if polygon is not simple)
                 new_bound = boundary.getSimplyConnectedBoundary<true>(
-                    verbose, traversal_verbose
+                    alpha_percentile, verbose, traversal_verbose
                 );
             }
             catch (CGAL::Assertion_exception& e) 
@@ -1764,7 +1774,7 @@ class BoundaryFinder
                 try 
                 {
                     new_bound = boundary.getSimplyConnectedBoundary<false>(
-                        verbose, traversal_verbose
+                        alpha_percentile, verbose, traversal_verbose
                     );
                 }
                 catch (CGAL::Assertion_exception& e)
@@ -1781,7 +1791,7 @@ class BoundaryFinder
                 try 
                 {
                     new_bound = boundary.getSimplyConnectedBoundary<false>(
-                        verbose, traversal_verbose
+                        alpha_percentile, verbose, traversal_verbose
                     );
                 }
                 catch (CGAL::Assertion_exception& e)
@@ -1975,7 +1985,9 @@ class BoundaryFinder
          * @param zoom_max_iter           Maximum number of zoom iterations
          *                                during each SQP iteration.
          * @param qp_max_iter             Maximum number of iterations during 
-         *                                each QP (during each SQP iteration). 
+         *                                each QP (during each SQP iteration).
+         * @param alpha_percentile        Percentile for value of alpha chosen to 
+         *                                define the boundary. 
          * @param verbose                 If true, output intermittent messages
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
@@ -2008,8 +2020,8 @@ class BoundaryFinder
                  const QuadraticProgramSolveMethod qp_solve_method,
                  const double c1 = 1e-4, const double c2 = 0.9,
                  const int line_search_max_iter = 10, const int zoom_max_iter = 10,
-                 const int qp_max_iter = 10000, const bool verbose = true,
-                 const bool sqp_verbose = false,
+                 const int qp_max_iter = 10000, const double alpha_percentile = 1.0,
+                 const bool verbose = true, const bool sqp_verbose = false,
                  const bool sqp_line_search_verbose = false,
                  const bool sqp_zoom_verbose = false,
                  const bool traversal_verbose = false, 
@@ -2018,7 +2030,7 @@ class BoundaryFinder
             // Initialize the sampling run ...
             this->initialize(
                 filter, ninit, max_nsample, max_edges, n_keep_interior, write_prefix,
-                verbose, traversal_verbose
+                alpha_percentile, verbose, traversal_verbose
             );
 
             // ... then step through the boundary-finding algorithm up to the
@@ -2031,7 +2043,8 @@ class BoundaryFinder
             {
                 bool result = this->step(
                     dist, filter, i, max_edges, n_keep_interior, n_keep_origbound,
-                    n_mutate_origbound, write_prefix, verbose, traversal_verbose
+                    n_mutate_origbound, write_prefix, alpha_percentile, verbose,
+                    traversal_verbose
                 );
                 if (!result)
                     n_converged = 0;
@@ -2058,8 +2071,9 @@ class BoundaryFinder
                     sqp_min_stepsize, hessian_modify_max_iter, write_prefix,
                     regularize, regularize_bases, regularize_weights,
                     qp_solve_method, c1, c2, line_search_max_iter, zoom_max_iter,
-                    qp_max_iter, verbose, sqp_verbose, sqp_line_search_verbose,
-                    sqp_zoom_verbose, traversal_verbose, write_pulled_points
+                    qp_max_iter, alpha_percentile, verbose, sqp_verbose,
+                    sqp_line_search_verbose, sqp_zoom_verbose, traversal_verbose,
+                    write_pulled_points
                 );
                 if (!result)
                     n_converged = 0;
@@ -2214,7 +2228,9 @@ class BoundaryFinder
          * @param zoom_max_iter           Maximum number of zoom iterations
          *                                during each SQP iteration. 
          * @param qp_max_iter             Maximum number of iterations during 
-         *                                each QP (during each SQP iteration). 
+         *                                each QP (during each SQP iteration).
+         * @param alpha_percentile        Percentile for value of alpha chosen to 
+         *                                define the boundary. 
          * @param verbose                 If true, output intermittent messages
          *                                to `stdout`.
          * @param sqp_verbose             If true, output intermittent messages 
@@ -2247,8 +2263,8 @@ class BoundaryFinder
                  const QuadraticProgramSolveMethod qp_solve_method,
                  const double c1 = 1e-4, const double c2 = 0.9,
                  const int line_search_max_iter = 10, const int zoom_max_iter = 10,
-                 const int qp_max_iter = 10000, const bool verbose = true,
-                 const bool sqp_verbose = false,
+                 const int qp_max_iter = 10000, const double alpha_percentile = 1.0,
+                 const bool verbose = true, const bool sqp_verbose = false,
                  const bool sqp_line_search_verbose = false,
                  const bool sqp_zoom_verbose = false,
                  const bool traversal_verbose = false, 
@@ -2257,7 +2273,7 @@ class BoundaryFinder
             // Initialize the sampling run ...
             this->initialize(
                 filter, init_input, max_edges, n_keep_interior, write_prefix,
-                verbose, traversal_verbose
+                alpha_percentile, verbose, traversal_verbose
             );
 
             // ... then step through the boundary-finding algorithm up to the
@@ -2270,7 +2286,8 @@ class BoundaryFinder
             {
                 bool result = this->step(
                     dist, filter, i, max_edges, n_keep_interior, n_keep_origbound,
-                    n_mutate_origbound, write_prefix, verbose, traversal_verbose
+                    n_mutate_origbound, write_prefix, alpha_percentile, verbose,
+                    traversal_verbose
                 );
                 if (!result)
                     n_converged = 0;
@@ -2297,8 +2314,9 @@ class BoundaryFinder
                     sqp_min_stepsize, hessian_modify_max_iter, write_prefix,
                     regularize, regularize_bases, regularize_weights,
                     qp_solve_method, c1, c2, line_search_max_iter, zoom_max_iter,
-                    qp_max_iter, verbose, sqp_verbose, sqp_line_search_verbose,
-                    sqp_zoom_verbose, traversal_verbose, write_pulled_points
+                    qp_max_iter, alpha_percentile, verbose, sqp_verbose,
+                    sqp_line_search_verbose, sqp_zoom_verbose, traversal_verbose,
+                    write_pulled_points
                 );
                 if (!result)
                     n_converged = 0;
