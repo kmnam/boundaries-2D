@@ -1618,7 +1618,7 @@ class Boundary2D
          *          representing the boundary of the point-set.  
          */
         template <bool tag = true>
-        AlphaShape2DProperties getSimplyConnectedBoundary(const double alpha_percenetile = 1.0,
+        AlphaShape2DProperties getSimplyConnectedBoundary(const double alpha_percentile = 1.0,
                                                           const bool verbose = false,
                                                           const bool traversal_verbose = false)
         {
