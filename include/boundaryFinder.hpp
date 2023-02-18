@@ -35,7 +35,7 @@ typedef CGAL::Exact_predicates_inexact_constructions_kernel    K;
 typedef K::Vector_2                                            Vector_2;
 
 constexpr int MAX_NUM_MUTATION_ATTEMPTS = 20;
-constexpr int NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE = 3;
+constexpr int NUM_CONSECUTIVE_ITERATIONS_SATISFYING_TOLERANCE_FOR_CONVERGENCE = 5;
 constexpr int TRI_VOLUME_INTERNAL_PRECISION = 100;
 constexpr double MINDIST_BETWEEN_POINTS = 1e-5;
 
