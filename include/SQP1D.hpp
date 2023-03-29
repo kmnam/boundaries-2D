@@ -43,7 +43,7 @@ class SQPOptimizer1D : public SQPOptimizer<T>
          * @param lower Lower bound.
          * @param upper Upper bound.
          */
-        SQPOptimizer1D(const T lower, const T upper)
+        SQPOptimizer1D(const T lower, const T upper) : SQPOptimizer<T>(1)
         {
             this->D = 1;
             this->N = 2;
@@ -74,6 +74,7 @@ class SQPOptimizer1D : public SQPOptimizer<T>
          *                               match those implied by `D` and `N`.
          */
         SQPOptimizer1D(const T lower, const T upper, const Polytopes::InequalityType type)
+			: SQPOptimizer<T>(1)
         {
             this->D = 1;
             this->N = 2;
@@ -194,14 +195,14 @@ class SQPOptimizer1D : public SQPOptimizer<T>
 			Matrix<T, Dynamic, 1> regularize_weights(1);
 			regularize_weights << regularize_weight;
 
-			return this->run(
+			return this->SQPOptimizer<T>::run(
 				func_vec, quasi_newton, regularize, regularize_bases, 
 				regularize_weights, qp_solve_method, x_init_vec, l_init,
 				delta, beta, min_stepsize, max_iter, tol, x_tol,
 				qp_stepsize_tol, hessian_modify_max_iter, c1, c2,
 				line_search_max_iter, zoom_max_iter, qp_max_iter, 
 				verbose, search_verbose, zoom_verbose
-			);
+			)(0);
         }
 };
 
