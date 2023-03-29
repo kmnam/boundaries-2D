@@ -167,28 +167,23 @@ class SQPOptimizer1D : public SQPOptimizer<T>
          *                                to `stdout` from `lineSearch()`.
          * @param zoom_verbose            If true, output intermittent messages 
          *                                to `stdout` from `zoom()`.
-         * @returns Minimizing input vector.
+         * @returns Minimizing input value (as a scalar). 
          */
-        Matrix<T, Dynamic, 1> run(std::function<T(T)> func,
-                                  const QuasiNewtonMethod quasi_newton,
-                                  const RegularizationMethod regularize,
-								  const T regularize_base, const T regularize_weight,
-                                  const QuadraticProgramSolveMethod qp_solve_method,
-								  const T x_init, const Ref<const Matrix<T, Dynamic, 1> >& l_init,
-                                  const T delta, const T beta, const T min_stepsize,
-                                  const int max_iter, const T tol,
-                                  const T x_tol, const T qp_stepsize_tol, 
-                                  const int hessian_modify_max_iter, const T c1,
-                                  const T c2, const int line_search_max_iter,
-                                  const int zoom_max_iter, const int qp_max_iter,
-                                  const bool verbose = false,
-                                  const bool search_verbose = false,
-                                  const bool zoom_verbose = false)
+        T run(std::function<T(T)> func, const QuasiNewtonMethod quasi_newton,
+			  const RegularizationMethod regularize, const T regularize_base,
+			  const T regularize_weight, const QuadraticProgramSolveMethod qp_solve_method,
+			  const T x_init, const Ref<const Matrix<T, Dynamic, 1> >& l_init,
+			  const T delta, const T beta, const T min_stepsize, const int max_iter,
+			  const T tol, const T x_tol, const T qp_stepsize_tol, 
+			  const int hessian_modify_max_iter, const T c1, const T c2,
+			  const int line_search_max_iter, const int zoom_max_iter,
+			  const int qp_max_iter, const bool verbose = false,
+			  const bool search_verbose = false, const bool zoom_verbose = false)
         {
 			// Define vector versions of func, x_init, regularize_base, and
 			// regularize_weights
 			std::function<T(const Ref<const Matrix<T, Dynamic, 1> >&)> func_vec
-				= [&func](const Ref<const Matrix<T, Dynamic, 1> >& x)
+				= [&func](const Ref<const Matrix<T, Dynamic, 1> >& x) -> T
 				{
 					return func(x(0));
 				};
