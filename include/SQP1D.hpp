@@ -5,7 +5,7 @@
  *     Kee-Myoung Nam, Department of Systems Biology, Harvard Medical School
  * 
  * **Last updated:**
- *     3/29/2023
+ *     4/2/2023
  */
 
 #ifndef SQP_OPTIMIZER_1D_HPP
@@ -137,8 +137,8 @@ class SQPOptimizer1D : public SQPOptimizer<T>
          * @param func                    Objective function (with scalar input).
          * @param quasi_newton            Quasi-Newton method.
          * @param regularize              Regularization method.
-         * @param regularize_bases        Regularization base value.
-         * @param regularize_weights      Regularization weight.
+         * @param regularize_base         Regularization base value.
+         * @param regularize_weight       Regularization weight.
          * @param qp_solve_method         Quadratic program solution method.
          * @param x_init                  Initial iterate. 
          * @param l_init                  Initial vector of Lagrange multipliers.
